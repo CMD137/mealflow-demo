@@ -15,9 +15,10 @@ import com.mealflow.queue.api.QueueReadyTicket;
 import com.mealflow.queue.api.QueueTicketSnapshot;
 import com.mealflow.queue.api.QueueTicketView;
 import com.mealflow.queue.api.ReleaseCapacityResponse;
+import com.mealflow.queue.mapper.CapacityTokenRow;
+import com.mealflow.queue.mapper.QueueMapper;
+import com.mealflow.queue.mapper.QueueTicketRow;
 import jakarta.annotation.PostConstruct;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,8 +29,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,26 +40,20 @@ public class QueueService {
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
   private final Map<Long, PriorityQueue<WaitingTicket>> waitingQueues = new ConcurrentHashMap<>();
   private final Map<Long, Integer> merchantLimits = new ConcurrentHashMap<>();
-  private final JdbcTemplate jdbcTemplate;
+  private final QueueMapper queueMapper;
   private final ObjectMapper objectMapper;
 
-  public QueueService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
-    this.jdbcTemplate = jdbcTemplate;
+  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper) {
+    this.queueMapper = queueMapper;
     this.objectMapper = objectMapper;
     merchantLimits.put(10L, 1);
   }
 
   @PostConstruct
   void rebuildWaitingQueues() {
-    RowCallbackHandler waitingTicketLoader = rs -> waitingQueue(rs.getLong("merchant_id"))
-        .add(new WaitingTicket(rs.getLong("id"), rs.getString("ticket_no"), rs.getLong("score")));
-    jdbcTemplate.query("""
-            SELECT id, ticket_no, merchant_id, score
-            FROM queue_ticket
-            WHERE status = ? AND expire_time > ?
-            ORDER BY score, ticket_no
-            """,
-        waitingTicketLoader, QueueTicketStatus.WAITING.name(), LocalDateTime.now());
+    queueMapper.findWaitingTickets(QueueTicketStatus.WAITING.name(), LocalDateTime.now())
+        .forEach(ticket -> waitingQueue(ticket.getMerchantId())
+            .add(new WaitingTicket(ticket.getId(), ticket.getTicketNo(), ticket.getScore())));
   }
 
   @Transactional
@@ -126,12 +119,7 @@ public class QueueService {
   @Transactional
   public synchronized void bindTokenOrder(long capacityTokenId, long orderId) {
     requireToken(capacityTokenId);
-    jdbcTemplate.update("""
-            UPDATE capacity_token
-            SET order_id = ?, update_time = ?
-            WHERE id = ?
-            """,
-        orderId, LocalDateTime.now(), capacityTokenId);
+    queueMapper.bindTokenOrder(capacityTokenId, orderId, LocalDateTime.now());
   }
 
   @Transactional
@@ -144,12 +132,7 @@ public class QueueService {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "ticket status cannot create order");
     }
     updateTicketStatus(ticketId, QueueTicketStatus.ORDER_CREATED, orderId, ticket.readyTime, ticket.processingTime);
-    jdbcTemplate.update("""
-            UPDATE capacity_token
-            SET order_id = ?, update_time = ?
-            WHERE ticket_id = ?
-            """,
-        orderId, LocalDateTime.now(), ticketId);
+    queueMapper.bindTicketTokensOrder(ticketId, orderId, LocalDateTime.now());
   }
 
   @Transactional
@@ -184,35 +167,18 @@ public class QueueService {
   }
 
   public List<QueueTicketView> tickets() {
-    return jdbcTemplate.query("""
-            SELECT id
-            FROM queue_ticket
-            ORDER BY id
-            """,
-        (rs, rowNum) -> getTicket(rs.getLong("id")));
+    return queueMapper.findTicketIds().stream().map(this::getTicket).toList();
   }
 
   public List<CapacityTokenView> tokens() {
-    return jdbcTemplate.query("""
-            SELECT id, merchant_id, ticket_id, order_id, status, release_reason
-            FROM capacity_token
-            ORDER BY id
-            """,
-        (rs, rowNum) -> new CapacityTokenView(rs.getLong("id"), rs.getLong("merchant_id"),
-            nullableLong(rs, "ticket_id"), nullableLong(rs, "order_id"), rs.getString("status"),
-            rs.getString("release_reason")));
+    return queueMapper.findTokens().stream()
+        .map(token -> new CapacityTokenView(token.getId(), token.getMerchantId(), token.getTicketId(),
+            token.getOrderId(), token.getStatus(), token.getReleaseReason()))
+        .toList();
   }
 
   public Optional<CapacityToken> findTokenByOrder(long orderId) {
-    List<CapacityToken> tokens = jdbcTemplate.query("""
-            SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
-            FROM capacity_token
-            WHERE order_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-        this::mapToken, orderId);
-    return tokens.stream().findFirst();
+    return Optional.ofNullable(queueMapper.findTokenByOrder(orderId)).map(this::mapToken);
   }
 
   public synchronized void setMerchantLimit(long merchantId, int limit) {
@@ -229,51 +195,26 @@ public class QueueService {
   }
 
   private void insertTicket(QueueTicket ticket) {
-    LocalDateTime now = LocalDateTime.now();
-    jdbcTemplate.update("""
-            INSERT INTO queue_ticket (
-              id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
-              estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time,
-              create_time, update_time
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-        ticket.id, ticket.ticketNo, ticket.requestId, ticket.userId, ticket.merchantId, ticket.status.name(),
-        ticket.score, ticket.aheadCountSnapshot, ticket.estimatedWaitSeconds, ticket.expireTime,
-        toJson(ticket.snapshot), ticket.orderId, ticket.readyTime, ticket.processingTime, now, now);
+    queueMapper.insertTicket(ticket.id, ticket.ticketNo, ticket.requestId, ticket.userId, ticket.merchantId,
+        ticket.status.name(), ticket.score, ticket.aheadCountSnapshot, ticket.estimatedWaitSeconds,
+        ticket.expireTime, toJson(ticket.snapshot), ticket.orderId, ticket.readyTime, ticket.processingTime,
+        LocalDateTime.now());
   }
 
   private CapacityToken createToken(String requestId, long merchantId, Long ticketId, LocalDateTime expireTime) {
     long id = idGenerator.next("capacityToken");
-    LocalDateTime now = LocalDateTime.now();
-    jdbcTemplate.update("""
-            INSERT INTO capacity_token (
-              id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
-              create_time, update_time
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-        id, requestId, merchantId, ticketId, null, CapacityTokenStatus.HELD.name(), expireTime, null, now, now);
+    queueMapper.insertToken(id, requestId, merchantId, ticketId, null, CapacityTokenStatus.HELD.name(), expireTime,
+        null, LocalDateTime.now());
     return new CapacityToken(id, requestId, merchantId, ticketId, null, CapacityTokenStatus.HELD, expireTime, null);
   }
 
   private void updateTokenStatus(long tokenId, CapacityTokenStatus status, String reason) {
-    jdbcTemplate.update("""
-            UPDATE capacity_token
-            SET status = ?, release_reason = ?, update_time = ?
-            WHERE id = ?
-            """,
-        status.name(), reason, LocalDateTime.now(), tokenId);
+    queueMapper.updateTokenStatus(tokenId, status.name(), reason, LocalDateTime.now());
   }
 
   private void updateTicketStatus(long ticketId, QueueTicketStatus status, Long orderId, LocalDateTime readyTime,
       LocalDateTime processingTime) {
-    jdbcTemplate.update("""
-            UPDATE queue_ticket
-            SET status = ?, order_id = ?, ready_time = ?, processing_time = ?, update_time = ?
-            WHERE id = ?
-            """,
-        status.name(), orderId, readyTime, processingTime, LocalDateTime.now(), ticketId);
+    queueMapper.updateTicketStatus(ticketId, status.name(), orderId, readyTime, processingTime, LocalDateTime.now());
   }
 
   private QueueTicket requireTicket(long ticketId) {
@@ -282,14 +223,7 @@ public class QueueService {
   }
 
   private Optional<QueueTicket> findTicket(long ticketId) {
-    List<QueueTicket> tickets = jdbcTemplate.query("""
-            SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
-                   estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
-            FROM queue_ticket
-            WHERE id = ?
-            """,
-        this::mapTicket, ticketId);
-    return tickets.stream().findFirst();
+    return Optional.ofNullable(queueMapper.findTicket(ticketId)).map(this::mapTicket);
   }
 
   private CapacityToken requireToken(long tokenId) {
@@ -298,35 +232,16 @@ public class QueueService {
   }
 
   private Optional<CapacityToken> findToken(long tokenId) {
-    List<CapacityToken> tokens = jdbcTemplate.query("""
-            SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
-            FROM capacity_token
-            WHERE id = ?
-            """,
-        this::mapToken, tokenId);
-    return tokens.stream().findFirst();
+    return Optional.ofNullable(queueMapper.findToken(tokenId)).map(this::mapToken);
   }
 
   private Optional<CapacityToken> findTokenByTicket(long ticketId) {
-    List<CapacityToken> tokens = jdbcTemplate.query("""
-            SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
-            FROM capacity_token
-            WHERE ticket_id = ? AND status = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-        this::mapToken, ticketId, CapacityTokenStatus.HELD.name());
-    return tokens.stream().findFirst();
+    return Optional.ofNullable(queueMapper.findHeldTokenByTicket(ticketId, CapacityTokenStatus.HELD.name()))
+        .map(this::mapToken);
   }
 
   private int heldCount(long merchantId) {
-    Integer count = jdbcTemplate.queryForObject("""
-            SELECT COUNT(*)
-            FROM capacity_token
-            WHERE merchant_id = ? AND status = ?
-            """,
-        Integer.class, merchantId, CapacityTokenStatus.HELD.name());
-    return count == null ? 0 : count;
+    return queueMapper.countHeldTokens(merchantId, CapacityTokenStatus.HELD.name());
   }
 
   private int limit(long merchantId) {
@@ -355,24 +270,17 @@ public class QueueService {
         Comparator.comparingLong(WaitingTicket::score).thenComparing(WaitingTicket::ticketNo)));
   }
 
-  private QueueTicket mapTicket(ResultSet rs, int rowNum) throws SQLException {
-    return new QueueTicket(rs.getLong("id"), rs.getString("ticket_no"), rs.getString("request_id"),
-        rs.getLong("user_id"), rs.getLong("merchant_id"), QueueTicketStatus.valueOf(rs.getString("status")),
-        rs.getLong("score"), rs.getInt("ahead_count_snapshot"), rs.getInt("estimated_wait_seconds"),
-        rs.getObject("expire_time", LocalDateTime.class), fromJson(rs.getString("snapshot_json")),
-        nullableLong(rs, "order_id"), rs.getObject("ready_time", LocalDateTime.class),
-        rs.getObject("processing_time", LocalDateTime.class));
+  private QueueTicket mapTicket(QueueTicketRow row) {
+    return new QueueTicket(row.getId(), row.getTicketNo(), row.getRequestId(), row.getUserId(),
+        row.getMerchantId(), QueueTicketStatus.valueOf(row.getStatus()), row.getScore(),
+        row.getAheadCountSnapshot(), row.getEstimatedWaitSeconds(), row.getExpireTime(),
+        fromJson(row.getSnapshotJson()), row.getOrderId(), row.getReadyTime(), row.getProcessingTime());
   }
 
-  private CapacityToken mapToken(ResultSet rs, int rowNum) throws SQLException {
-    return new CapacityToken(rs.getLong("id"), rs.getString("request_id"), rs.getLong("merchant_id"),
-        nullableLong(rs, "ticket_id"), nullableLong(rs, "order_id"), CapacityTokenStatus.valueOf(rs.getString("status")),
-        rs.getObject("expire_time", LocalDateTime.class), rs.getString("release_reason"));
-  }
-
-  private Long nullableLong(ResultSet rs, String column) throws SQLException {
-    long value = rs.getLong(column);
-    return rs.wasNull() ? null : value;
+  private CapacityToken mapToken(CapacityTokenRow row) {
+    return new CapacityToken(row.getId(), row.getRequestId(), row.getMerchantId(), row.getTicketId(),
+        row.getOrderId(), CapacityTokenStatus.valueOf(row.getStatus()), row.getExpireTime(),
+        row.getReleaseReason());
   }
 
   private String toJson(QueueTicketSnapshot snapshot) {

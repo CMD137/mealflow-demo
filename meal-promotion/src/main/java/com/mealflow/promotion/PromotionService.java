@@ -12,188 +12,163 @@ import com.mealflow.promotion.api.UserVoucherView;
 import com.mealflow.promotion.api.VoucherClaimView;
 import com.mealflow.promotion.api.VoucherLockResponse;
 import com.mealflow.promotion.api.VoucherLockView;
-import jakarta.annotation.PostConstruct;
-import java.util.Comparator;
+import com.mealflow.promotion.mapper.PromotionMapper;
+import com.mealflow.promotion.mapper.UserVoucherRow;
+import com.mealflow.promotion.mapper.VoucherClaimRow;
+import com.mealflow.promotion.mapper.VoucherLockRow;
+import com.mealflow.promotion.mapper.VoucherRow;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PromotionService {
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
-  private final Map<Long, Voucher> vouchers = new ConcurrentHashMap<>();
-  private final Map<Long, UserVoucher> userVouchers = new ConcurrentHashMap<>();
-  private final Map<Long, VoucherClaim> claims = new ConcurrentHashMap<>();
-  private final Map<Long, VoucherLock> locks = new ConcurrentHashMap<>();
-  private final Set<String> claimedUsers = ConcurrentHashMap.newKeySet();
+  private final PromotionMapper promotionMapper;
 
-  @PostConstruct
-  void seed() {
-    vouchers.put(1000L, new Voucher(1000L, 500, 100));
-    userVouchers.put(300L, new UserVoucher(300L, 100L, 1000L, UserVoucherStatus.AVAILABLE));
-    claimedUsers.add("100:1000");
+  public PromotionService(PromotionMapper promotionMapper) {
+    this.promotionMapper = promotionMapper;
   }
 
+  @Transactional
   public synchronized SeckillVoucherResponse seckill(long userId, long voucherId, String requestId) {
     return idempotentTemplate.execute("promotion:claim:" + userId + ":" + requestId, () -> {
-      Voucher voucher = requireVoucher(voucherId);
-      String userVoucherKey = userId + ":" + voucherId;
-      if (claimedUsers.contains(userVoucherKey)) {
-        long claimId = idGenerator.next("voucherClaim");
-        claims.put(claimId, new VoucherClaim(claimId, userId, voucherId, VoucherClaimStatus.DUPLICATE));
+      requireVoucher(voucherId);
+      if (hasUserVoucher(userId, voucherId)) {
+        long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.DUPLICATE);
         return new SeckillVoucherResponse(claimId, "DUPLICATE", null);
       }
-      if (voucher.stock <= 0) {
+      int affected = promotionMapper.decrementStock(voucherId);
+      if (affected != 1) {
         return new SeckillVoucherResponse(null, "SOLD_OUT", null);
       }
-      voucher.stock -= 1;
-      claimedUsers.add(userVoucherKey);
-      long claimId = idGenerator.next("voucherClaim");
+      long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.CLAIMED);
       long userVoucherId = idGenerator.next("userVoucher");
-      claims.put(claimId, new VoucherClaim(claimId, userId, voucherId, VoucherClaimStatus.CLAIMED));
-      userVouchers.put(userVoucherId, new UserVoucher(userVoucherId, userId, voucherId, UserVoucherStatus.AVAILABLE));
+      LocalDateTime now = LocalDateTime.now();
+      promotionMapper.insertUserVoucher(userVoucherId, userId, voucherId, UserVoucherStatus.AVAILABLE.name(), now);
       return new SeckillVoucherResponse(claimId, "CLAIMED", userVoucherId);
     });
   }
 
+  @Transactional
   public VoucherLockResponse lock(LockVoucherRequest request) {
     if (request.userVoucherId() == null) {
       return new VoucherLockResponse(null, "SKIPPED", 0);
     }
     return idempotentTemplate.execute("promotion:lock:" + request.userId() + ":" + request.requestId(), () -> {
       synchronized (this) {
-        UserVoucher userVoucher = requireUserVoucher(request.userVoucherId());
-        if (userVoucher.userId != request.userId() || userVoucher.status != UserVoucherStatus.AVAILABLE) {
+        UserVoucherRow userVoucher = requireUserVoucher(request.userVoucherId());
+        if (userVoucher.getUserId() != request.userId()
+            || UserVoucherStatus.valueOf(userVoucher.getStatus()) != UserVoucherStatus.AVAILABLE) {
           throw new BizException(ErrorCode.VOUCHER_UNAVAILABLE);
         }
-        userVoucher.status = UserVoucherStatus.LOCKED;
-        Voucher voucher = requireVoucher(userVoucher.voucherId);
+        int affected = promotionMapper.updateUserVoucherStatusIfCurrent(request.userVoucherId(),
+            UserVoucherStatus.LOCKED.name(), UserVoucherStatus.AVAILABLE.name(), LocalDateTime.now());
+        if (affected != 1) {
+          throw new BizException(ErrorCode.VOUCHER_UNAVAILABLE);
+        }
+        VoucherRow voucher = requireVoucher(userVoucher.getVoucherId());
         long lockId = idGenerator.next("voucherLock");
-        locks.put(lockId, new VoucherLock(lockId, request.userVoucherId(), VoucherLockStatus.LOCKED,
-            request.ticketId(), request.orderId()));
-        return new VoucherLockResponse(lockId, VoucherLockStatus.LOCKED.name(), voucher.discountCent);
+        promotionMapper.insertLock(lockId, request.userVoucherId(), VoucherLockStatus.LOCKED.name(),
+            request.ticketId(), request.orderId(), LocalDateTime.now());
+        return new VoucherLockResponse(lockId, VoucherLockStatus.LOCKED.name(), voucher.getDiscountCent());
       }
     });
   }
 
+  @Transactional
   public synchronized void confirm(Long voucherLockId, Long orderId) {
     if (voucherLockId == null) {
       return;
     }
     VoucherLock lock = requireLock(voucherLockId);
-    if (lock.status == VoucherLockStatus.LOCKED) {
-      lock.status = VoucherLockStatus.CONFIRMED;
-      lock.orderId = orderId;
-      requireUserVoucher(lock.userVoucherId).status = UserVoucherStatus.USED;
+    if (VoucherLockStatus.valueOf(lock.status()) == VoucherLockStatus.LOCKED) {
+      promotionMapper.confirmLock(voucherLockId, VoucherLockStatus.CONFIRMED.name(), orderId,
+          VoucherLockStatus.LOCKED.name(), LocalDateTime.now());
+      promotionMapper.updateUserVoucherStatus(lock.userVoucherId(), UserVoucherStatus.USED.name(),
+          LocalDateTime.now());
     }
   }
 
+  @Transactional
   public synchronized void release(Long voucherLockId) {
     if (voucherLockId == null) {
       return;
     }
     VoucherLock lock = requireLock(voucherLockId);
-    if (lock.status == VoucherLockStatus.LOCKED) {
-      lock.status = VoucherLockStatus.RELEASED;
-      requireUserVoucher(lock.userVoucherId).status = UserVoucherStatus.AVAILABLE;
+    if (VoucherLockStatus.valueOf(lock.status()) == VoucherLockStatus.LOCKED) {
+      promotionMapper.releaseLock(voucherLockId, VoucherLockStatus.RELEASED.name(),
+          VoucherLockStatus.LOCKED.name(), LocalDateTime.now());
+      promotionMapper.updateUserVoucherStatus(lock.userVoucherId(), UserVoucherStatus.AVAILABLE.name(),
+          LocalDateTime.now());
     }
   }
 
   public List<UserVoucherView> wallet(long userId) {
-    return userVouchers.values().stream()
-        .filter(voucher -> voucher.userId == userId)
-        .sorted(Comparator.comparingLong(voucher -> voucher.id))
-        .map(voucher -> new UserVoucherView(voucher.id, voucher.voucherId, voucher.status.name()))
+    return promotionMapper.findWallet(userId).stream()
+        .map(voucher -> new UserVoucherView(voucher.getId(), voucher.getVoucherId(), voucher.getStatus()))
         .toList();
   }
 
   public List<VoucherClaimView> claims() {
-    return claims.values().stream()
-        .sorted(Comparator.comparingLong(claim -> claim.id))
-        .map(claim -> new VoucherClaimView(claim.id, claim.userId, claim.voucherId, claim.status.name()))
-        .toList();
+    return promotionMapper.findClaims().stream().map(this::claimView).toList();
   }
 
   public List<VoucherLockView> locks() {
-    return locks.values().stream()
-        .sorted(Comparator.comparingLong(lock -> lock.id))
-        .map(lock -> new VoucherLockView(lock.id, lock.userVoucherId, lock.status.name(), lock.ticketId, lock.orderId))
-        .toList();
+    return promotionMapper.findLocks().stream().map(this::lockView).toList();
   }
 
-  private Voucher requireVoucher(long voucherId) {
-    Voucher voucher = vouchers.get(voucherId);
+  private long insertClaim(long userId, long voucherId, VoucherClaimStatus status) {
+    long claimId = idGenerator.next("voucherClaim");
+    LocalDateTime now = LocalDateTime.now();
+    promotionMapper.insertClaim(claimId, userId, voucherId, status.name(), now);
+    return claimId;
+  }
+
+  private boolean hasUserVoucher(long userId, long voucherId) {
+    return promotionMapper.countUserVoucher(userId, voucherId) > 0;
+  }
+
+  private VoucherRow requireVoucher(long voucherId) {
+    VoucherRow voucher = promotionMapper.findVoucher(voucherId);
     if (voucher == null) {
-      throw new BizException(ErrorCode.NOT_FOUND, "优惠券不存在");
+      throw new BizException(ErrorCode.NOT_FOUND, "voucher not found");
     }
     return voucher;
   }
 
-  private UserVoucher requireUserVoucher(long userVoucherId) {
-    UserVoucher userVoucher = userVouchers.get(userVoucherId);
+  private UserVoucherRow requireUserVoucher(long userVoucherId) {
+    UserVoucherRow userVoucher = promotionMapper.findUserVoucher(userVoucherId);
     if (userVoucher == null) {
-      throw new BizException(ErrorCode.NOT_FOUND, "用户券不存在");
+      throw new BizException(ErrorCode.NOT_FOUND, "user voucher not found");
     }
     return userVoucher;
   }
 
   private VoucherLock requireLock(long voucherLockId) {
-    VoucherLock lock = locks.get(voucherLockId);
+    VoucherLockRow lock = promotionMapper.findLock(voucherLockId);
     if (lock == null) {
-      throw new BizException(ErrorCode.NOT_FOUND, "优惠券锁不存在");
+      throw new BizException(ErrorCode.NOT_FOUND, "voucher lock not found");
     }
-    return lock;
+    return new VoucherLock(lock.getId(), lock.getUserVoucherId(), lock.getStatus(), lock.getTicketId(),
+        lock.getOrderId());
   }
 
-  static class Voucher {
-    final long id;
-    final int discountCent;
-    int stock;
-
-    Voucher(long id, int discountCent, int stock) {
-      this.id = id;
-      this.discountCent = discountCent;
-      this.stock = stock;
-    }
+  private VoucherClaimView claimView(VoucherClaimRow claim) {
+    return new VoucherClaimView(claim.getId(), claim.getUserId(), claim.getVoucherId(), claim.getStatus());
   }
 
-  static class UserVoucher {
-    final long id;
-    final long userId;
-    final long voucherId;
-    UserVoucherStatus status;
-
-    UserVoucher(long id, long userId, long voucherId, UserVoucherStatus status) {
-      this.id = id;
-      this.userId = userId;
-      this.voucherId = voucherId;
-      this.status = status;
-    }
+  private VoucherLockView lockView(VoucherLockRow lock) {
+    return new VoucherLockView(lock.getId(), lock.getUserVoucherId(), lock.getStatus(), lock.getTicketId(),
+        lock.getOrderId());
   }
 
   enum UserVoucherStatus {
     AVAILABLE, LOCKED, USED
   }
 
-  record VoucherClaim(long id, long userId, long voucherId, VoucherClaimStatus status) {
-  }
-
-  static class VoucherLock {
-    final long id;
-    final long userVoucherId;
-    VoucherLockStatus status;
-    Long ticketId;
-    Long orderId;
-
-    VoucherLock(long id, long userVoucherId, VoucherLockStatus status, Long ticketId, Long orderId) {
-      this.id = id;
-      this.userVoucherId = userVoucherId;
-      this.status = status;
-      this.ticketId = ticketId;
-      this.orderId = orderId;
-    }
+  record VoucherLock(long id, long userVoucherId, String status, Long ticketId, Long orderId) {
   }
 }

@@ -7,11 +7,10 @@ import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.PaymentView;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import com.mealflow.payment.mapper.PaymentMapper;
+import com.mealflow.payment.mapper.PaymentOrderRow;
 import java.time.LocalDateTime;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,22 +18,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentService {
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
-  private final JdbcTemplate jdbcTemplate;
+  private final PaymentMapper paymentMapper;
 
-  public PaymentService(JdbcTemplate jdbcTemplate) {
-    this.jdbcTemplate = jdbcTemplate;
+  public PaymentService(PaymentMapper paymentMapper) {
+    this.paymentMapper = paymentMapper;
   }
 
   @Transactional
   public PaymentView create(CreatePaymentRequest request) {
     return idempotentTemplate.execute("payment:create:" + request.requestId(), () -> {
       long id = idGenerator.next("paymentOrder");
-      LocalDateTime now = LocalDateTime.now();
-      jdbcTemplate.update("""
-              INSERT INTO payment_order (id, order_id, amount_cent, status, create_time, update_time)
-              VALUES (?, ?, ?, ?, ?, ?)
-              """,
-          id, request.orderId(), request.amountCent(), PaymentStatus.UNPAID.name(), now, now);
+      paymentMapper.insert(id, request.orderId(), request.amountCent(), PaymentStatus.UNPAID.name(),
+          LocalDateTime.now());
       return requirePayment(id);
     });
   }
@@ -49,26 +44,16 @@ public class PaymentService {
     if (status != PaymentStatus.UNPAID && status != PaymentStatus.PAYING) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is not payable");
     }
-    jdbcTemplate.update("""
-            UPDATE payment_order
-            SET status = ?, update_time = ?
-            WHERE id = ? AND status IN (?, ?)
-            """,
-        PaymentStatus.PAID.name(), LocalDateTime.now(), payOrderId,
-        PaymentStatus.UNPAID.name(), PaymentStatus.PAYING.name());
+    paymentMapper.updatePayableStatus(payOrderId, PaymentStatus.PAID.name(), PaymentStatus.UNPAID.name(),
+        PaymentStatus.PAYING.name(), LocalDateTime.now());
     return requirePayment(payOrderId);
   }
 
   @Transactional
   public void close(long payOrderId) {
     requirePayment(payOrderId);
-    jdbcTemplate.update("""
-            UPDATE payment_order
-            SET status = ?, update_time = ?
-            WHERE id = ? AND status IN (?, ?)
-            """,
-        PaymentStatus.CLOSED.name(), LocalDateTime.now(), payOrderId,
-        PaymentStatus.UNPAID.name(), PaymentStatus.PAYING.name());
+    paymentMapper.updatePayableStatus(payOrderId, PaymentStatus.CLOSED.name(), PaymentStatus.UNPAID.name(),
+        PaymentStatus.PAYING.name(), LocalDateTime.now());
   }
 
   public PaymentView get(long payOrderId) {
@@ -76,29 +61,18 @@ public class PaymentService {
   }
 
   public List<PaymentView> list() {
-    return jdbcTemplate.query("""
-            SELECT id, order_id, amount_cent, status
-            FROM payment_order
-            ORDER BY id
-            """,
-        this::mapPayment);
+    return paymentMapper.findAll().stream().map(this::view).toList();
   }
 
   private PaymentView requirePayment(long payOrderId) {
-    List<PaymentView> payments = jdbcTemplate.query("""
-            SELECT id, order_id, amount_cent, status
-            FROM payment_order
-            WHERE id = ?
-            """,
-        this::mapPayment, payOrderId);
-    if (payments.isEmpty()) {
+    PaymentOrderRow payment = paymentMapper.findById(payOrderId);
+    if (payment == null) {
       throw new BizException(ErrorCode.NOT_FOUND, "payment order not found");
     }
-    return payments.get(0);
+    return view(payment);
   }
 
-  private PaymentView mapPayment(ResultSet rs, int rowNum) throws SQLException {
-    return new PaymentView(rs.getLong("id"), rs.getLong("order_id"),
-        rs.getInt("amount_cent"), rs.getString("status"));
+  private PaymentView view(PaymentOrderRow payment) {
+    return new PaymentView(payment.getId(), payment.getOrderId(), payment.getAmountCent(), payment.getStatus());
   }
 }

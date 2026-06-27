@@ -39,6 +39,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <spring-cloud.version>2023.0.5</spring-cloud.version>
     <spring-cloud-alibaba.version>2023.0.3.4</spring-cloud-alibaba.version>
+    <mybatis-spring-boot.version>3.0.5</mybatis-spring-boot.version>
   </properties>
 
   <dependencyManagement>

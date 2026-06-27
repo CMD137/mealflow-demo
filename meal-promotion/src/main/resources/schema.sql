@@ -1,0 +1,41 @@
+CREATE TABLE IF NOT EXISTS voucher (
+  id BIGINT PRIMARY KEY,
+  discount_cent INT NOT NULL,
+  stock INT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_voucher (
+  id BIGINT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  voucher_id BIGINT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_user_voucher (user_id, voucher_id),
+  INDEX idx_user_voucher_user_id (user_id),
+  INDEX idx_user_voucher_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS voucher_claim (
+  id BIGINT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  voucher_id BIGINT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  INDEX idx_voucher_claim_user_id (user_id),
+  INDEX idx_voucher_claim_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS voucher_lock (
+  id BIGINT PRIMARY KEY,
+  user_voucher_id BIGINT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  ticket_id BIGINT NULL,
+  order_id BIGINT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  INDEX idx_voucher_lock_user_voucher_id (user_voucher_id),
+  INDEX idx_voucher_lock_status (status),
+  INDEX idx_voucher_lock_order_id (order_id)
+);

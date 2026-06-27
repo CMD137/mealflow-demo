@@ -17,13 +17,12 @@ import com.mealflow.order.client.CatalogClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import com.mealflow.order.mapper.OrderMapper;
+import com.mealflow.order.mapper.OrderRow;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,18 +37,18 @@ public class OrderService {
   private final PromotionClient promotionClient;
   private final QueueClient queueClient;
   private final PaymentClient paymentClient;
-  private final JdbcTemplate jdbcTemplate;
+  private final OrderMapper orderMapper;
   private final ObjectMapper objectMapper;
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
 
   public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
-      PaymentClient paymentClient, JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+      PaymentClient paymentClient, OrderMapper orderMapper, ObjectMapper objectMapper) {
     this.catalogClient = catalogClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
     this.paymentClient = paymentClient;
-    this.jdbcTemplate = jdbcTemplate;
+    this.orderMapper = orderMapper;
     this.objectMapper = objectMapper;
   }
 
@@ -165,13 +164,7 @@ public class OrderService {
   }
 
   public List<OrderView> list() {
-    return jdbcTemplate.query("""
-            SELECT id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
-                   reservation_ids_json, voucher_lock_id, items_json, amount_cent
-            FROM customer_order
-            ORDER BY id
-            """,
-        (rs, rowNum) -> view(mapOrder(rs, rowNum)));
+    return orderMapper.findAll().stream().map(this::mapOrder).map(this::view).toList();
   }
 
   private synchronized OrderRecord createOrder(long userId, long merchantId, Long ticketId, long capacityTokenId,
@@ -184,27 +177,15 @@ public class OrderService {
         capacityTokenId, payment.payOrderId(), snapshot.reservationIds(), snapshot.voucherLockId(), items,
         snapshot.totalAmount());
     LocalDateTime now = LocalDateTime.now();
-    jdbcTemplate.update("""
-            INSERT INTO customer_order (
-              id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
-              reservation_ids_json, voucher_lock_id, items_json, amount_cent, create_time, update_time
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-        order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId, order.capacityTokenId,
-        order.payOrderId, toJson(order.reservationIds), order.voucherLockId, toJson(order.items), order.amountCent,
-        now, now);
+    orderMapper.insert(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
+        order.capacityTokenId, order.payOrderId, toJson(order.reservationIds), order.voucherLockId,
+        toJson(order.items), order.amountCent, now);
     queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
     return order;
   }
 
   private void updateStatus(long orderId, OrderStatus status) {
-    jdbcTemplate.update("""
-            UPDATE customer_order
-            SET status = ?, update_time = ?
-            WHERE id = ?
-            """,
-        status.name(), LocalDateTime.now(), orderId);
+    orderMapper.updateStatus(orderId, status.name(), LocalDateTime.now());
   }
 
   private OrderItemSnapshot toOrderItemSnapshot(Map<String, Object> item) {
@@ -234,40 +215,18 @@ public class OrderService {
   }
 
   private Optional<OrderRecord> findOrder(long orderId) {
-    List<OrderRecord> orders = jdbcTemplate.query("""
-            SELECT id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
-                   reservation_ids_json, voucher_lock_id, items_json, amount_cent
-            FROM customer_order
-            WHERE id = ?
-            """,
-        this::mapOrder, orderId);
-    return orders.stream().findFirst();
+    return Optional.ofNullable(orderMapper.findById(orderId)).map(this::mapOrder);
   }
 
   private Optional<OrderRecord> findOrderByTicket(long ticketId) {
-    List<OrderRecord> orders = jdbcTemplate.query("""
-            SELECT id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
-                   reservation_ids_json, voucher_lock_id, items_json, amount_cent
-            FROM customer_order
-            WHERE queue_ticket_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-        this::mapOrder, ticketId);
-    return orders.stream().findFirst();
+    return Optional.ofNullable(orderMapper.findByTicketId(ticketId)).map(this::mapOrder);
   }
 
-  private OrderRecord mapOrder(ResultSet rs, int rowNum) throws SQLException {
-    return new OrderRecord(rs.getLong("id"), rs.getLong("user_id"), rs.getLong("merchant_id"),
-        OrderStatus.valueOf(rs.getString("status")), nullableLong(rs, "queue_ticket_id"),
-        rs.getLong("capacity_token_id"), rs.getLong("pay_order_id"), fromJson(rs.getString("reservation_ids_json"), LONG_LIST),
-        nullableLong(rs, "voucher_lock_id"), fromJson(rs.getString("items_json"), ITEM_LIST),
-        rs.getInt("amount_cent"));
-  }
-
-  private Long nullableLong(ResultSet rs, String column) throws SQLException {
-    long value = rs.getLong(column);
-    return rs.wasNull() ? null : value;
+  private OrderRecord mapOrder(OrderRow row) {
+    return new OrderRecord(row.getId(), row.getUserId(), row.getMerchantId(),
+        OrderStatus.valueOf(row.getStatus()), row.getQueueTicketId(), row.getCapacityTokenId(),
+        row.getPayOrderId(), fromJson(row.getReservationIdsJson(), LONG_LIST), row.getVoucherLockId(),
+        fromJson(row.getItemsJson(), ITEM_LIST), row.getAmountCent());
   }
 
   private OrderView view(OrderRecord order) {
