@@ -1,5 +1,8 @@
 package com.mealflow.order;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.OrderStatus;
@@ -14,32 +17,43 @@ import com.mealflow.order.client.CatalogClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OrderService {
+  private static final TypeReference<List<Long>> LONG_LIST = new TypeReference<>() {
+  };
+  private static final TypeReference<List<OrderItemSnapshot>> ITEM_LIST = new TypeReference<>() {
+  };
+
   private final CatalogClient catalogClient;
   private final PromotionClient promotionClient;
   private final QueueClient queueClient;
   private final PaymentClient paymentClient;
+  private final JdbcTemplate jdbcTemplate;
+  private final ObjectMapper objectMapper;
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
-  private final Map<Long, OrderRecord> orders = new ConcurrentHashMap<>();
-  private final Map<Long, Long> orderIdByTicketId = new ConcurrentHashMap<>();
 
   public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
-      PaymentClient paymentClient) {
+      PaymentClient paymentClient, JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
     this.catalogClient = catalogClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
     this.paymentClient = paymentClient;
+    this.jdbcTemplate = jdbcTemplate;
+    this.objectMapper = objectMapper;
   }
 
+  @Transactional
   public SubmitOrderResponse submit(long userId, SubmitOrderRequest request) {
     return idempotentTemplate.execute("order:submit:" + userId + ":" + request.requestId(), () -> {
       LocalDateTime expireTime = LocalDateTime.now().plusMinutes(15);
@@ -69,9 +83,11 @@ public class OrderService {
     });
   }
 
+  @Transactional
   public synchronized OrderRecord createOrderFromTicket(long ticketId, long capacityTokenId) {
-    if (orderIdByTicketId.containsKey(ticketId)) {
-      return requireOrder(orderIdByTicketId.get(ticketId));
+    Optional<OrderRecord> existing = findOrderByTicket(ticketId);
+    if (existing.isPresent()) {
+      return existing.get();
     }
     QueueClient.QueueTicketSnapshot snapshot = queueClient.markProcessing(ticketId);
     OrderRecord order = createOrder(0L, 10L, ticketId, capacityTokenId, snapshot);
@@ -80,10 +96,11 @@ public class OrderService {
     return order;
   }
 
+  @Transactional
   public synchronized void markPaid(long orderId) {
     OrderRecord order = requireOrder(orderId);
     if (order.status == OrderStatus.PENDING_PAYMENT) {
-      order.status = OrderStatus.WAIT_MERCHANT_ACCEPT;
+      updateStatus(orderId, OrderStatus.WAIT_MERCHANT_ACCEPT);
       catalogClient.confirm(new CatalogClient.StockTransitionRequest("stock-confirm:" + orderId, order.reservationIds,
           orderId, "PAYMENT_SUCCESS"));
       promotionClient.confirm(new PromotionClient.VoucherTransitionRequest("voucher-confirm:" + orderId,
@@ -91,12 +108,13 @@ public class OrderService {
     }
   }
 
+  @Transactional
   public synchronized void cancel(long orderId, String reason) {
     OrderRecord order = requireOrder(orderId);
     if (order.status != OrderStatus.PENDING_PAYMENT && order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
-      throw new BizException(ErrorCode.ILLEGAL_STATUS, "当前订单状态不可取消");
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be cancelled");
     }
-    order.status = OrderStatus.CANCELLED;
+    updateStatus(orderId, OrderStatus.CANCELLED);
     catalogClient.release(new CatalogClient.StockTransitionRequest("stock-release:" + orderId, order.reservationIds,
         orderId, reason));
     promotionClient.release(new PromotionClient.VoucherTransitionRequest("voucher-release:" + orderId,
@@ -106,36 +124,40 @@ public class OrderService {
         "ORDER_CANCELLED"));
   }
 
+  @Transactional
   public synchronized void merchantAccept(long orderId) {
     OrderRecord order = requireOrder(orderId);
     if (order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
-      throw new BizException(ErrorCode.ILLEGAL_STATUS, "订单不是待接单状态");
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order is not waiting merchant accept");
     }
-    order.status = OrderStatus.MERCHANT_ACCEPTED;
+    updateStatus(orderId, OrderStatus.MERCHANT_ACCEPTED);
   }
 
+  @Transactional
   public synchronized void mealReady(long orderId) {
     OrderRecord order = requireOrder(orderId);
     if (order.status != OrderStatus.MERCHANT_ACCEPTED && order.status != OrderStatus.COOKING) {
-      throw new BizException(ErrorCode.ILLEGAL_STATUS, "订单不能出餐");
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be marked meal ready");
     }
-    order.status = OrderStatus.WAIT_RIDER_PICKUP;
+    updateStatus(orderId, OrderStatus.WAIT_RIDER_PICKUP);
   }
 
+  @Transactional
   public synchronized void pickedUp(long orderId) {
     OrderRecord order = requireOrder(orderId);
     if (order.status != OrderStatus.WAIT_RIDER_PICKUP) {
-      throw new BizException(ErrorCode.ILLEGAL_STATUS, "订单不能取餐");
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be picked up");
     }
-    order.status = OrderStatus.DELIVERING;
+    updateStatus(orderId, OrderStatus.DELIVERING);
   }
 
+  @Transactional
   public synchronized void delivered(long orderId) {
     OrderRecord order = requireOrder(orderId);
     if (order.status != OrderStatus.DELIVERING) {
-      throw new BizException(ErrorCode.ILLEGAL_STATUS, "订单不能送达");
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be delivered");
     }
-    order.status = OrderStatus.COMPLETED;
+    updateStatus(orderId, OrderStatus.COMPLETED);
   }
 
   public OrderView get(long orderId) {
@@ -143,10 +165,13 @@ public class OrderService {
   }
 
   public List<OrderView> list() {
-    return orders.values().stream()
-        .sorted(Comparator.comparingLong(order -> order.id))
-        .map(this::view)
-        .toList();
+    return jdbcTemplate.query("""
+            SELECT id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
+                   reservation_ids_json, voucher_lock_id, items_json, amount_cent
+            FROM customer_order
+            ORDER BY id
+            """,
+        (rs, rowNum) -> view(mapOrder(rs, rowNum)));
   }
 
   private synchronized OrderRecord createOrder(long userId, long merchantId, Long ticketId, long capacityTokenId,
@@ -154,15 +179,32 @@ public class OrderService {
     long orderId = idGenerator.next("order");
     PaymentClient.PaymentView payment = paymentClient.create(new PaymentClient.CreatePaymentRequest(
         "payment-create:" + orderId, orderId, snapshot.totalAmount()));
+    List<OrderItemSnapshot> items = snapshot.items().stream().map(this::toOrderItemSnapshot).toList();
     OrderRecord order = new OrderRecord(orderId, userId, merchantId, OrderStatus.PENDING_PAYMENT, ticketId,
-        capacityTokenId, payment.payOrderId(), snapshot.reservationIds(), snapshot.voucherLockId(),
-        snapshot.items().stream().map(this::toOrderItemSnapshot).toList(), snapshot.totalAmount());
-    orders.put(orderId, order);
-    if (ticketId != null) {
-      orderIdByTicketId.put(ticketId, orderId);
-    }
+        capacityTokenId, payment.payOrderId(), snapshot.reservationIds(), snapshot.voucherLockId(), items,
+        snapshot.totalAmount());
+    LocalDateTime now = LocalDateTime.now();
+    jdbcTemplate.update("""
+            INSERT INTO customer_order (
+              id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
+              reservation_ids_json, voucher_lock_id, items_json, amount_cent, create_time, update_time
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+        order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId, order.capacityTokenId,
+        order.payOrderId, toJson(order.reservationIds), order.voucherLockId, toJson(order.items), order.amountCent,
+        now, now);
     queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
     return order;
+  }
+
+  private void updateStatus(long orderId, OrderStatus status) {
+    jdbcTemplate.update("""
+            UPDATE customer_order
+            SET status = ?, update_time = ?
+            WHERE id = ?
+            """,
+        status.name(), LocalDateTime.now(), orderId);
   }
 
   private OrderItemSnapshot toOrderItemSnapshot(Map<String, Object> item) {
@@ -184,15 +226,48 @@ public class OrderService {
     if (request.cartItemIds() != null && !request.cartItemIds().isEmpty()) {
       return request.cartItemIds().stream().map(skuId -> new OrderSkuItem(skuId, 1)).toList();
     }
-    throw new BizException(ErrorCode.BAD_REQUEST, "请至少提交一个商品");
+    throw new BizException(ErrorCode.BAD_REQUEST, "at least one item is required");
   }
 
   private OrderRecord requireOrder(long orderId) {
-    OrderRecord order = orders.get(orderId);
-    if (order == null) {
-      throw new BizException(ErrorCode.NOT_FOUND, "订单不存在");
-    }
-    return order;
+    return findOrder(orderId).orElseThrow(() -> new BizException(ErrorCode.NOT_FOUND, "order not found"));
+  }
+
+  private Optional<OrderRecord> findOrder(long orderId) {
+    List<OrderRecord> orders = jdbcTemplate.query("""
+            SELECT id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
+                   reservation_ids_json, voucher_lock_id, items_json, amount_cent
+            FROM customer_order
+            WHERE id = ?
+            """,
+        this::mapOrder, orderId);
+    return orders.stream().findFirst();
+  }
+
+  private Optional<OrderRecord> findOrderByTicket(long ticketId) {
+    List<OrderRecord> orders = jdbcTemplate.query("""
+            SELECT id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
+                   reservation_ids_json, voucher_lock_id, items_json, amount_cent
+            FROM customer_order
+            WHERE queue_ticket_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+        this::mapOrder, ticketId);
+    return orders.stream().findFirst();
+  }
+
+  private OrderRecord mapOrder(ResultSet rs, int rowNum) throws SQLException {
+    return new OrderRecord(rs.getLong("id"), rs.getLong("user_id"), rs.getLong("merchant_id"),
+        OrderStatus.valueOf(rs.getString("status")), nullableLong(rs, "queue_ticket_id"),
+        rs.getLong("capacity_token_id"), rs.getLong("pay_order_id"), fromJson(rs.getString("reservation_ids_json"), LONG_LIST),
+        nullableLong(rs, "voucher_lock_id"), fromJson(rs.getString("items_json"), ITEM_LIST),
+        rs.getInt("amount_cent"));
+  }
+
+  private Long nullableLong(ResultSet rs, String column) throws SQLException {
+    long value = rs.getLong(column);
+    return rs.wasNull() ? null : value;
   }
 
   private OrderView view(OrderRecord order) {
@@ -200,11 +275,27 @@ public class OrderService {
         order.capacityTokenId, order.payOrderId, order.amountCent, order.items);
   }
 
+  private String toJson(Object value) {
+    try {
+      return objectMapper.writeValueAsString(value);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("failed to serialize order data", e);
+    }
+  }
+
+  private <T> T fromJson(String value, TypeReference<T> type) {
+    try {
+      return objectMapper.readValue(value, type);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("failed to deserialize order data", e);
+    }
+  }
+
   static class OrderRecord {
     final long id;
     final long userId;
     final long merchantId;
-    OrderStatus status;
+    final OrderStatus status;
     final Long queueTicketId;
     final long capacityTokenId;
     final long payOrderId;
@@ -213,9 +304,9 @@ public class OrderService {
     final List<OrderItemSnapshot> items;
     final int amountCent;
 
-    OrderRecord(long id, long userId, long merchantId, OrderStatus status, Long queueTicketId, long capacityTokenId,
-        long payOrderId, List<Long> reservationIds, Long voucherLockId, List<OrderItemSnapshot> items,
-        int amountCent) {
+    OrderRecord(long id, long userId, long merchantId, OrderStatus status, Long queueTicketId,
+        long capacityTokenId, long payOrderId, List<Long> reservationIds, Long voucherLockId,
+        List<OrderItemSnapshot> items, int amountCent) {
       this.id = id;
       this.userId = userId;
       this.merchantId = merchantId;

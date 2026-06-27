@@ -13,7 +13,7 @@
   - `meal-merchant`，端口 `8102`，实现商户列表、商户详情和产能配置。
   - `meal-catalog`，端口 `8103`，实现商品列表、库存快照、库存预占、确认和释放接口；SKU 和库存预占已接入 JDBC 事实源，默认 H2，Docker 环境接 MySQL。
   - `meal-cart`，端口 `8104`，实现购物车添加、修改、删除和查询。
-  - `meal-order`，端口 `8105`，通过 HTTP 编排 catalog、promotion、queue、payment 完成提交订单主链路。
+  - `meal-order`，端口 `8105`，通过 HTTP 编排 catalog、promotion、queue、payment 完成提交订单主链路；订单主表、订单项快照和资源引用已接入 JDBC 事实源。
   - `meal-queue`，端口 `8106`，实现产能申请、排队票据、产能释放、READY ticket 放行、订单创建回告；票据和产能 token 已接入 JDBC 事实源，启动时可重建 WAITING 队列索引。
   - `meal-promotion`，端口 `8107`，实现秒杀领券、券包查询、优惠券锁定、确认和释放接口。
   - `meal-payment`，端口 `8108`，实现支付单创建、模拟支付、关闭和查询接口；支付单已接入 JDBC 事实源。
@@ -26,7 +26,7 @@
 ## 当前尚未完成
 
 - auth-user、merchant、cart、notify 已有最小业务接口，但尚未接真实认证、权限、员工体系、SSE/WebSocket 等完整能力。
-- promotion、order、fulfillment、notify 仍以本地内存状态为主，尚未全部迁移到 MySQL 表级事实源。
+- promotion、fulfillment、notify 仍以本地内存状态为主，尚未全部迁移到 MySQL 表级事实源。
 - Outbox、consumer_record 当前仍是内存实现，尚未接真实 RocketMQ 投递、消费重试和补偿扫描。
 - Redis ZSet、券库存、产能计数等仍未接真实 Redis；queue 当前使用 MySQL 事实源加本地运行时优先队列。
 - Nacos Discovery 已预留配置，Docker 环境开启，但尚未补自动化 e2e 验证注册发现。
@@ -34,7 +34,7 @@
 
 ## 下一阶段实施顺序
 
-1. 将 order、promotion、fulfillment、notify 的核心状态迁移到 MySQL。
+1. 将 promotion、fulfillment、notify 的核心状态迁移到 MySQL。
 2. 将 payment 和 fulfillment 事件改成 Outbox + RocketMQ 语义。
 3. 接入 Redis ZSet/库存/产能派生计数，替换本地运行时计数。
 4. 增加跨服务 e2e 测试、压测脚本和故障注入脚本。
