@@ -34,3 +34,10 @@ CREATE TABLE IF NOT EXISTS capacity_token (
   INDEX idx_capacity_token_order_id (order_id),
   INDEX idx_capacity_token_ticket_id (ticket_id)
 );
+
+CREATE TABLE IF NOT EXISTS merchant_queue_limit (
+  merchant_id BIGINT PRIMARY KEY,
+  limit_value INT NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL
+);

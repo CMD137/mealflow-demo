@@ -169,4 +169,22 @@ public interface QueueMapper {
 
   @Select("SELECT COUNT(*) FROM capacity_token WHERE merchant_id = #{merchantId} AND status = #{status}")
   int countHeldTokens(@Param("merchantId") long merchantId, @Param("status") String status);
+
+  @Select("SELECT limit_value FROM merchant_queue_limit WHERE merchant_id = #{merchantId}")
+  Integer findMerchantLimit(long merchantId);
+
+  @Insert("""
+      INSERT INTO merchant_queue_limit (merchant_id, limit_value, create_time, update_time)
+      VALUES (#{merchantId}, #{limit}, #{now}, #{now})
+      """)
+  int insertMerchantLimit(@Param("merchantId") long merchantId, @Param("limit") int limit,
+      @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE merchant_queue_limit
+      SET limit_value = #{limit}, update_time = #{now}
+      WHERE merchant_id = #{merchantId}
+      """)
+  int updateMerchantLimit(@Param("merchantId") long merchantId, @Param("limit") int limit,
+      @Param("now") LocalDateTime now);
 }

@@ -39,14 +39,12 @@ public class QueueService {
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
   private final Map<Long, PriorityQueue<WaitingTicket>> waitingQueues = new ConcurrentHashMap<>();
-  private final Map<Long, Integer> merchantLimits = new ConcurrentHashMap<>();
   private final QueueMapper queueMapper;
   private final ObjectMapper objectMapper;
 
   public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper) {
     this.queueMapper = queueMapper;
     this.objectMapper = objectMapper;
-    merchantLimits.put(10L, 1);
   }
 
   @PostConstruct
@@ -181,8 +179,13 @@ public class QueueService {
     return Optional.ofNullable(queueMapper.findTokenByOrder(orderId)).map(this::mapToken);
   }
 
+  @Transactional
   public synchronized void setMerchantLimit(long merchantId, int limit) {
-    merchantLimits.put(merchantId, Math.max(1, limit));
+    int normalizedLimit = Math.max(1, limit);
+    int updated = queueMapper.updateMerchantLimit(merchantId, normalizedLimit, LocalDateTime.now());
+    if (updated == 0) {
+      queueMapper.insertMerchantLimit(merchantId, normalizedLimit, LocalDateTime.now());
+    }
   }
 
   public Map<String, Object> metrics(long merchantId) {
@@ -245,7 +248,8 @@ public class QueueService {
   }
 
   private int limit(long merchantId) {
-    return merchantLimits.getOrDefault(merchantId, 1);
+    Integer limit = queueMapper.findMerchantLimit(merchantId);
+    return limit == null ? 1 : Math.max(1, limit);
   }
 
   private int estimateWaitSeconds(int aheadCount, long merchantId) {

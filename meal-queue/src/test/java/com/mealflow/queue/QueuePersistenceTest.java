@@ -45,4 +45,15 @@ class QueuePersistenceTest {
     assertThat(release.readyTicket().ticketId()).isEqualTo(second.ticketId());
     assertThat(queueService.getTicket(second.ticketId()).status()).isEqualTo("READY");
   }
+
+  @Test
+  void persistsMerchantQueueLimit() {
+    queueService.setMerchantLimit(10L, 3);
+
+    assertThat(queueService.metrics(10L)).containsEntry("limit", 3);
+
+    queueService.setMerchantLimit(10L, 0);
+
+    assertThat(queueService.metrics(10L)).containsEntry("limit", 1);
+  }
 }
