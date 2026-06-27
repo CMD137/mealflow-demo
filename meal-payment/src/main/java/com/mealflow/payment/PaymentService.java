@@ -7,80 +7,98 @@ import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.PaymentView;
-import java.util.Comparator;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentService {
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
-  private final Map<Long, PaymentOrder> payments = new ConcurrentHashMap<>();
+  private final JdbcTemplate jdbcTemplate;
 
+  public PaymentService(JdbcTemplate jdbcTemplate) {
+    this.jdbcTemplate = jdbcTemplate;
+  }
+
+  @Transactional
   public PaymentView create(CreatePaymentRequest request) {
     return idempotentTemplate.execute("payment:create:" + request.requestId(), () -> {
       long id = idGenerator.next("paymentOrder");
-      PaymentOrder payment = new PaymentOrder(id, request.orderId(), request.amountCent(), PaymentStatus.UNPAID);
-      payments.put(id, payment);
-      return view(payment);
+      LocalDateTime now = LocalDateTime.now();
+      jdbcTemplate.update("""
+              INSERT INTO payment_order (id, order_id, amount_cent, status, create_time, update_time)
+              VALUES (?, ?, ?, ?, ?, ?)
+              """,
+          id, request.orderId(), request.amountCent(), PaymentStatus.UNPAID.name(), now, now);
+      return requirePayment(id);
     });
   }
 
-  public synchronized PaymentView mockPay(long payOrderId) {
-    PaymentOrder payment = requirePayment(payOrderId);
-    if (payment.status == PaymentStatus.PAID) {
-      return view(payment);
+  @Transactional
+  public PaymentView mockPay(long payOrderId) {
+    PaymentView payment = requirePayment(payOrderId);
+    PaymentStatus status = PaymentStatus.valueOf(payment.status());
+    if (status == PaymentStatus.PAID) {
+      return payment;
     }
-    if (payment.status != PaymentStatus.UNPAID && payment.status != PaymentStatus.PAYING) {
-      throw new BizException(ErrorCode.ILLEGAL_STATUS, "支付单当前不可支付");
+    if (status != PaymentStatus.UNPAID && status != PaymentStatus.PAYING) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is not payable");
     }
-    payment.status = PaymentStatus.PAID;
-    return view(payment);
+    jdbcTemplate.update("""
+            UPDATE payment_order
+            SET status = ?, update_time = ?
+            WHERE id = ? AND status IN (?, ?)
+            """,
+        PaymentStatus.PAID.name(), LocalDateTime.now(), payOrderId,
+        PaymentStatus.UNPAID.name(), PaymentStatus.PAYING.name());
+    return requirePayment(payOrderId);
   }
 
-  public synchronized void close(long payOrderId) {
-    PaymentOrder payment = requirePayment(payOrderId);
-    if (payment.status == PaymentStatus.UNPAID || payment.status == PaymentStatus.PAYING) {
-      payment.status = PaymentStatus.CLOSED;
-    }
+  @Transactional
+  public void close(long payOrderId) {
+    requirePayment(payOrderId);
+    jdbcTemplate.update("""
+            UPDATE payment_order
+            SET status = ?, update_time = ?
+            WHERE id = ? AND status IN (?, ?)
+            """,
+        PaymentStatus.CLOSED.name(), LocalDateTime.now(), payOrderId,
+        PaymentStatus.UNPAID.name(), PaymentStatus.PAYING.name());
   }
 
   public PaymentView get(long payOrderId) {
-    return view(requirePayment(payOrderId));
+    return requirePayment(payOrderId);
   }
 
   public List<PaymentView> list() {
-    return payments.values().stream()
-        .sorted(Comparator.comparingLong(payment -> payment.id))
-        .map(this::view)
-        .toList();
+    return jdbcTemplate.query("""
+            SELECT id, order_id, amount_cent, status
+            FROM payment_order
+            ORDER BY id
+            """,
+        this::mapPayment);
   }
 
-  private PaymentOrder requirePayment(long payOrderId) {
-    PaymentOrder payment = payments.get(payOrderId);
-    if (payment == null) {
-      throw new BizException(ErrorCode.NOT_FOUND, "支付单不存在");
+  private PaymentView requirePayment(long payOrderId) {
+    List<PaymentView> payments = jdbcTemplate.query("""
+            SELECT id, order_id, amount_cent, status
+            FROM payment_order
+            WHERE id = ?
+            """,
+        this::mapPayment, payOrderId);
+    if (payments.isEmpty()) {
+      throw new BizException(ErrorCode.NOT_FOUND, "payment order not found");
     }
-    return payment;
+    return payments.get(0);
   }
 
-  private PaymentView view(PaymentOrder payment) {
-    return new PaymentView(payment.id, payment.orderId, payment.amountCent, payment.status.name());
-  }
-
-  static class PaymentOrder {
-    final long id;
-    final long orderId;
-    final int amountCent;
-    PaymentStatus status;
-
-    PaymentOrder(long id, long orderId, int amountCent, PaymentStatus status) {
-      this.id = id;
-      this.orderId = orderId;
-      this.amountCent = amountCent;
-      this.status = status;
-    }
+  private PaymentView mapPayment(ResultSet rs, int rowNum) throws SQLException {
+    return new PaymentView(rs.getLong("id"), rs.getLong("order_id"),
+        rs.getInt("amount_cent"), rs.getString("status"));
   }
 }

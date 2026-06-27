@@ -1,6 +1,14 @@
 spring:
   application:
     name: meal-queue
+  datasource:
+    url: ${QUEUE_DB_URL:jdbc:h2:mem:meal_queue;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1}
+    username: ${QUEUE_DB_USERNAME:sa}
+    password: ${QUEUE_DB_PASSWORD:}
+    driver-class-name: ${QUEUE_DB_DRIVER:org.h2.Driver}
+  sql:
+    init:
+      mode: always
   cloud:
     nacos:
       discovery:

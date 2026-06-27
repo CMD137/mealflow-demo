@@ -18,7 +18,10 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - ./docs/MealFlow-ddl.sql:/docker-entrypoint-initdb.d/001-mealflow-ddl.sql:ro
+      - ./meal-catalog/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/010-catalog-schema.sql:ro
+      - ./meal-catalog/src/main/resources/data.sql:/docker-entrypoint-initdb.d/011-catalog-data.sql:ro
+      - ./meal-queue/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/020-queue-schema.sql:ro
+      - ./meal-payment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/030-payment-schema.sql:ro
 
   redis:
     image: redis:7
@@ -77,9 +80,14 @@ services:
     container_name: mealflow-catalog
     depends_on:
       - nacos
+      - mysql
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
+      CATALOG_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      CATALOG_DB_USERNAME: root
+      CATALOG_DB_PASSWORD: mealflow
+      CATALOG_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-catalog/target/meal-catalog-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -126,9 +134,14 @@ services:
     container_name: mealflow-queue
     depends_on:
       - nacos
+      - mysql
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
+      QUEUE_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      QUEUE_DB_USERNAME: root
+      QUEUE_DB_PASSWORD: mealflow
+      QUEUE_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-queue/target/meal-queue-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -154,9 +167,14 @@ services:
     container_name: mealflow-payment
     depends_on:
       - nacos
+      - mysql
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
+      PAYMENT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      PAYMENT_DB_USERNAME: root
+      PAYMENT_DB_PASSWORD: mealflow
+      PAYMENT_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]

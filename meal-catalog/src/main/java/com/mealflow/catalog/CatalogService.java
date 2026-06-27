@@ -11,148 +11,195 @@ import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.StockReservationStatus;
 import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
-import jakarta.annotation.PostConstruct;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CatalogService {
+  private final JdbcTemplate jdbcTemplate;
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
-  private final Map<Long, Sku> skus = new ConcurrentHashMap<>();
-  private final Map<Long, StockReservation> reservations = new ConcurrentHashMap<>();
 
-  @PostConstruct
-  void seed() {
-    skus.put(1L, new Sku(1L, 10L, "招牌牛肉饭", 2800, 50));
-    skus.put(2L, new Sku(2L, 10L, "香煎鸡腿饭", 2600, 50));
-    skus.put(3L, new Sku(3L, 10L, "冰柠檬茶", 800, 100));
+  public CatalogService(JdbcTemplate jdbcTemplate) {
+    this.jdbcTemplate = jdbcTemplate;
   }
 
   public List<SkuView> listByMerchant(long merchantId) {
-    return skus.values().stream()
-        .filter(sku -> sku.merchantId == merchantId)
-        .sorted(Comparator.comparingLong(sku -> sku.id))
-        .map(sku -> new SkuView(sku.id, sku.merchantId, sku.name, sku.priceCent, sku.stock))
-        .toList();
+    return jdbcTemplate.query(
+        "SELECT id, merchant_id, name, price_cent, stock FROM sku WHERE merchant_id = ? ORDER BY id",
+        this::mapSku,
+        merchantId
+    );
   }
 
   public List<OrderItemSnapshot> buildSnapshots(long merchantId, List<OrderSkuItem> items) {
     return items.stream().map(item -> {
-      Sku sku = findSku(item.skuId());
-      if (sku.merchantId != merchantId) {
-        throw new BizException(ErrorCode.BAD_REQUEST, "商品不属于当前商户");
+      SkuView sku = findSku(item.skuId());
+      if (sku.merchantId() != merchantId) {
+        throw new BizException(ErrorCode.BAD_REQUEST, "SKU does not belong to merchant");
       }
-      return new OrderItemSnapshot(sku.id, sku.name, sku.priceCent, item.quantity());
+      return new OrderItemSnapshot(sku.skuId(), sku.name(), sku.priceCent(), item.quantity());
     }).toList();
   }
 
+  @Transactional
   public ReserveStockResponse reserve(ReserveStockRequest request) {
     return idempotentTemplate.execute("catalog:reserve:" + request.userId() + ":" + request.requestId(), () -> {
       List<Long> ids = new ArrayList<>();
-      synchronized (this) {
-        for (OrderSkuItem item : request.items()) {
-          Sku sku = findSku(item.skuId());
-          if (sku.stock < item.quantity()) {
-            throw new BizException(ErrorCode.STOCK_NOT_ENOUGH, sku.name + "库存不足");
-          }
+      for (OrderSkuItem item : request.items()) {
+        int affected = jdbcTemplate.update(
+            "UPDATE sku SET stock = stock - ? WHERE id = ? AND merchant_id = ? AND stock >= ?",
+            item.quantity(), item.skuId(), request.merchantId(), item.quantity()
+        );
+        if (affected != 1) {
+          throw new BizException(ErrorCode.STOCK_NOT_ENOUGH, "SKU stock not enough: " + item.skuId());
         }
-        for (OrderSkuItem item : request.items()) {
-          Sku sku = findSku(item.skuId());
-          sku.stock -= item.quantity();
-          long id = idGenerator.next("stockReservation");
-          reservations.put(id, new StockReservation(id, item.skuId(), item.quantity(),
-              StockReservationStatus.RESERVED, request.expireTime(), request.ticketId(), request.orderId()));
+
+        long id = idGenerator.next("stockReservation");
+        try {
+          jdbcTemplate.update("""
+              INSERT INTO stock_reservation(
+                id, request_id, user_id, merchant_id, sku_id, ticket_id, order_id, quantity, status,
+                expire_time, create_time, update_time
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              """,
+              id,
+              request.requestId(),
+              request.userId(),
+              request.merchantId(),
+              item.skuId(),
+              request.ticketId(),
+              request.orderId(),
+              item.quantity(),
+              StockReservationStatus.RESERVED.code(),
+              Timestamp.valueOf(request.expireTime()),
+              Timestamp.valueOf(LocalDateTime.now()),
+              Timestamp.valueOf(LocalDateTime.now())
+          );
           ids.add(id);
+        } catch (DuplicateKeyException duplicate) {
+          jdbcTemplate.update("UPDATE sku SET stock = stock + ? WHERE id = ?", item.quantity(), item.skuId());
+          Long existingId = jdbcTemplate.queryForObject(
+              "SELECT id FROM stock_reservation WHERE request_id = ? AND sku_id = ?",
+              Long.class,
+              request.requestId(),
+              item.skuId()
+          );
+          ids.add(existingId);
         }
       }
       return new ReserveStockResponse(ids, StockReservationStatus.RESERVED.name());
     });
   }
 
-  public synchronized void confirm(List<Long> reservationIds, Long orderId) {
+  @Transactional
+  public void confirm(List<Long> reservationIds, Long orderId) {
     for (Long id : reservationIds) {
-      StockReservation reservation = requireReservation(id);
-      if (reservation.status == StockReservationStatus.RESERVED) {
-        reservation.status = StockReservationStatus.CONFIRMED;
-        reservation.orderId = orderId;
-      }
+      jdbcTemplate.update("""
+          UPDATE stock_reservation
+          SET status = ?, order_id = ?, update_time = ?
+          WHERE id = ? AND status = ?
+          """,
+          StockReservationStatus.CONFIRMED.code(),
+          orderId,
+          Timestamp.valueOf(LocalDateTime.now()),
+          id,
+          StockReservationStatus.RESERVED.code()
+      );
     }
   }
 
-  public synchronized void release(List<Long> reservationIds) {
+  @Transactional
+  public void release(List<Long> reservationIds) {
     for (Long id : reservationIds) {
-      StockReservation reservation = requireReservation(id);
-      if (reservation.status == StockReservationStatus.RESERVED) {
-        reservation.status = StockReservationStatus.RELEASED;
-        findSku(reservation.skuId).stock += reservation.quantity;
+      StockReservationRow reservation = findReservation(id);
+      int affected = jdbcTemplate.update("""
+          UPDATE stock_reservation
+          SET status = ?, update_time = ?
+          WHERE id = ? AND status = ?
+          """,
+          StockReservationStatus.RELEASED.code(),
+          Timestamp.valueOf(LocalDateTime.now()),
+          id,
+          StockReservationStatus.RESERVED.code()
+      );
+      if (affected == 1) {
+        jdbcTemplate.update("UPDATE sku SET stock = stock + ? WHERE id = ?", reservation.quantity(), reservation.skuId());
       }
     }
   }
 
   public List<StockReservationView> reservations() {
-    return reservations.values().stream()
-        .sorted(Comparator.comparingLong(reservation -> reservation.id))
-        .map(reservation -> new StockReservationView(reservation.id, reservation.skuId, reservation.quantity,
-            reservation.status.name(), reservation.ticketId, reservation.orderId))
-        .toList();
+    return jdbcTemplate.query("""
+        SELECT id, sku_id, quantity, status, ticket_id, order_id
+        FROM stock_reservation
+        ORDER BY id
+        """, (rs, rowNum) -> new StockReservationView(
+        rs.getLong("id"),
+        rs.getLong("sku_id"),
+        rs.getInt("quantity"),
+        statusName(rs.getInt("status")),
+        nullableLong(rs, "ticket_id"),
+        nullableLong(rs, "order_id")
+    ));
   }
 
-  private Sku findSku(long skuId) {
-    Sku sku = skus.get(skuId);
-    if (sku == null) {
-      throw new BizException(ErrorCode.NOT_FOUND, "商品不存在");
+  private SkuView findSku(long skuId) {
+    List<SkuView> views = jdbcTemplate.query(
+        "SELECT id, merchant_id, name, price_cent, stock FROM sku WHERE id = ?",
+        this::mapSku,
+        skuId
+    );
+    if (views.isEmpty()) {
+      throw new BizException(ErrorCode.NOT_FOUND, "SKU not found");
     }
-    return sku;
+    return views.get(0);
   }
 
-  private StockReservation requireReservation(long id) {
-    StockReservation reservation = reservations.get(id);
-    if (reservation == null) {
-      throw new BizException(ErrorCode.NOT_FOUND, "库存预占不存在");
+  private StockReservationRow findReservation(long id) {
+    List<StockReservationRow> reservations = jdbcTemplate.query(
+        "SELECT id, sku_id, quantity FROM stock_reservation WHERE id = ?",
+        (rs, rowNum) -> new StockReservationRow(rs.getLong("id"), rs.getLong("sku_id"), rs.getInt("quantity")),
+        id
+    );
+    if (reservations.isEmpty()) {
+      throw new BizException(ErrorCode.NOT_FOUND, "Stock reservation not found");
     }
-    return reservation;
+    return reservations.get(0);
   }
 
-  static class Sku {
-    final long id;
-    final long merchantId;
-    final String name;
-    final int priceCent;
-    int stock;
-
-    Sku(long id, long merchantId, String name, int priceCent, int stock) {
-      this.id = id;
-      this.merchantId = merchantId;
-      this.name = name;
-      this.priceCent = priceCent;
-      this.stock = stock;
-    }
+  private SkuView mapSku(ResultSet rs, int rowNum) throws SQLException {
+    return new SkuView(
+        rs.getLong("id"),
+        rs.getLong("merchant_id"),
+        rs.getString("name"),
+        rs.getInt("price_cent"),
+        rs.getInt("stock")
+    );
   }
 
-  static class StockReservation {
-    final long id;
-    final long skuId;
-    final int quantity;
-    StockReservationStatus status;
-    final LocalDateTime expireTime;
-    Long ticketId;
-    Long orderId;
+  private Long nullableLong(ResultSet rs, String column) throws SQLException {
+    long value = rs.getLong(column);
+    return rs.wasNull() ? null : value;
+  }
 
-    StockReservation(long id, long skuId, int quantity, StockReservationStatus status, LocalDateTime expireTime,
-        Long ticketId, Long orderId) {
-      this.id = id;
-      this.skuId = skuId;
-      this.quantity = quantity;
-      this.status = status;
-      this.expireTime = expireTime;
-      this.ticketId = ticketId;
-      this.orderId = orderId;
+  private String statusName(int code) {
+    for (StockReservationStatus status : StockReservationStatus.values()) {
+      if (status.code() == code) {
+        return status.name();
+      }
     }
+    return "UNKNOWN";
+  }
+
+  private record StockReservationRow(long id, long skuId, int quantity) {
   }
 }
