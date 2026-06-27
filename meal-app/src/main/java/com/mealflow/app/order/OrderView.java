@@ -1,0 +1,17 @@
+package com.mealflow.app.order;
+
+import com.mealflow.app.catalog.OrderItemSnapshot;
+import java.util.List;
+
+public record OrderView(
+    long orderId,
+    long userId,
+    long merchantId,
+    String status,
+    Long queueTicketId,
+    long capacityTokenId,
+    long payOrderId,
+    int amountCent,
+    List<OrderItemSnapshot> items
+) {
+}

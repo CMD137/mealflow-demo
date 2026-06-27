@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mealflow-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: mealflow
+      MYSQL_DATABASE: mealflow
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docs/MealFlow-ddl.sql:/docker-entrypoint-initdb.d/001-mealflow-ddl.sql:ro
+
+  redis:
+    image: redis:7
+    container_name: mealflow-redis
+    ports:
+      - "6379:6379"
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.2.0
+    container_name: mealflow-rocketmq-namesrv
+    command: sh mqnamesrv
+    ports:
+      - "9876:9876"
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.2.0
+    container_name: mealflow-rocketmq-broker
+    depends_on:
+      - rocketmq-namesrv
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+    command: sh mqbroker -n rocketmq-namesrv:9876
+    ports:
+      - "10911:10911"

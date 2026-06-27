@@ -1,0 +1,81 @@
+### 健康检查
+GET http://localhost:8080/ping
+
+### 查看商品
+GET http://localhost:8080/catalog/merchants/10/skus
+
+### 将商户产能调为 1，便于演示排队
+POST http://localhost:8080/queue/merchants/10/limit
+Content-Type: application/json
+
+{
+  "limit": 1
+}
+
+### 第一个订单：直接成单并占用产能
+POST http://localhost:8080/orders/submit
+Content-Type: application/json
+X-User-Id: 101
+
+{
+  "requestId": "demo-submit-101",
+  "merchantId": 10,
+  "addressId": 20,
+  "items": [
+    { "skuId": 1, "quantity": 1 }
+  ],
+  "remark": "少辣"
+}
+
+### 第二个订单：商户满载，返回 QUEUED
+POST http://localhost:8080/orders/submit
+Content-Type: application/json
+X-User-Id: 102
+
+{
+  "requestId": "demo-submit-102",
+  "merchantId": 10,
+  "addressId": 21,
+  "items": [
+    { "skuId": 2, "quantity": 1 }
+  ],
+  "remark": "不要葱"
+}
+
+### 查询全局演示状态，拿到 payOrderId、orderId、ticketId
+GET http://localhost:8080/demo/state
+
+### 模拟支付第一个订单
+POST http://localhost:8080/payments/10001/mock-pay
+
+### 商户接单，不释放产能
+POST http://localhost:8080/fulfillment/orders/10001/accept
+Content-Type: application/json
+
+{
+  "requestId": "demo-accept-10001"
+}
+
+### 出餐完成，释放产能并自动推进等待票据成单
+POST http://localhost:8080/fulfillment/orders/10001/meal-ready
+Content-Type: application/json
+
+{
+  "requestId": "demo-meal-ready-10001"
+}
+
+### 查看 ticket 已变为 ORDER_CREATED，且新增了排队转订单
+GET http://localhost:8080/demo/state
+
+### 秒杀领券
+POST http://localhost:8080/vouchers/1000/seckill
+Content-Type: application/json
+X-User-Id: 201
+
+{
+  "requestId": "demo-claim-201"
+}
+
+### 查看券包
+GET http://localhost:8080/vouchers/wallet
+X-User-Id: 201
