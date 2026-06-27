@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: meal-fulfillment
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
+server:
+  port: 8109
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+mealflow:
+  services:
+    order: ${MEAL_ORDER_URI:http://localhost:8105}
+    queue: ${MEAL_QUEUE_URI:http://localhost:8106}

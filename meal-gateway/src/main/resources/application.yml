@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: meal-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
+    gateway:
+      routes:
+        - id: meal-auth-user
+          uri: ${MEAL_AUTH_USER_URI:http://localhost:8101}
+          predicates:
+            - Path=/auth/**,/users/**
+        - id: meal-merchant
+          uri: ${MEAL_MERCHANT_URI:http://localhost:8102}
+          predicates:
+            - Path=/merchant/**,/merchants/**
+        - id: meal-catalog
+          uri: ${MEAL_CATALOG_URI:http://localhost:8103}
+          predicates:
+            - Path=/catalog/**
+        - id: meal-cart
+          uri: ${MEAL_CART_URI:http://localhost:8104}
+          predicates:
+            - Path=/cart/**
+        - id: meal-order
+          uri: ${MEAL_ORDER_URI:http://localhost:8105}
+          predicates:
+            - Path=/orders/**
+        - id: meal-queue
+          uri: ${MEAL_QUEUE_URI:http://localhost:8106}
+          predicates:
+            - Path=/queue/**
+        - id: meal-promotion
+          uri: ${MEAL_PROMOTION_URI:http://localhost:8107}
+          predicates:
+            - Path=/vouchers/**,/promotion/**
+        - id: meal-payment
+          uri: ${MEAL_PAYMENT_URI:http://localhost:8108}
+          predicates:
+            - Path=/payments/**
+        - id: meal-fulfillment
+          uri: ${MEAL_FULFILLMENT_URI:http://localhost:8109}
+          predicates:
+            - Path=/fulfillment/**
+        - id: meal-notify
+          uri: ${MEAL_NOTIFY_URI:http://localhost:8110}
+          predicates:
+            - Path=/notify/**
+server:
+  port: 8080
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

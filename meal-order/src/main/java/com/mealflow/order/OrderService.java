@@ -1,0 +1,232 @@
+package com.mealflow.order;
+
+import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.exception.BizException;
+import com.mealflow.common.status.OrderStatus;
+import com.mealflow.infra.id.IdGenerator;
+import com.mealflow.infra.idempotent.IdempotentTemplate;
+import com.mealflow.order.api.OrderItemSnapshot;
+import com.mealflow.order.api.OrderSkuItem;
+import com.mealflow.order.api.OrderView;
+import com.mealflow.order.api.SubmitOrderRequest;
+import com.mealflow.order.api.SubmitOrderResponse;
+import com.mealflow.order.client.CatalogClient;
+import com.mealflow.order.client.PaymentClient;
+import com.mealflow.order.client.PromotionClient;
+import com.mealflow.order.client.QueueClient;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.stereotype.Service;
+
+@Service
+public class OrderService {
+  private final CatalogClient catalogClient;
+  private final PromotionClient promotionClient;
+  private final QueueClient queueClient;
+  private final PaymentClient paymentClient;
+  private final IdGenerator idGenerator = new IdGenerator();
+  private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
+  private final Map<Long, OrderRecord> orders = new ConcurrentHashMap<>();
+  private final Map<Long, Long> orderIdByTicketId = new ConcurrentHashMap<>();
+
+  public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
+      PaymentClient paymentClient) {
+    this.catalogClient = catalogClient;
+    this.promotionClient = promotionClient;
+    this.queueClient = queueClient;
+    this.paymentClient = paymentClient;
+  }
+
+  public SubmitOrderResponse submit(long userId, SubmitOrderRequest request) {
+    return idempotentTemplate.execute("order:submit:" + userId + ":" + request.requestId(), () -> {
+      LocalDateTime expireTime = LocalDateTime.now().plusMinutes(15);
+      List<OrderSkuItem> items = normalizeItems(request);
+      List<OrderItemSnapshot> snapshots = catalogClient.snapshots(request.merchantId(), items);
+      int originAmount = snapshots.stream().mapToInt(OrderItemSnapshot::subtotalCent).sum();
+      CatalogClient.ReserveStockResponse reservation = catalogClient.reserve(new CatalogClient.ReserveStockRequest(
+          "stock-reserve:" + request.requestId(), userId, request.merchantId(), null, null, items, expireTime));
+      PromotionClient.VoucherLockResponse voucherLock = promotionClient.lock(new PromotionClient.LockVoucherRequest(
+          "voucher-lock:" + request.requestId(), userId, request.userVoucherId(), null, null, expireTime));
+      int finalAmount = Math.max(0, originAmount - voucherLock.discountAmount());
+      QueueClient.QueueTicketSnapshot snapshot = new QueueClient.QueueTicketSnapshot(
+          snapshots.stream().map(item -> Map.<String, Object>of(
+              "skuId", item.skuId(),
+              "skuName", item.skuName(),
+              "priceCent", item.priceCent(),
+              "quantity", item.quantity())).toList(),
+          reservation.reservationIds(), voucherLock.voucherLockId(), finalAmount, request.remark());
+      QueueClient.QueueApplyResponse queue = queueClient.apply(new QueueClient.QueueApplyRequest(
+          "queue-apply:" + request.requestId(), userId, request.merchantId(), snapshot, expireTime, 0));
+      if ("QUEUED".equals(queue.result())) {
+        return SubmitOrderResponse.queued(queue.ticketId(), queue.ticketNo(), queue.aheadCount(),
+            queue.estimatedWaitSeconds(), queue.expireTime());
+      }
+      OrderRecord order = createOrder(userId, request.merchantId(), null, queue.capacityTokenId(), snapshot);
+      return SubmitOrderResponse.orderCreated(order.id, order.payOrderId, order.status.name());
+    });
+  }
+
+  public synchronized OrderRecord createOrderFromTicket(long ticketId, long capacityTokenId) {
+    if (orderIdByTicketId.containsKey(ticketId)) {
+      return requireOrder(orderIdByTicketId.get(ticketId));
+    }
+    QueueClient.QueueTicketSnapshot snapshot = queueClient.markProcessing(ticketId);
+    OrderRecord order = createOrder(0L, 10L, ticketId, capacityTokenId, snapshot);
+    queueClient.orderCreated(ticketId, new QueueClient.BindOrderRequest("queue-order-created:" + ticketId + ":" + order.id,
+        order.id));
+    return order;
+  }
+
+  public synchronized void markPaid(long orderId) {
+    OrderRecord order = requireOrder(orderId);
+    if (order.status == OrderStatus.PENDING_PAYMENT) {
+      order.status = OrderStatus.WAIT_MERCHANT_ACCEPT;
+      catalogClient.confirm(new CatalogClient.StockTransitionRequest("stock-confirm:" + orderId, order.reservationIds,
+          orderId, "PAYMENT_SUCCESS"));
+      promotionClient.confirm(new PromotionClient.VoucherTransitionRequest("voucher-confirm:" + orderId,
+          order.voucherLockId, orderId, "PAYMENT_SUCCESS"));
+    }
+  }
+
+  public synchronized void cancel(long orderId, String reason) {
+    OrderRecord order = requireOrder(orderId);
+    if (order.status != OrderStatus.PENDING_PAYMENT && order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "当前订单状态不可取消");
+    }
+    order.status = OrderStatus.CANCELLED;
+    catalogClient.release(new CatalogClient.StockTransitionRequest("stock-release:" + orderId, order.reservationIds,
+        orderId, reason));
+    promotionClient.release(new PromotionClient.VoucherTransitionRequest("voucher-release:" + orderId,
+        order.voucherLockId, orderId, reason));
+    paymentClient.close(order.payOrderId, new PaymentClient.ClosePaymentRequest("payment-close:" + orderId, reason));
+    queueClient.release(order.capacityTokenId, new QueueClient.ReleaseCapacityRequest("capacity-release:" + orderId,
+        "ORDER_CANCELLED"));
+  }
+
+  public synchronized void merchantAccept(long orderId) {
+    OrderRecord order = requireOrder(orderId);
+    if (order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "订单不是待接单状态");
+    }
+    order.status = OrderStatus.MERCHANT_ACCEPTED;
+  }
+
+  public synchronized void mealReady(long orderId) {
+    OrderRecord order = requireOrder(orderId);
+    if (order.status != OrderStatus.MERCHANT_ACCEPTED && order.status != OrderStatus.COOKING) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "订单不能出餐");
+    }
+    order.status = OrderStatus.WAIT_RIDER_PICKUP;
+  }
+
+  public synchronized void pickedUp(long orderId) {
+    OrderRecord order = requireOrder(orderId);
+    if (order.status != OrderStatus.WAIT_RIDER_PICKUP) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "订单不能取餐");
+    }
+    order.status = OrderStatus.DELIVERING;
+  }
+
+  public synchronized void delivered(long orderId) {
+    OrderRecord order = requireOrder(orderId);
+    if (order.status != OrderStatus.DELIVERING) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "订单不能送达");
+    }
+    order.status = OrderStatus.COMPLETED;
+  }
+
+  public OrderView get(long orderId) {
+    return view(requireOrder(orderId));
+  }
+
+  public List<OrderView> list() {
+    return orders.values().stream()
+        .sorted(Comparator.comparingLong(order -> order.id))
+        .map(this::view)
+        .toList();
+  }
+
+  private synchronized OrderRecord createOrder(long userId, long merchantId, Long ticketId, long capacityTokenId,
+      QueueClient.QueueTicketSnapshot snapshot) {
+    long orderId = idGenerator.next("order");
+    PaymentClient.PaymentView payment = paymentClient.create(new PaymentClient.CreatePaymentRequest(
+        "payment-create:" + orderId, orderId, snapshot.totalAmount()));
+    OrderRecord order = new OrderRecord(orderId, userId, merchantId, OrderStatus.PENDING_PAYMENT, ticketId,
+        capacityTokenId, payment.payOrderId(), snapshot.reservationIds(), snapshot.voucherLockId(),
+        snapshot.items().stream().map(this::toOrderItemSnapshot).toList(), snapshot.totalAmount());
+    orders.put(orderId, order);
+    if (ticketId != null) {
+      orderIdByTicketId.put(ticketId, orderId);
+    }
+    queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
+    return order;
+  }
+
+  private OrderItemSnapshot toOrderItemSnapshot(Map<String, Object> item) {
+    return new OrderItemSnapshot(number(item.get("skuId")), String.valueOf(item.get("skuName")),
+        number(item.get("priceCent")), number(item.get("quantity")));
+  }
+
+  private int number(Object value) {
+    if (value instanceof Number number) {
+      return number.intValue();
+    }
+    return Integer.parseInt(String.valueOf(value));
+  }
+
+  private List<OrderSkuItem> normalizeItems(SubmitOrderRequest request) {
+    if (request.items() != null && !request.items().isEmpty()) {
+      return request.items();
+    }
+    if (request.cartItemIds() != null && !request.cartItemIds().isEmpty()) {
+      return request.cartItemIds().stream().map(skuId -> new OrderSkuItem(skuId, 1)).toList();
+    }
+    throw new BizException(ErrorCode.BAD_REQUEST, "请至少提交一个商品");
+  }
+
+  private OrderRecord requireOrder(long orderId) {
+    OrderRecord order = orders.get(orderId);
+    if (order == null) {
+      throw new BizException(ErrorCode.NOT_FOUND, "订单不存在");
+    }
+    return order;
+  }
+
+  private OrderView view(OrderRecord order) {
+    return new OrderView(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
+        order.capacityTokenId, order.payOrderId, order.amountCent, order.items);
+  }
+
+  static class OrderRecord {
+    final long id;
+    final long userId;
+    final long merchantId;
+    OrderStatus status;
+    final Long queueTicketId;
+    final long capacityTokenId;
+    final long payOrderId;
+    final List<Long> reservationIds;
+    final Long voucherLockId;
+    final List<OrderItemSnapshot> items;
+    final int amountCent;
+
+    OrderRecord(long id, long userId, long merchantId, OrderStatus status, Long queueTicketId, long capacityTokenId,
+        long payOrderId, List<Long> reservationIds, Long voucherLockId, List<OrderItemSnapshot> items,
+        int amountCent) {
+      this.id = id;
+      this.userId = userId;
+      this.merchantId = merchantId;
+      this.status = status;
+      this.queueTicketId = queueTicketId;
+      this.capacityTokenId = capacityTokenId;
+      this.payOrderId = payOrderId;
+      this.reservationIds = reservationIds;
+      this.voucherLockId = voucherLockId;
+      this.items = items;
+      this.amountCent = amountCent;
+    }
+  }
+}

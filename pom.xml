@@ -20,11 +20,43 @@
   <modules>
     <module>meal-common</module>
     <module>meal-infra</module>
+    <module>meal-gateway</module>
+    <module>meal-auth-user</module>
+    <module>meal-merchant</module>
+    <module>meal-catalog</module>
+    <module>meal-cart</module>
+    <module>meal-order</module>
+    <module>meal-queue</module>
+    <module>meal-promotion</module>
+    <module>meal-payment</module>
+    <module>meal-fulfillment</module>
+    <module>meal-notify</module>
     <module>meal-app</module>
   </modules>
 
   <properties>
     <java.version>17</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <spring-cloud.version>2023.0.5</spring-cloud.version>
+    <spring-cloud-alibaba.version>2023.0.3.4</spring-cloud-alibaba.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+        <version>${spring-cloud-alibaba.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 </project>

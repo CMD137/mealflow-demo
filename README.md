@@ -1,10 +1,14 @@
 # MealFlow
 
-MealFlow 是一个面向午晚高峰履约的外卖交易平台 MVP。当前版本按 docs 的核心设计落地了可运行的 Spring Boot 多模块工程，并用内存仓库模拟 MySQL、Redis ZSet 和 RocketMQ/Outbox 的职责，方便先验证业务闭环。
+MealFlow 是一个面向午晚高峰履约的外卖交易平台。当前仓库正在从 legacy 单进程 MVP 演进为真实微服务工程：`meal-gateway` 和各业务服务已经拆成独立 Spring Boot 模块，旧的 `meal-app` 保留为本地闭环演示。
 
 ## 已实现能力
 
-- Maven 多模块：`meal-common`、`meal-infra`、`meal-app`
+- Maven 多模块：`meal-common`、`meal-infra`、`meal-gateway`、各业务服务、`meal-app`
+- 独立服务骨架：auth-user、merchant、catalog、cart、order、queue、promotion、payment、fulfillment、notify
+- Gateway 静态路由：`/orders/**`、`/queue/**`、`/vouchers/**` 等前缀转发到独立服务
+- 独立微服务主链路：order 通过 HTTP 编排 catalog、promotion、queue、payment，fulfillment 出餐释放 queue 产能
+- 用户、商户、购物车、通知服务已提供最小可用业务接口
 - 统一响应、业务异常、traceId、状态码枚举
 - requestId 幂等模板、Outbox 事件记录、消费幂等模板
 - 商品库存预占、确认、释放
@@ -23,6 +27,12 @@ mvn -q -pl meal-app -am -DskipTests package
 java -jar meal-app\target\meal-app-0.1.0-SNAPSHOT.jar
 ```
 
+启动微服务骨架：
+
+```powershell
+.\scripts\start-microservices.ps1
+```
+
 如果本机 Maven settings 指向不可写目录，可使用仓库内临时 settings：
 
 ```powershell
@@ -33,8 +43,8 @@ mvn -s .mvn-settings.xml -q test
 
 ```text
 GET http://localhost:8080/ping
-GET http://localhost:8080/actuator/health
-GET http://localhost:8080/demo/state
+GET http://localhost:8080/orders/ping
+GET http://localhost:8090/demo/state
 ```
 
 ## 演示主线
@@ -50,7 +60,12 @@ GET http://localhost:8080/demo/state
 
 ## 设计说明
 
-当前是便于演示和测试的单进程 MVP，但代码按服务边界分包：
+当前分两层推进：
+
+- `meal-app` 是 legacy 单进程闭环演示，端口 `8090`。
+- `meal-gateway` 和 `meal-*` 业务模块是真实微服务骨架，gateway 端口 `8080`，业务服务端口 `8101` 到 `8110`。
+
+legacy demo 代码按服务边界分包：
 
 - `catalog` 只管理商品库存和预占
 - `promotion` 只管理券、券包和券锁
@@ -59,4 +74,4 @@ GET http://localhost:8080/demo/state
 - `payment` 管支付单和支付成功事件
 - `fulfillment` 管商户和配送履约动作
 
-后续拆分成真实微服务时，这些包可以按模块迁移为独立服务，接口契约继续对齐 `docs/MealFlow-api-events.md`。
+后续会把这些包中的业务实现迁移到对应独立服务，接口契约继续对齐 `docs/MealFlow-api-events.md`。当前完成情况和剩余清单见 [docs/MealFlow-implementation-status.md](docs/MealFlow-implementation-status.md)。

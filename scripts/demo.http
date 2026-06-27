@@ -1,6 +1,9 @@
 ### 健康检查
 GET http://localhost:8080/ping
 
+### Gateway 路由到 order-service
+GET http://localhost:8080/orders/ping
+
 ### 查看商品
 GET http://localhost:8080/catalog/merchants/10/skus
 
@@ -42,11 +45,14 @@ X-User-Id: 102
   "remark": "不要葱"
 }
 
-### 查询全局演示状态，拿到 payOrderId、orderId、ticketId
-GET http://localhost:8080/demo/state
+### 查询订单列表，拿到 payOrderId、orderId、ticketId
+GET http://localhost:8080/orders
 
 ### 模拟支付第一个订单
 POST http://localhost:8080/payments/10001/mock-pay
+
+### 通知 order-service 支付成功，推进订单状态并确认库存和券
+POST http://localhost:8080/orders/10001/pay-success
 
 ### 商户接单，不释放产能
 POST http://localhost:8080/fulfillment/orders/10001/accept
@@ -65,7 +71,10 @@ Content-Type: application/json
 }
 
 ### 查看 ticket 已变为 ORDER_CREATED，且新增了排队转订单
-GET http://localhost:8080/demo/state
+GET http://localhost:8080/orders
+
+### 查看排队服务状态
+GET http://localhost:8080/queue/internal/tickets
 
 ### 秒杀领券
 POST http://localhost:8080/vouchers/1000/seckill

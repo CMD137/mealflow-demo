@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: meal-payment
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
+server:
+  port: 8108
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
