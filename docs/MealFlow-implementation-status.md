@@ -20,6 +20,7 @@
   - `meal-fulfillment`，端口 `8109`，已通过 HTTP 推进订单履约状态，出餐完成会释放 queue 产能并触发排队转订单
   - `meal-notify`，端口 `8110`，已实现站内消息推送和用户消息查询
 - 每个独立服务都有 `/ping` 和 gateway 前缀 ping，例如 `/orders/ping`、`/queue/ping`。
+- `docker-compose.yml` 已包含 Nacos、MySQL、Redis、RocketMQ、gateway 和所有业务服务，执行前需要先 `mvn -q -DskipTests package` 生成各服务 jar。
 
 ## 当前尚未完成
 

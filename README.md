@@ -33,6 +33,13 @@ java -jar meal-app\target\meal-app-0.1.0-SNAPSHOT.jar
 .\scripts\start-microservices.ps1
 ```
 
+使用 Docker Compose 启动基础设施和微服务前，先构建 jar：
+
+```powershell
+mvn -q -DskipTests package
+docker compose up -d
+```
+
 如果本机 Maven settings 指向不可写目录，可使用仓库内临时 settings：
 
 ```powershell

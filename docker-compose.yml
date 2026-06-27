@@ -1,4 +1,14 @@
 services:
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: mealflow-nacos
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+
   mysql:
     image: mysql:8.0
     container_name: mealflow-mysql
@@ -33,3 +43,186 @@ services:
     command: sh mqbroker -n rocketmq-namesrv:9876
     ports:
       - "10911:10911"
+
+  meal-auth-user:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-auth-user
+    depends_on:
+      - nacos
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+    volumes:
+      - ./meal-auth-user/target/meal-auth-user-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8101:8101"
+
+  meal-merchant:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-merchant
+    depends_on:
+      - nacos
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+    volumes:
+      - ./meal-merchant/target/meal-merchant-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8102:8102"
+
+  meal-catalog:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-catalog
+    depends_on:
+      - nacos
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+    volumes:
+      - ./meal-catalog/target/meal-catalog-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8103:8103"
+
+  meal-cart:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-cart
+    depends_on:
+      - nacos
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+    volumes:
+      - ./meal-cart/target/meal-cart-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8104:8104"
+
+  meal-order:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-order
+    depends_on:
+      - meal-catalog
+      - meal-promotion
+      - meal-queue
+      - meal-payment
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+      MEAL_CATALOG_URI: http://meal-catalog:8103
+      MEAL_PROMOTION_URI: http://meal-promotion:8107
+      MEAL_QUEUE_URI: http://meal-queue:8106
+      MEAL_PAYMENT_URI: http://meal-payment:8108
+    volumes:
+      - ./meal-order/target/meal-order-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8105:8105"
+
+  meal-queue:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-queue
+    depends_on:
+      - nacos
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+    volumes:
+      - ./meal-queue/target/meal-queue-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8106:8106"
+
+  meal-promotion:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-promotion
+    depends_on:
+      - nacos
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+    volumes:
+      - ./meal-promotion/target/meal-promotion-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8107:8107"
+
+  meal-payment:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-payment
+    depends_on:
+      - nacos
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+    volumes:
+      - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8108:8108"
+
+  meal-fulfillment:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-fulfillment
+    depends_on:
+      - meal-order
+      - meal-queue
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+      MEAL_ORDER_URI: http://meal-order:8105
+      MEAL_QUEUE_URI: http://meal-queue:8106
+    volumes:
+      - ./meal-fulfillment/target/meal-fulfillment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8109:8109"
+
+  meal-notify:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-notify
+    depends_on:
+      - nacos
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+    volumes:
+      - ./meal-notify/target/meal-notify-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8110:8110"
+
+  meal-gateway:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-gateway
+    depends_on:
+      - meal-auth-user
+      - meal-merchant
+      - meal-catalog
+      - meal-cart
+      - meal-order
+      - meal-queue
+      - meal-promotion
+      - meal-payment
+      - meal-fulfillment
+      - meal-notify
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+      MEAL_AUTH_USER_URI: http://meal-auth-user:8101
+      MEAL_MERCHANT_URI: http://meal-merchant:8102
+      MEAL_CATALOG_URI: http://meal-catalog:8103
+      MEAL_CART_URI: http://meal-cart:8104
+      MEAL_ORDER_URI: http://meal-order:8105
+      MEAL_QUEUE_URI: http://meal-queue:8106
+      MEAL_PROMOTION_URI: http://meal-promotion:8107
+      MEAL_PAYMENT_URI: http://meal-payment:8108
+      MEAL_FULFILLMENT_URI: http://meal-fulfillment:8109
+      MEAL_NOTIFY_URI: http://meal-notify:8110
+    volumes:
+      - ./meal-gateway/target/meal-gateway-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8080:8080"
