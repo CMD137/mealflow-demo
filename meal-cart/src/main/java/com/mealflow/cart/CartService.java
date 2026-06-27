@@ -2,81 +2,65 @@ package com.mealflow.cart;
 
 import com.mealflow.cart.api.AddCartItemRequest;
 import com.mealflow.cart.api.CartItemView;
+import com.mealflow.cart.mapper.CartItemRow;
+import com.mealflow.cart.mapper.CartMapper;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.infra.id.IdGenerator;
-import java.util.Comparator;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CartService {
   private final IdGenerator idGenerator = new IdGenerator();
-  private final Map<Long, CartItem> items = new ConcurrentHashMap<>();
+  private final CartMapper cartMapper;
 
+  public CartService(CartMapper cartMapper) {
+    this.cartMapper = cartMapper;
+  }
+
+  @Transactional
   public synchronized CartItemView add(long userId, AddCartItemRequest request) {
-    CartItem existing = items.values().stream()
-        .filter(item -> item.userId == userId && item.skuId == request.skuId())
-        .findFirst()
-        .orElse(null);
+    CartItemRow existing = cartMapper.findByUserSku(userId, request.skuId());
     if (existing != null) {
-      existing.quantity += request.quantity();
-      return view(existing);
+      cartMapper.increaseQuantity(existing.getId(), request.quantity(), LocalDateTime.now());
+      return view(cartMapper.findById(existing.getId()));
     }
     long id = idGenerator.next("cartItem");
-    CartItem item = new CartItem(id, userId, request.merchantId(), request.skuId(), request.quantity(), true);
-    items.put(id, item);
-    return view(item);
+    cartMapper.insert(id, userId, request.merchantId(), request.skuId(), request.quantity(), true,
+        LocalDateTime.now());
+    return view(cartMapper.findById(id));
   }
 
+  @Transactional
   public synchronized CartItemView update(long userId, long cartItemId, int quantity) {
-    CartItem item = requireItem(userId, cartItemId);
-    item.quantity = quantity;
-    return view(item);
+    CartItemRow item = requireItem(userId, cartItemId);
+    cartMapper.updateQuantity(item.getId(), quantity, LocalDateTime.now());
+    return view(cartMapper.findById(item.getId()));
   }
 
+  @Transactional
   public synchronized void delete(long userId, long cartItemId) {
-    requireItem(userId, cartItemId);
-    items.remove(cartItemId);
+    CartItemRow item = requireItem(userId, cartItemId);
+    cartMapper.delete(item.getId());
   }
 
   public List<CartItemView> list(long userId) {
-    return items.values().stream()
-        .filter(item -> item.userId == userId && item.quantity > 0)
-        .sorted(Comparator.comparingLong(item -> item.id))
-        .map(this::view)
-        .toList();
+    return cartMapper.findByUser(userId).stream().map(this::view).toList();
   }
 
-  private CartItem requireItem(long userId, long cartItemId) {
-    CartItem item = items.get(cartItemId);
-    if (item == null || item.userId != userId) {
-      throw new BizException(ErrorCode.NOT_FOUND, "购物车项不存在");
+  private CartItemRow requireItem(long userId, long cartItemId) {
+    CartItemRow item = cartMapper.findById(cartItemId);
+    if (item == null || item.getUserId() != userId) {
+      throw new BizException(ErrorCode.NOT_FOUND, "cart item not found");
     }
     return item;
   }
 
-  private CartItemView view(CartItem item) {
-    return new CartItemView(item.id, item.userId, item.merchantId, item.skuId, item.quantity, item.selected);
-  }
-
-  static class CartItem {
-    final long id;
-    final long userId;
-    final long merchantId;
-    final long skuId;
-    int quantity;
-    boolean selected;
-
-    CartItem(long id, long userId, long merchantId, long skuId, int quantity, boolean selected) {
-      this.id = id;
-      this.userId = userId;
-      this.merchantId = merchantId;
-      this.skuId = skuId;
-      this.quantity = quantity;
-      this.selected = selected;
-    }
+  private CartItemView view(CartItemRow item) {
+    return new CartItemView(item.getId(), item.getUserId(), item.getMerchantId(), item.getSkuId(),
+        item.getQuantity(), item.isSelected());
   }
 }

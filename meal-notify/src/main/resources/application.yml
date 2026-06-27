@@ -1,6 +1,14 @@
 spring:
   application:
     name: meal-notify
+  datasource:
+    url: ${NOTIFY_DB_URL:jdbc:h2:mem:meal_notify;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1}
+    username: ${NOTIFY_DB_USERNAME:sa}
+    password: ${NOTIFY_DB_PASSWORD:}
+    driver-class-name: ${NOTIFY_DB_DRIVER:org.h2.Driver}
+  sql:
+    init:
+      mode: always
   cloud:
     nacos:
       discovery:

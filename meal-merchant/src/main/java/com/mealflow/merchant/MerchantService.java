@@ -4,67 +4,47 @@ import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.merchant.api.CapacityConfigRequest;
 import com.mealflow.merchant.api.MerchantView;
-import jakarta.annotation.PostConstruct;
-import java.util.Comparator;
+import com.mealflow.merchant.mapper.MerchantMapper;
+import com.mealflow.merchant.mapper.MerchantRow;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MerchantService {
-  private final Map<Long, Merchant> merchants = new ConcurrentHashMap<>();
+  private final MerchantMapper merchantMapper;
 
-  @PostConstruct
-  void seed() {
-    merchants.put(10L, new Merchant(10L, "MealFlow 牛肉饭", "OPEN", 1, 1.0));
-    merchants.put(11L, new Merchant(11L, "MealFlow 轻食", "OPEN", 3, 1.0));
+  public MerchantService(MerchantMapper merchantMapper) {
+    this.merchantMapper = merchantMapper;
   }
 
   public List<MerchantView> list() {
-    return merchants.values().stream()
-        .sorted(Comparator.comparingLong(merchant -> merchant.id))
-        .map(this::view)
-        .toList();
+    return merchantMapper.findAll().stream().map(this::view).toList();
   }
 
   public MerchantView get(long merchantId) {
     return view(requireMerchant(merchantId));
   }
 
+  @Transactional
   public MerchantView updateCapacity(long merchantId, CapacityConfigRequest request) {
-    Merchant merchant = requireMerchant(merchantId);
-    merchant.baseCapacity = request.baseCapacity();
-    merchant.manualFactor = request.manualFactor() <= 0 ? 1.0 : request.manualFactor();
-    return view(merchant);
+    requireMerchant(merchantId);
+    double manualFactor = request.manualFactor() <= 0 ? 1.0 : request.manualFactor();
+    merchantMapper.updateCapacity(merchantId, request.baseCapacity(), manualFactor, LocalDateTime.now());
+    return get(merchantId);
   }
 
-  private Merchant requireMerchant(long merchantId) {
-    Merchant merchant = merchants.get(merchantId);
+  private MerchantRow requireMerchant(long merchantId) {
+    MerchantRow merchant = merchantMapper.findById(merchantId);
     if (merchant == null) {
-      throw new BizException(ErrorCode.NOT_FOUND, "商户不存在");
+      throw new BizException(ErrorCode.NOT_FOUND, "merchant not found");
     }
     return merchant;
   }
 
-  private MerchantView view(Merchant merchant) {
-    return new MerchantView(merchant.id, merchant.name, merchant.businessStatus, merchant.baseCapacity,
-        merchant.manualFactor);
-  }
-
-  static class Merchant {
-    final long id;
-    final String name;
-    final String businessStatus;
-    int baseCapacity;
-    double manualFactor;
-
-    Merchant(long id, String name, String businessStatus, int baseCapacity, double manualFactor) {
-      this.id = id;
-      this.name = name;
-      this.businessStatus = businessStatus;
-      this.baseCapacity = baseCapacity;
-      this.manualFactor = manualFactor;
-    }
+  private MerchantView view(MerchantRow merchant) {
+    return new MerchantView(merchant.getId(), merchant.getName(), merchant.getBusinessStatus(),
+        merchant.getBaseCapacity(), merchant.getManualFactor());
   }
 }

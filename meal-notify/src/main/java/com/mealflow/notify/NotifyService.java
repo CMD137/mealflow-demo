@@ -3,29 +3,36 @@ package com.mealflow.notify;
 import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.notify.api.MessageView;
 import com.mealflow.notify.api.PushMessageRequest;
+import com.mealflow.notify.mapper.NotifyMapper;
+import com.mealflow.notify.mapper.NotifyMessageRow;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class NotifyService {
   private final IdGenerator idGenerator = new IdGenerator();
-  private final Map<Long, MessageView> messages = new ConcurrentHashMap<>();
+  private final NotifyMapper notifyMapper;
 
+  public NotifyService(NotifyMapper notifyMapper) {
+    this.notifyMapper = notifyMapper;
+  }
+
+  @Transactional
   public MessageView push(PushMessageRequest request) {
     long id = idGenerator.next("notifyMessage");
-    MessageView message = new MessageView(id, request.userId(), request.bizType(), request.content(), LocalDateTime.now());
-    messages.put(id, message);
-    return message;
+    LocalDateTime createTime = LocalDateTime.now();
+    notifyMapper.insert(id, request.userId(), request.bizType(), request.content(), createTime);
+    return new MessageView(id, request.userId(), request.bizType(), request.content(), createTime);
   }
 
   public List<MessageView> list(long userId) {
-    return messages.values().stream()
-        .filter(message -> message.userId() == userId)
-        .sorted(Comparator.comparing(MessageView::createTime).reversed())
-        .toList();
+    return notifyMapper.findByUser(userId).stream().map(this::view).toList();
+  }
+
+  private MessageView view(NotifyMessageRow message) {
+    return new MessageView(message.getId(), message.getUserId(), message.getBizType(), message.getContent(),
+        message.getCreateTime());
   }
 }

@@ -1,6 +1,14 @@
 spring:
   application:
     name: meal-merchant
+  datasource:
+    url: ${MERCHANT_DB_URL:jdbc:h2:mem:meal_merchant;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1}
+    username: ${MERCHANT_DB_USERNAME:sa}
+    password: ${MERCHANT_DB_PASSWORD:}
+    driver-class-name: ${MERCHANT_DB_DRIVER:org.h2.Driver}
+  sql:
+    init:
+      mode: always
   cloud:
     nacos:
       discovery:

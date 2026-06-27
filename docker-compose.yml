@@ -18,6 +18,11 @@ services:
     ports:
       - "3306:3306"
     volumes:
+      - ./meal-auth-user/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/001-auth-user-schema.sql:ro
+      - ./meal-auth-user/src/main/resources/data.sql:/docker-entrypoint-initdb.d/002-auth-user-data.sql:ro
+      - ./meal-merchant/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/003-merchant-schema.sql:ro
+      - ./meal-merchant/src/main/resources/data.sql:/docker-entrypoint-initdb.d/004-merchant-data.sql:ro
+      - ./meal-cart/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/005-cart-schema.sql:ro
       - ./meal-catalog/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/010-catalog-schema.sql:ro
       - ./meal-catalog/src/main/resources/data.sql:/docker-entrypoint-initdb.d/011-catalog-data.sql:ro
       - ./meal-queue/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/020-queue-schema.sql:ro
@@ -25,6 +30,7 @@ services:
       - ./meal-promotion/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/026-promotion-schema.sql:ro
       - ./meal-promotion/src/main/resources/data.sql:/docker-entrypoint-initdb.d/027-promotion-data.sql:ro
       - ./meal-payment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/030-payment-schema.sql:ro
+      - ./meal-notify/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/040-notify-schema.sql:ro
 
   redis:
     image: redis:7
@@ -55,9 +61,14 @@ services:
     container_name: mealflow-auth-user
     depends_on:
       - nacos
+      - mysql
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
+      AUTH_USER_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      AUTH_USER_DB_USERNAME: root
+      AUTH_USER_DB_PASSWORD: mealflow
+      AUTH_USER_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-auth-user/target/meal-auth-user-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -69,9 +80,14 @@ services:
     container_name: mealflow-merchant
     depends_on:
       - nacos
+      - mysql
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
+      MERCHANT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      MERCHANT_DB_USERNAME: root
+      MERCHANT_DB_PASSWORD: mealflow
+      MERCHANT_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-merchant/target/meal-merchant-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -102,9 +118,14 @@ services:
     container_name: mealflow-cart
     depends_on:
       - nacos
+      - mysql
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
+      CART_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      CART_DB_USERNAME: root
+      CART_DB_PASSWORD: mealflow
+      CART_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-cart/target/meal-cart-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -216,9 +237,14 @@ services:
     container_name: mealflow-notify
     depends_on:
       - nacos
+      - mysql
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
+      NOTIFY_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      NOTIFY_DB_USERNAME: root
+      NOTIFY_DB_PASSWORD: mealflow
+      NOTIFY_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-notify/target/meal-notify-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]

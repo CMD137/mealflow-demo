@@ -1,6 +1,14 @@
 spring:
   application:
     name: meal-auth-user
+  datasource:
+    url: ${AUTH_USER_DB_URL:jdbc:h2:mem:meal_auth_user;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1}
+    username: ${AUTH_USER_DB_USERNAME:sa}
+    password: ${AUTH_USER_DB_PASSWORD:}
+    driver-class-name: ${AUTH_USER_DB_DRIVER:org.h2.Driver}
+  sql:
+    init:
+      mode: always
   cloud:
     nacos:
       discovery:
