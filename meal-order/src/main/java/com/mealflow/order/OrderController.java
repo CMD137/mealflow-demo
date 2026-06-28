@@ -2,6 +2,7 @@ package com.mealflow.order;
 
 import com.mealflow.common.api.Result;
 import com.mealflow.order.api.CancelOrderRequest;
+import com.mealflow.order.api.LocalEventView;
 import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
@@ -82,5 +83,15 @@ public class OrderController {
   @GetMapping
   public Result<List<OrderView>> list() {
     return Result.ok(orderService.list());
+  }
+
+  @GetMapping("/internal/events")
+  public Result<List<LocalEventView>> events() {
+    return Result.ok(orderService.events());
+  }
+
+  @PostMapping("/internal/events/dispatch")
+  public Result<Integer> dispatchEvents() {
+    return Result.ok(orderService.dispatchPendingEvents(100));
   }
 }

@@ -3,6 +3,7 @@ package com.mealflow.payment;
 import com.mealflow.common.api.Result;
 import com.mealflow.payment.api.ClosePaymentRequest;
 import com.mealflow.payment.api.CreatePaymentRequest;
+import com.mealflow.payment.api.LocalEventView;
 import com.mealflow.payment.api.PaymentView;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -46,5 +47,15 @@ public class PaymentController {
   @GetMapping("/internal/list")
   public Result<List<PaymentView>> list() {
     return Result.ok(paymentService.list());
+  }
+
+  @GetMapping("/internal/events")
+  public Result<List<LocalEventView>> events() {
+    return Result.ok(paymentService.events());
+  }
+
+  @PostMapping("/internal/events/dispatch")
+  public Result<Integer> dispatchEvents() {
+    return Result.ok(paymentService.dispatchPendingEvents(100));
   }
 }

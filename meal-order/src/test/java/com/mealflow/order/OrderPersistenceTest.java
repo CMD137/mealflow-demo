@@ -65,10 +65,26 @@ class OrderPersistenceTest {
     OrderView created = orderService.get(response.orderId());
     assertThat(created.amountCent()).isEqualTo(1700);
     assertThat(created.items()).hasSize(1);
+    assertThat(orderService.events())
+        .singleElement()
+        .satisfies(event -> {
+          assertThat(event.eventKey()).isEqualTo("order:OrderCreated:" + response.orderId() + ":1");
+          assertThat(event.eventType()).isEqualTo("OrderCreated");
+          assertThat(event.aggregateId()).isEqualTo(response.orderId());
+          assertThat(event.status()).isEqualTo("NEW");
+          assertThat(event.payloadJson()).contains("\"status\":\"PENDING_PAYMENT\"");
+        });
 
     orderService.markPaid(response.orderId());
 
     assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
+    assertThat(orderService.events())
+        .extracting("eventType")
+        .containsExactly("OrderCreated", "OrderPaid");
+    assertThat(orderService.dispatchPendingEvents(10)).isEqualTo(2);
+    assertThat(orderService.events())
+        .extracting("status")
+        .containsExactly("SENT", "SENT");
     verify(catalogClient).confirm(any());
     verify(promotionClient).confirm(any());
     verify(queueClient).bindOrder(eq(6001L), any());

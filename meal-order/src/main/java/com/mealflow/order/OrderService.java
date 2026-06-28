@@ -5,9 +5,12 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
+import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.OrderStatus;
+import com.mealflow.infra.event.EventKey;
 import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
+import com.mealflow.order.api.LocalEventView;
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
 import com.mealflow.order.api.OrderView;
@@ -17,9 +20,13 @@ import com.mealflow.order.client.CatalogClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
+import com.mealflow.order.mapper.LocalEventMapper;
+import com.mealflow.order.mapper.LocalEventRow;
 import com.mealflow.order.mapper.OrderMapper;
 import com.mealflow.order.mapper.OrderRow;
+import com.mealflow.order.outbox.OutboxEventPublisher;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,17 +45,22 @@ public class OrderService {
   private final QueueClient queueClient;
   private final PaymentClient paymentClient;
   private final OrderMapper orderMapper;
+  private final LocalEventMapper localEventMapper;
+  private final OutboxEventPublisher outboxEventPublisher;
   private final ObjectMapper objectMapper;
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
 
   public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
-      PaymentClient paymentClient, OrderMapper orderMapper, ObjectMapper objectMapper) {
+      PaymentClient paymentClient, OrderMapper orderMapper, LocalEventMapper localEventMapper,
+      OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper) {
     this.catalogClient = catalogClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
     this.paymentClient = paymentClient;
     this.orderMapper = orderMapper;
+    this.localEventMapper = localEventMapper;
+    this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
   }
 
@@ -104,6 +116,7 @@ public class OrderService {
           orderId, "PAYMENT_SUCCESS"));
       promotionClient.confirm(new PromotionClient.VoucherTransitionRequest("voucher-confirm:" + orderId,
           order.voucherLockId, orderId, "PAYMENT_SUCCESS"));
+      appendOrderEvent("OrderPaid", order.withStatus(OrderStatus.WAIT_MERCHANT_ACCEPT));
     }
   }
 
@@ -121,6 +134,7 @@ public class OrderService {
     paymentClient.close(order.payOrderId, new PaymentClient.ClosePaymentRequest("payment-close:" + orderId, reason));
     queueClient.release(order.capacityTokenId, new QueueClient.ReleaseCapacityRequest("capacity-release:" + orderId,
         "ORDER_CANCELLED"));
+    appendOrderEvent("OrderCancelled", order.withStatus(OrderStatus.CANCELLED));
   }
 
   @Transactional
@@ -130,6 +144,7 @@ public class OrderService {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order is not waiting merchant accept");
     }
     updateStatus(orderId, OrderStatus.MERCHANT_ACCEPTED);
+    appendOrderEvent("OrderMerchantAccepted", order.withStatus(OrderStatus.MERCHANT_ACCEPTED));
   }
 
   @Transactional
@@ -139,6 +154,7 @@ public class OrderService {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be marked meal ready");
     }
     updateStatus(orderId, OrderStatus.WAIT_RIDER_PICKUP);
+    appendOrderEvent("OrderMealReady", order.withStatus(OrderStatus.WAIT_RIDER_PICKUP));
   }
 
   @Transactional
@@ -148,6 +164,7 @@ public class OrderService {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be picked up");
     }
     updateStatus(orderId, OrderStatus.DELIVERING);
+    appendOrderEvent("OrderPickedUp", order.withStatus(OrderStatus.DELIVERING));
   }
 
   @Transactional
@@ -157,6 +174,7 @@ public class OrderService {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be delivered");
     }
     updateStatus(orderId, OrderStatus.COMPLETED);
+    appendOrderEvent("OrderDelivered", order.withStatus(OrderStatus.COMPLETED));
   }
 
   public OrderView get(long orderId) {
@@ -165,6 +183,27 @@ public class OrderService {
 
   public List<OrderView> list() {
     return orderMapper.findAll().stream().map(this::mapOrder).map(this::view).toList();
+  }
+
+  public List<LocalEventView> events() {
+    return localEventMapper.findAll().stream().map(this::eventView).toList();
+  }
+
+  public int dispatchPendingEvents(int limit) {
+    int sent = 0;
+    for (LocalEventRow row : localEventMapper.findDispatchable(limit)) {
+      if (localEventMapper.markSending(row.getId(), LocalDateTime.now()) == 0) {
+        continue;
+      }
+      try {
+        outboxEventPublisher.publish(eventView(row));
+        localEventMapper.markSent(row.getId(), LocalDateTime.now());
+        sent++;
+      } catch (RuntimeException ex) {
+        localEventMapper.markFailed(row.getId(), trimError(ex), LocalDateTime.now());
+      }
+    }
+    return sent;
   }
 
   private synchronized OrderRecord createOrder(long userId, long merchantId, Long ticketId, long capacityTokenId,
@@ -181,6 +220,7 @@ public class OrderService {
         order.capacityTokenId, order.payOrderId, toJson(order.reservationIds), order.voucherLockId,
         toJson(order.items), order.amountCent, now);
     queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
+    appendOrderEvent("OrderCreated", order);
     return order;
   }
 
@@ -234,6 +274,38 @@ public class OrderService {
         order.capacityTokenId, order.payOrderId, order.amountCent, order.items);
   }
 
+  private void appendOrderEvent(String eventType, OrderRecord order) {
+    int version = 1;
+    localEventMapper.insert(idGenerator.next("localEvent"),
+        EventKey.of("order", eventType, order.id, version),
+        eventType,
+        version,
+        "ORDER",
+        order.id,
+        toJson(orderEventPayload(order)),
+        LocalEventStatus.NEW.name(),
+        LocalDateTime.now());
+  }
+
+  private Map<String, Object> orderEventPayload(OrderRecord order) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("orderId", order.id);
+    payload.put("userId", order.userId);
+    payload.put("merchantId", order.merchantId);
+    payload.put("status", order.status.name());
+    payload.put("queueTicketId", order.queueTicketId);
+    payload.put("capacityTokenId", order.capacityTokenId);
+    payload.put("payOrderId", order.payOrderId);
+    payload.put("amountCent", order.amountCent);
+    return payload;
+  }
+
+  private LocalEventView eventView(LocalEventRow row) {
+    return new LocalEventView(row.getId(), row.getEventKey(), row.getEventType(), row.getEventVersion(),
+        row.getAggregateType(), row.getAggregateId(), row.getPayloadJson(), row.getStatus(), row.getRetryCount(),
+        row.getLastError(), row.getCreateTime(), row.getUpdateTime());
+  }
+
   private String toJson(Object value) {
     try {
       return objectMapper.writeValueAsString(value);
@@ -248,6 +320,11 @@ public class OrderService {
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("failed to deserialize order data", e);
     }
+  }
+
+  private String trimError(RuntimeException ex) {
+    String message = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+    return message.length() <= 512 ? message : message.substring(0, 512);
   }
 
   static class OrderRecord {
@@ -277,6 +354,11 @@ public class OrderService {
       this.voucherLockId = voucherLockId;
       this.items = items;
       this.amountCent = amountCent;
+    }
+
+    OrderRecord withStatus(OrderStatus nextStatus) {
+      return new OrderRecord(id, userId, merchantId, nextStatus, queueTicketId, capacityTokenId, payOrderId,
+          reservationIds, voucherLockId, items, amountCent);
     }
   }
 }
