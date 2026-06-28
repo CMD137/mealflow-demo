@@ -1,6 +1,14 @@
 spring:
   application:
     name: meal-fulfillment
+  datasource:
+    url: ${FULFILLMENT_DB_URL:jdbc:h2:mem:meal_fulfillment;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1}
+    username: ${FULFILLMENT_DB_USERNAME:sa}
+    password: ${FULFILLMENT_DB_PASSWORD:}
+    driver-class-name: ${FULFILLMENT_DB_DRIVER:org.h2.Driver}
+  sql:
+    init:
+      mode: always
   cloud:
     nacos:
       discovery:

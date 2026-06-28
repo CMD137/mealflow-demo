@@ -36,6 +36,7 @@ services:
       - ./meal-promotion/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/026-promotion-schema.sql:ro
       - ./meal-promotion/src/main/resources/data.sql:/docker-entrypoint-initdb.d/027-promotion-data.sql:ro
       - ./meal-payment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/030-payment-schema.sql:ro
+      - ./meal-fulfillment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/035-fulfillment-schema.sql:ro
       - ./meal-notify/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/040-notify-schema.sql:ro
 
   redis:
@@ -244,11 +245,19 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-fulfillment
     depends_on:
-      - meal-order
-      - meal-queue
+      mysql:
+        condition: service_healthy
+      meal-order:
+        condition: service_started
+      meal-queue:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
+      FULFILLMENT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      FULFILLMENT_DB_USERNAME: root
+      FULFILLMENT_DB_PASSWORD: mealflow
+      FULFILLMENT_DB_DRIVER: com.mysql.cj.jdbc.Driver
       MEAL_ORDER_URI: http://meal-order:8105
       MEAL_QUEUE_URI: http://meal-queue:8106
     volumes:
