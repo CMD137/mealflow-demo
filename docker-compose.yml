@@ -16,7 +16,13 @@ services:
       MYSQL_ROOT_PASSWORD: mealflow
       MYSQL_DATABASE: mealflow
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-13306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     volumes:
       - ./meal-auth-user/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/001-auth-user-schema.sql:ro
       - ./meal-auth-user/src/main/resources/data.sql:/docker-entrypoint-initdb.d/002-auth-user-data.sql:ro
@@ -60,8 +66,10 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-auth-user
     depends_on:
-      - nacos
-      - mysql
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -79,8 +87,10 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-merchant
     depends_on:
-      - nacos
-      - mysql
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -98,8 +108,10 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-catalog
     depends_on:
-      - nacos
-      - mysql
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -117,8 +129,10 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-cart
     depends_on:
-      - nacos
-      - mysql
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -136,11 +150,16 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-order
     depends_on:
-      - mysql
-      - meal-catalog
-      - meal-promotion
-      - meal-queue
-      - meal-payment
+      mysql:
+        condition: service_healthy
+      meal-catalog:
+        condition: service_started
+      meal-promotion:
+        condition: service_started
+      meal-queue:
+        condition: service_started
+      meal-payment:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -162,8 +181,10 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-queue
     depends_on:
-      - nacos
-      - mysql
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -181,8 +202,10 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-promotion
     depends_on:
-      - nacos
-      - mysql
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -200,8 +223,10 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-payment
     depends_on:
-      - nacos
-      - mysql
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -236,8 +261,10 @@ services:
     image: eclipse-temurin:17-jre
     container_name: mealflow-notify
     depends_on:
-      - nacos
-      - mysql
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
