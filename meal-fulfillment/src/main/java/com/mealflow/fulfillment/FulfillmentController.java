@@ -3,6 +3,7 @@ package com.mealflow.fulfillment;
 import com.mealflow.common.api.Result;
 import com.mealflow.fulfillment.api.FulfillmentOperationView;
 import com.mealflow.fulfillment.api.FulfillmentRequest;
+import com.mealflow.fulfillment.api.LocalEventView;
 import com.mealflow.fulfillment.api.OrderView;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -45,5 +46,15 @@ public class FulfillmentController {
   @GetMapping("/internal/operations")
   public Result<List<FulfillmentOperationView>> operations() {
     return Result.ok(fulfillmentService.operations());
+  }
+
+  @GetMapping("/internal/events")
+  public Result<List<LocalEventView>> events() {
+    return Result.ok(fulfillmentService.events());
+  }
+
+  @PostMapping("/internal/events/dispatch")
+  public Result<Integer> dispatchEvents() {
+    return Result.ok(fulfillmentService.dispatchPendingEvents(100));
   }
 }

@@ -12,7 +12,7 @@
 - `meal-order` 通过 HTTP 编排 `catalog`、`promotion`、`queue`、`payment` 完成提交订单主链路。
 - `meal-fulfillment` 通过 HTTP 推进订单履约状态，出餐完成会释放 `queue` 产能并触发排队 ticket 转订单。
 - `meal-fulfillment` 已新增独立履约操作日志表、MyBatis Mapper 和查询接口，可记录商户接单、出餐、取餐、送达等动作。
-- `meal-order`、`meal-payment` 已新增 `local_event` 本地事件表和 MyBatis Mapper；订单创建、订单支付成功、支付成功等关键动作会在本地事务内写入 `NEW` 事件，并支持内部 dispatch 将事件推进为 `SENDING`/`SENT`/`FAILED`。
+- `meal-order`、`meal-payment`、`meal-fulfillment` 已新增 `local_event` 本地事件表和 MyBatis Mapper；订单创建、订单支付成功、支付成功、履约接单/出餐/取餐/送达等关键动作会在本地事务内写入 `NEW` 事件，并支持内部 dispatch 将事件推进为 `SENDING`/`SENT`/`FAILED`。
 - `meal-queue` 的票据、产能 token、商户产能配置已持久化；启动时可以从 MySQL 重建 WAITING 队列运行时索引。
 - `docker-compose.yml` 已包含 Nacos、MySQL、Redis、RocketMQ、gateway 和所有业务服务；MySQL 使用 healthcheck，业务服务等待 MySQL healthy 后启动。
 - `scripts/e2e-smoke.ps1` 覆盖 gateway ping、种子商品检查、产能限流、第一单成单、第二单排队、支付成功、履约出餐、产能释放后排队 ticket 自动转单。
@@ -21,7 +21,7 @@
 ## 当前尚未完成
 
 - `auth-user`、`merchant`、`cart`、`notify` 已有最小业务接口，但尚未接真实认证、权限、员工体系、SSE/WebSocket 等完整能力。
-- Outbox 已开始落地到 order/payment 的 MySQL 本地事件表，并具备手动 dispatch 与状态回写；尚未完成 fulfillment 事件、定时扫描、真实 RocketMQ 发布、consumer_record 持久化、消费重试和补偿扫描。
+- Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch 与状态回写；尚未完成定时扫描、真实 RocketMQ 发布、consumer_record 持久化、消费重试和补偿扫描。
 - Redis ZSet、券库存、产能派生计数等仍未接真实 Redis；queue 当前使用 MySQL 事实源加本地运行时优先队列。
 - Prometheus/Grafana、压测脚本、故障注入脚本尚未完成。
 

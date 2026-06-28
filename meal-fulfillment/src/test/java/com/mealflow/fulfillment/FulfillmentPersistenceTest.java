@@ -63,6 +63,23 @@ class FulfillmentPersistenceTest {
           assertThat(operation.action()).isEqualTo("ACCEPT");
           assertThat(operation.status()).isEqualTo("SUCCESS");
         });
+    assertThat(fulfillmentService.events())
+        .singleElement()
+        .satisfies(event -> {
+          assertThat(event.eventKey()).isEqualTo("fulfillment:FulfillmentAccepted:20001:1");
+          assertThat(event.eventType()).isEqualTo("FulfillmentAccepted");
+          assertThat(event.aggregateId()).isEqualTo(20001L);
+          assertThat(event.status()).isEqualTo("NEW");
+          assertThat(event.payloadJson()).contains("\"requestId\":\"fulfillment-test-accept\"");
+        });
+
+    assertThat(fulfillmentService.dispatchPendingEvents(10)).isEqualTo(1);
+    assertThat(fulfillmentService.events())
+        .singleElement()
+        .satisfies(event -> {
+          assertThat(event.status()).isEqualTo("SENT");
+          assertThat(event.retryCount()).isEqualTo(1);
+        });
     server.verify();
   }
 }
