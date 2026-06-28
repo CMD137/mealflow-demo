@@ -34,3 +34,15 @@ CREATE TABLE IF NOT EXISTS order_local_event (
   INDEX idx_order_local_event_status (status),
   INDEX idx_order_local_event_aggregate (aggregate_type, aggregate_id)
 );
+
+CREATE TABLE IF NOT EXISTS order_consumer_record (
+  id BIGINT PRIMARY KEY,
+  event_key VARCHAR(256) NOT NULL,
+  consumer_group VARCHAR(128) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  last_error VARCHAR(512) NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_order_consumer_event_group (event_key, consumer_group),
+  INDEX idx_order_consumer_status (status)
+);

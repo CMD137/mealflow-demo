@@ -178,6 +178,9 @@ services:
       OUTBOX_TOPIC: mealflow-order-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
       ROCKETMQ_PRODUCER_GROUP: mealflow-order-producer
+      PAYMENT_EVENT_CONSUMER_ENABLED: "true"
+      PAYMENT_EVENT_CONSUMER_GROUP: mealflow-order-payment-consumer
+      PAYMENT_EVENT_TOPICS: mealflow-payment-events
     volumes:
       - ./meal-order/target/meal-order-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]

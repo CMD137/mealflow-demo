@@ -134,9 +134,18 @@ $secondSubmit = (Invoke-MealFlow -Method POST -Path "/orders/submit" -Body $seco
 Assert-True ($secondSubmit.mode -eq "QUEUED") "Second order should be queued"
 Assert-True ($null -ne $secondSubmit.ticketId) "Queued ticketId is missing"
 
-Step "mocking payment and marking order paid"
+Step "mocking payment and waiting for payment event consumption"
 Invoke-MealFlow -Method POST -Path "/payments/$($firstSubmit.payOrderId)/mock-pay" | Out-Null
-Invoke-MealFlow -Method POST -Path "/orders/$($firstSubmit.orderId)/pay-success" | Out-Null
+Invoke-MealFlow -Method POST -Path "/payments/internal/events/dispatch" | Out-Null
+for ($paidAttempt = 1; $paidAttempt -le 24; $paidAttempt++) {
+  $paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)").data
+  if ($paidOrder.status -eq "WAIT_MERCHANT_ACCEPT") {
+    break
+  }
+  Start-Sleep -Seconds 5
+}
+$paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)").data
+Assert-True ($paidOrder.status -eq "WAIT_MERCHANT_ACCEPT") "PaymentPaid event was not consumed by order-service"
 
 Step "accepting and marking meal ready"
 Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/accept" -Body @{ requestId = "e2e-accept-$stamp" } | Out-Null

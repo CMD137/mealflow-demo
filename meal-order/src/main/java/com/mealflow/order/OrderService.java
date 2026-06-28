@@ -7,6 +7,7 @@ import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.OrderStatus;
+import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
 import com.mealflow.infra.event.EventKey;
 import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
@@ -20,6 +21,7 @@ import com.mealflow.order.client.CatalogClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
+import com.mealflow.order.mapper.ConsumerRecordMapper;
 import com.mealflow.order.mapper.LocalEventMapper;
 import com.mealflow.order.mapper.LocalEventRow;
 import com.mealflow.order.mapper.OrderMapper;
@@ -40,6 +42,8 @@ public class OrderService {
   };
   private static final TypeReference<List<OrderItemSnapshot>> ITEM_LIST = new TypeReference<>() {
   };
+  private static final TypeReference<Map<String, Object>> EVENT_PAYLOAD = new TypeReference<>() {
+  };
 
   private final CatalogClient catalogClient;
   private final PromotionClient promotionClient;
@@ -47,6 +51,8 @@ public class OrderService {
   private final PaymentClient paymentClient;
   private final OrderMapper orderMapper;
   private final LocalEventMapper localEventMapper;
+  private final ConsumerRecordMapper consumerRecordMapper;
+  private final PersistentConsumerRecordTemplate consumerRecordTemplate;
   private final OutboxEventPublisher outboxEventPublisher;
   private final ObjectMapper objectMapper;
   private final IdGenerator idGenerator = new IdGenerator();
@@ -54,13 +60,15 @@ public class OrderService {
 
   public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
       PaymentClient paymentClient, OrderMapper orderMapper, LocalEventMapper localEventMapper,
-      OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper) {
+      ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper) {
     this.catalogClient = catalogClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
     this.paymentClient = paymentClient;
     this.orderMapper = orderMapper;
     this.localEventMapper = localEventMapper;
+    this.consumerRecordMapper = consumerRecordMapper;
+    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper);
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
   }
@@ -69,6 +77,7 @@ public class OrderService {
   void initializeIdGenerator() {
     idGenerator.ensureAtLeast("order", orderMapper.maxOrderId());
     idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
+    consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
   }
 
   @Transactional
@@ -125,6 +134,15 @@ public class OrderService {
           order.voucherLockId, orderId, "PAYMENT_SUCCESS"));
       appendOrderEvent("OrderPaid", order.withStatus(OrderStatus.WAIT_MERCHANT_ACCEPT));
     }
+  }
+
+  @Transactional
+  public void consumePaymentPaid(String eventKey, String consumerGroup, String payloadJson) {
+    consumerRecordTemplate.consumeOnce(eventKey, consumerGroup, () -> {
+      Map<String, Object> payload = fromJson(payloadJson, EVENT_PAYLOAD);
+      markPaid(longNumber(payload.get("orderId")));
+      return Boolean.TRUE;
+    });
   }
 
   @Transactional
@@ -245,6 +263,13 @@ public class OrderService {
       return number.intValue();
     }
     return Integer.parseInt(String.valueOf(value));
+  }
+
+  private long longNumber(Object value) {
+    if (value instanceof Number number) {
+      return number.longValue();
+    }
+    return Long.parseLong(String.valueOf(value));
   }
 
   private List<OrderSkuItem> normalizeItems(SubmitOrderRequest request) {
