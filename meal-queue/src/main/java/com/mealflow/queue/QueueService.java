@@ -18,17 +18,15 @@ import com.mealflow.queue.api.ReleaseCapacityResponse;
 import com.mealflow.queue.mapper.CapacityTokenRow;
 import com.mealflow.queue.mapper.QueueMapper;
 import com.mealflow.queue.mapper.QueueTicketRow;
+import com.mealflow.queue.waiting.WaitingQueueStore;
+import com.mealflow.queue.waiting.WaitingTicketEntry;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.PriorityQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,20 +36,23 @@ public class QueueService {
 
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
-  private final Map<Long, PriorityQueue<WaitingTicket>> waitingQueues = new ConcurrentHashMap<>();
+  private final WaitingQueueStore waitingQueueStore;
   private final QueueMapper queueMapper;
   private final ObjectMapper objectMapper;
 
-  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper) {
+  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper, WaitingQueueStore waitingQueueStore) {
     this.queueMapper = queueMapper;
     this.objectMapper = objectMapper;
+    this.waitingQueueStore = waitingQueueStore;
   }
 
   @PostConstruct
   void rebuildWaitingQueues() {
-    queueMapper.findWaitingTickets(QueueTicketStatus.WAITING.name(), LocalDateTime.now())
-        .forEach(ticket -> waitingQueue(ticket.getMerchantId())
-            .add(new WaitingTicket(ticket.getId(), ticket.getTicketNo(), ticket.getScore())));
+    waitingQueueStore.rebuild(queueMapper.findWaitingTickets(QueueTicketStatus.WAITING.name(), LocalDateTime.now())
+        .stream()
+        .map(ticket -> new WaitingTicketEntry(ticket.getMerchantId(), ticket.getId(), ticket.getTicketNo(),
+            ticket.getScore()))
+        .toList());
   }
 
   @Transactional
@@ -66,14 +67,14 @@ public class QueueService {
         long ticketId = idGenerator.next("queueTicket");
         String ticketNo = "QT" + ticketId;
         long score = System.currentTimeMillis() - Math.min(request.priorityWeightMillis(), 120_000);
-        PriorityQueue<WaitingTicket> waitingQueue = waitingQueue(request.merchantId());
-        int aheadCount = waitingQueue.size();
+        int aheadCount = waitingQueueStore.size(request.merchantId());
         int waitSeconds = estimateWaitSeconds(aheadCount, request.merchantId());
         QueueTicket ticket = new QueueTicket(ticketId, ticketNo, request.requestId(), request.userId(),
             request.merchantId(), QueueTicketStatus.WAITING, score, aheadCount, waitSeconds, request.expireTime(),
             request.snapshot(), null, null, null);
         insertTicket(ticket);
-        waitingQueue.add(new WaitingTicket(ticketId, ticketNo, score));
+        waitingQueueStore.add(request.merchantId(), new WaitingTicketEntry(request.merchantId(), ticketId, ticketNo,
+            score));
         return QueueApplyResponse.queued(ticketId, ticketNo, aheadCount, waitSeconds, request.expireTime());
       }
     });
@@ -87,21 +88,24 @@ public class QueueService {
     }
     updateTokenStatus(capacityTokenId, CapacityTokenStatus.RELEASED, reason);
 
-    PriorityQueue<WaitingTicket> queue = waitingQueue(token.merchantId);
     int scanned = 0;
-    while (scanned < 50 && !queue.isEmpty()) {
+    Optional<WaitingTicketEntry> maybeWaiting = waitingQueueStore.poll(token.merchantId);
+    while (scanned < 50 && maybeWaiting.isPresent()) {
       scanned++;
-      WaitingTicket waiting = queue.poll();
+      WaitingTicketEntry waiting = maybeWaiting.get();
       Optional<QueueTicket> maybeTicket = findTicket(waiting.ticketId());
       if (maybeTicket.isEmpty()) {
+        maybeWaiting = waitingQueueStore.poll(token.merchantId);
         continue;
       }
       QueueTicket ticket = maybeTicket.get();
       if (ticket.status != QueueTicketStatus.WAITING) {
+        maybeWaiting = waitingQueueStore.poll(token.merchantId);
         continue;
       }
       if (ticket.expireTime.isBefore(LocalDateTime.now())) {
         updateTicketStatus(ticket.id, QueueTicketStatus.TIMEOUT, null, null, null);
+        maybeWaiting = waitingQueueStore.poll(token.merchantId);
         continue;
       }
       CapacityToken nextToken = createToken("ticket-ready:" + ticket.id, ticket.merchantId, ticket.id,
@@ -150,6 +154,10 @@ public class QueueService {
     if (ticket.status == QueueTicketStatus.WAITING || ticket.status == QueueTicketStatus.READY) {
       updateTicketStatus(ticket.id, QueueTicketStatus.CANCELLED, ticket.orderId, ticket.readyTime,
           ticket.processingTime);
+      if (ticket.status == QueueTicketStatus.WAITING) {
+        waitingQueueStore.remove(ticket.merchantId,
+            new WaitingTicketEntry(ticket.merchantId, ticket.id, ticket.ticketNo, ticket.score));
+      }
       findTokenByTicket(ticketId).ifPresent(token -> releaseCapacity(token.id, "TICKET_CANCELLED"));
       return;
     }
@@ -193,7 +201,7 @@ public class QueueService {
     metrics.put("merchantId", merchantId);
     metrics.put("limit", limit(merchantId));
     metrics.put("held", heldCount(merchantId));
-    metrics.put("waiting", waitingQueue(merchantId).size());
+    metrics.put("waiting", waitingQueueStore.size(merchantId));
     return metrics;
   }
 
@@ -257,21 +265,9 @@ public class QueueService {
   }
 
   private int aheadCount(QueueTicket ticket) {
-    List<WaitingTicket> waiting = new ArrayList<>(waitingQueue(ticket.merchantId));
-    waiting.sort(Comparator.comparingLong(WaitingTicket::score).thenComparing(WaitingTicket::ticketNo));
-    int index = 0;
-    for (WaitingTicket candidate : waiting) {
-      if (candidate.ticketId() == ticket.id) {
-        return index;
-      }
-      index++;
-    }
-    return ticket.aheadCountSnapshot;
-  }
-
-  private PriorityQueue<WaitingTicket> waitingQueue(long merchantId) {
-    return waitingQueues.computeIfAbsent(merchantId, ignored -> new PriorityQueue<>(
-        Comparator.comparingLong(WaitingTicket::score).thenComparing(WaitingTicket::ticketNo)));
+    return waitingQueueStore.rank(ticket.merchantId,
+        new WaitingTicketEntry(ticket.merchantId, ticket.id, ticket.ticketNo, ticket.score),
+        ticket.aheadCountSnapshot);
   }
 
   private QueueTicket mapTicket(QueueTicketRow row) {
@@ -360,8 +356,5 @@ public class QueueService {
       this.expireTime = expireTime;
       this.releaseReason = releaseReason;
     }
-  }
-
-  record WaitingTicket(long ticketId, String ticketNo, long score) {
   }
 }

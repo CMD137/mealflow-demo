@@ -186,6 +186,8 @@ services:
         condition: service_started
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -193,6 +195,9 @@ services:
       QUEUE_DB_USERNAME: root
       QUEUE_DB_PASSWORD: mealflow
       QUEUE_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      QUEUE_WAITING_STORE: redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     volumes:
       - ./meal-queue/target/meal-queue-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
