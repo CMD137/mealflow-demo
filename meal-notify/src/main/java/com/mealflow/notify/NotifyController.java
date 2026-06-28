@@ -1,6 +1,8 @@
 package com.mealflow.notify;
 
 import com.mealflow.common.api.Result;
+import com.mealflow.notify.api.ConsumedPushMessageRequest;
+import com.mealflow.notify.api.ConsumerRecordView;
 import com.mealflow.notify.api.MessageView;
 import com.mealflow.notify.api.PushMessageRequest;
 import jakarta.validation.Valid;
@@ -29,8 +31,18 @@ public class NotifyController {
     return Result.ok(notifyService.push(request));
   }
 
+  @PostMapping("/internal/events/messages")
+  public Result<MessageView> pushFromEvent(@Valid @RequestBody ConsumedPushMessageRequest request) {
+    return Result.ok(notifyService.pushOnce(request.eventKey(), request.consumerGroup(), request.message()));
+  }
+
   @GetMapping("/messages")
   public Result<List<MessageView>> list(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
     return Result.ok(notifyService.list(userId == null ? defaultUserId : userId));
+  }
+
+  @GetMapping("/internal/consumer-records")
+  public Result<List<ConsumerRecordView>> consumerRecords() {
+    return Result.ok(notifyService.consumerRecords());
   }
 }

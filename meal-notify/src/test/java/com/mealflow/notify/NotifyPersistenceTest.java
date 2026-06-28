@@ -26,4 +26,25 @@ class NotifyPersistenceTest {
           assertThat(stored.content()).isEqualTo("meal ready");
         });
   }
+
+  @Test
+  void consumesEventOnlyOnceWithPersistentRecord() {
+    MessageView created = notifyService.pushOnce("order:OrderMealReady:10001:1", "notify-message",
+        new PushMessageRequest(102L, "ORDER", "order meal ready"));
+    MessageView duplicate = notifyService.pushOnce("order:OrderMealReady:10001:1", "notify-message",
+        new PushMessageRequest(102L, "ORDER", "order meal ready again"));
+
+    assertThat(created).isNotNull();
+    assertThat(duplicate).isNull();
+    assertThat(notifyService.list(102L))
+        .singleElement()
+        .satisfies(stored -> assertThat(stored.content()).isEqualTo("order meal ready"));
+    assertThat(notifyService.consumerRecords())
+        .singleElement()
+        .satisfies(record -> {
+          assertThat(record.eventKey()).isEqualTo("order:OrderMealReady:10001:1");
+          assertThat(record.consumerGroup()).isEqualTo("notify-message");
+          assertThat(record.status()).isEqualTo("SUCCESS");
+        });
+  }
 }
