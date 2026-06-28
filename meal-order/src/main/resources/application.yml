@@ -22,6 +22,10 @@ management:
       exposure:
         include: health,info
 mealflow:
+  outbox:
+    scheduler-enabled: ${OUTBOX_SCHEDULER_ENABLED:true}
+    initial-delay-ms: ${OUTBOX_INITIAL_DELAY_MS:5000}
+    fixed-delay-ms: ${OUTBOX_FIXED_DELAY_MS:5000}
   services:
     catalog: ${MEAL_CATALOG_URI:http://localhost:8103}
     promotion: ${MEAL_PROMOTION_URI:http://localhost:8107}

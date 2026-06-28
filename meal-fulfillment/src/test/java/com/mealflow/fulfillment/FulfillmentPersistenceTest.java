@@ -18,6 +18,7 @@ import org.springframework.web.client.RestTemplate;
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {
         "spring.cloud.nacos.discovery.enabled=false",
+        "mealflow.outbox.scheduler-enabled=false",
         "mealflow.services.order=http://order-test",
         "mealflow.services.queue=http://queue-test"
     }

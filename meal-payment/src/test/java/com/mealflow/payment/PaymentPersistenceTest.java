@@ -10,7 +10,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = "spring.cloud.nacos.discovery.enabled=false"
+    properties = {
+        "spring.cloud.nacos.discovery.enabled=false",
+        "mealflow.outbox.scheduler-enabled=false"
+    }
 )
 class PaymentPersistenceTest {
   @Autowired
