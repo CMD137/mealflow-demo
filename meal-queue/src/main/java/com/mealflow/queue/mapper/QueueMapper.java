@@ -160,6 +160,14 @@ public interface QueueMapper {
 
   @Update("""
       UPDATE capacity_token
+      SET status = #{toStatus}, release_reason = #{reason}, update_time = #{now}
+      WHERE id = #{id} AND status = #{fromStatus}
+      """)
+  int updateTokenStatusFromStatus(@Param("id") long id, @Param("fromStatus") String fromStatus,
+      @Param("toStatus") String toStatus, @Param("reason") String reason, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE capacity_token
       SET order_id = #{orderId}, update_time = #{now}
       WHERE id = #{id}
       """)
@@ -175,6 +183,18 @@ public interface QueueMapper {
 
   @Select("SELECT COUNT(*) FROM capacity_token WHERE merchant_id = #{merchantId} AND status = #{status}")
   int countHeldTokens(@Param("merchantId") long merchantId, @Param("status") String status);
+
+  @Select("""
+      SELECT merchant_id, COUNT(*) AS held_count
+      FROM capacity_token
+      WHERE status = #{status}
+      GROUP BY merchant_id
+      """)
+  @Results(id = "merchantHeldCountMap", value = {
+      @Result(column = "merchant_id", property = "merchantId"),
+      @Result(column = "held_count", property = "heldCount")
+  })
+  List<MerchantHeldCountRow> findHeldTokenCounts(String status);
 
   @Select("SELECT limit_value FROM merchant_queue_limit WHERE merchant_id = #{merchantId}")
   Integer findMerchantLimit(long merchantId);

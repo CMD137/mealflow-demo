@@ -17,7 +17,7 @@
 - `meal-order` 已新增服务私有 `order_consumer_record` 表和 MyBatis Mapper，可消费 `meal-payment` 发布的 `PaymentPaid` RocketMQ 事件，并按 `eventKey + consumerGroup` 幂等推进订单为待商户接单。
 - `meal-notify` 已新增 `consumer_record` MyBatis 持久化消费记录和 RocketMQ 领域事件消费者，默认订阅订单事件并按 `eventKey + consumerGroup` 去重落用户通知。
 - `meal-promotion` 秒杀领券已支持可配置资格校验模式；本地测试默认 MyBatis/MySQL 路径，Docker 环境使用 Redis Lua 原子扣减 `voucher:stock:{voucherId}` 并写入 `voucher:user:{voucherId}` 一人一券集合，Lua 成功后再落 MyBatis `voucher_claim` 和 `user_voucher` 事实记录，并提供定时/手动 Redis-MyBatis 领取资格对账补偿。
-- `meal-queue` 的票据、产能 token、商户产能配置已持久化；启动时可以从 MySQL 重建 WAITING 队列运行时索引，Docker 环境可使用 Redis ZSet 作为商户等待队列热索引，本地测试默认使用内存实现。
+- `meal-queue` 的票据、产能 token、商户产能配置已持久化；启动时可以从 MySQL 重建 WAITING 队列运行时索引和商户产能 inflight 派生计数，Docker 环境可使用 Redis ZSet 作为等待队列热索引、使用 `capacity:merchant:{merchantId}:inflight` 作为产能热计数，本地测试默认使用内存实现。
 - `docker-compose.yml` 已包含 Nacos、MySQL、Redis、RocketMQ、gateway 和所有业务服务；MySQL 使用 healthcheck，业务服务等待 MySQL healthy 后启动。
 - `scripts/e2e-smoke.ps1` 覆盖 gateway ping、种子商品检查、秒杀券领取、产能限流、第一单成单、第二单排队、支付成功事件异步消费、履约出餐、产能释放后排队 ticket 自动转单。
 - 当前验证通过：`mvn -q test`、`mvn -q -DskipTests compile`、`docker compose config`、`scripts/e2e-smoke.ps1`。
@@ -26,12 +26,12 @@
 
 - `auth-user`、`merchant`、`cart`、`notify` 已有最小业务接口，但尚未接真实认证、权限、员工体系、SSE/WebSocket 等完整能力。
 - Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order 的真实 MQ 消费已接入 consumer_record，notify 已开始落地 consumer_record 持久化。尚未完成所有消费者的 consumer_record 接入、消费重试和补偿扫描。
-- Redis waiting ZSet 已在 `meal-queue` 接入并保留 MySQL 事实源重建能力；券库存 Redis Lua 和基础领取资格对账补偿已在 `meal-promotion` 接入。更完整的失败重试/死信处理、产能派生计数等仍需继续补齐。
+- Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua 和基础领取资格对账补偿已在 `meal-promotion` 接入。更完整的失败重试/死信处理仍需继续补齐。
 - Prometheus/Grafana、压测脚本、故障注入脚本尚未完成。
 
 ## 下一阶段实施顺序
 
 1. 将 consumer_record 推广到后续真实 MQ 消费者，并补齐消费重试和补偿扫描。
-2. 补齐秒杀失败重试/死信处理和产能派生计数等剩余 Redis 能力。
+2. 补齐秒杀失败重试/死信处理等剩余 Redis/MQ 异常兜底能力。
 3. 增加压测脚本、故障注入脚本和可观测性配置。
 4. 将 `meal-app` 降级为仅用于本地演示的兼容模块，最终移除或改成 e2e demo client。

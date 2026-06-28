@@ -15,7 +15,9 @@ import com.mealflow.queue.api.QueueReadyTicket;
 import com.mealflow.queue.api.QueueTicketSnapshot;
 import com.mealflow.queue.api.QueueTicketView;
 import com.mealflow.queue.api.ReleaseCapacityResponse;
+import com.mealflow.queue.capacity.CapacityInflightCounter;
 import com.mealflow.queue.mapper.CapacityTokenRow;
+import com.mealflow.queue.mapper.MerchantHeldCountRow;
 import com.mealflow.queue.mapper.QueueMapper;
 import com.mealflow.queue.mapper.QueueTicketRow;
 import com.mealflow.queue.waiting.WaitingQueueStore;
@@ -27,8 +29,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class QueueService {
@@ -37,17 +43,23 @@ public class QueueService {
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
   private final WaitingQueueStore waitingQueueStore;
+  private final CapacityInflightCounter capacityInflightCounter;
   private final QueueMapper queueMapper;
   private final ObjectMapper objectMapper;
+  private final boolean capacityInflightReconcileEnabled;
 
-  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper, WaitingQueueStore waitingQueueStore) {
+  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper, WaitingQueueStore waitingQueueStore,
+      CapacityInflightCounter capacityInflightCounter,
+      @Value("${mealflow.queue.inflight-reconcile.enabled:false}") boolean capacityInflightReconcileEnabled) {
     this.queueMapper = queueMapper;
     this.objectMapper = objectMapper;
     this.waitingQueueStore = waitingQueueStore;
+    this.capacityInflightCounter = capacityInflightCounter;
+    this.capacityInflightReconcileEnabled = capacityInflightReconcileEnabled;
   }
 
   @PostConstruct
-  void rebuildWaitingQueues() {
+  void rebuildRuntimeIndexes() {
     idGenerator.ensureAtLeast("queueTicket", queueMapper.maxTicketId());
     idGenerator.ensureAtLeast("capacityToken", queueMapper.maxTokenId());
     waitingQueueStore.rebuild(queueMapper.findWaitingTickets(QueueTicketStatus.WAITING.name(), LocalDateTime.now())
@@ -55,6 +67,15 @@ public class QueueService {
         .map(ticket -> new WaitingTicketEntry(ticket.getMerchantId(), ticket.getId(), ticket.getTicketNo(),
             ticket.getScore()))
         .toList());
+    rebuildCapacityInflightCounter();
+  }
+
+  @Scheduled(initialDelayString = "${mealflow.queue.inflight-reconcile.initial-delay-ms:30000}",
+      fixedDelayString = "${mealflow.queue.inflight-reconcile.fixed-delay-ms:30000}")
+  void reconcileCapacityInflightCounter() {
+    if (capacityInflightReconcileEnabled) {
+      rebuildCapacityInflightCounter();
+    }
   }
 
   @Transactional
@@ -88,7 +109,9 @@ public class QueueService {
     if (token.status != CapacityTokenStatus.HELD) {
       return new ReleaseCapacityResponse(false, null);
     }
-    updateTokenStatus(capacityTokenId, CapacityTokenStatus.RELEASED, reason);
+    if (!releaseHeldToken(capacityTokenId, reason, token.merchantId)) {
+      return new ReleaseCapacityResponse(false, null);
+    }
 
     int scanned = 0;
     Optional<WaitingTicketEntry> maybeWaiting = waitingQueueStore.poll(token.merchantId);
@@ -218,11 +241,18 @@ public class QueueService {
     long id = idGenerator.next("capacityToken");
     queueMapper.insertToken(id, requestId, merchantId, ticketId, null, CapacityTokenStatus.HELD.name(), expireTime,
         null, LocalDateTime.now());
+    afterCommitOrNow(() -> capacityInflightCounter.increment(merchantId));
     return new CapacityToken(id, requestId, merchantId, ticketId, null, CapacityTokenStatus.HELD, expireTime, null);
   }
 
-  private void updateTokenStatus(long tokenId, CapacityTokenStatus status, String reason) {
-    queueMapper.updateTokenStatus(tokenId, status.name(), reason, LocalDateTime.now());
+  private boolean releaseHeldToken(long tokenId, String reason, long merchantId) {
+    int updated = queueMapper.updateTokenStatusFromStatus(tokenId, CapacityTokenStatus.HELD.name(),
+        CapacityTokenStatus.RELEASED.name(), reason, LocalDateTime.now());
+    if (updated == 0) {
+      return false;
+    }
+    afterCommitOrNow(() -> capacityInflightCounter.decrement(merchantId));
+    return true;
   }
 
   private void updateTicketStatus(long ticketId, QueueTicketStatus status, Long orderId, LocalDateTime readyTime,
@@ -254,7 +284,7 @@ public class QueueService {
   }
 
   private int heldCount(long merchantId) {
-    return queueMapper.countHeldTokens(merchantId, CapacityTokenStatus.HELD.name());
+    return capacityInflightCounter.count(merchantId);
   }
 
   private int limit(long merchantId) {
@@ -270,6 +300,28 @@ public class QueueService {
     return waitingQueueStore.rank(ticket.merchantId,
         new WaitingTicketEntry(ticket.merchantId, ticket.id, ticket.ticketNo, ticket.score),
         ticket.aheadCountSnapshot);
+  }
+
+  private void rebuildCapacityInflightCounter() {
+    Map<Long, Integer> heldCounts = new HashMap<>();
+    for (MerchantHeldCountRow row : queueMapper.findHeldTokenCounts(CapacityTokenStatus.HELD.name())) {
+      heldCounts.put(row.getMerchantId(), row.getHeldCount());
+    }
+    capacityInflightCounter.rebuild(heldCounts);
+  }
+
+  private void afterCommitOrNow(Runnable action) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()
+        && TransactionSynchronizationManager.isActualTransactionActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          action.run();
+        }
+      });
+      return;
+    }
+    action.run();
   }
 
   private QueueTicket mapTicket(QueueTicketRow row) {

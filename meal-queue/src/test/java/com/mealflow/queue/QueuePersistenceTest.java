@@ -44,6 +44,12 @@ class QueuePersistenceTest {
     assertThat(release.readyTicket()).isNotNull();
     assertThat(release.readyTicket().ticketId()).isEqualTo(second.ticketId());
     assertThat(queueService.getTicket(second.ticketId()).status()).isEqualTo("READY");
+    assertThat(queueService.metrics(10L)).containsEntry("held", 1);
+
+    ReleaseCapacityResponse duplicateRelease = queueService.releaseCapacity(first.capacityTokenId(), "TEST_RELEASE_AGAIN");
+
+    assertThat(duplicateRelease.released()).isFalse();
+    assertThat(queueService.metrics(10L)).containsEntry("held", 1);
   }
 
   @Test

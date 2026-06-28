@@ -205,6 +205,8 @@ services:
       QUEUE_DB_PASSWORD: mealflow
       QUEUE_DB_DRIVER: com.mysql.cj.jdbc.Driver
       QUEUE_WAITING_STORE: redis
+      QUEUE_INFLIGHT_COUNTER: redis
+      QUEUE_INFLIGHT_RECONCILE_ENABLED: "true"
       REDIS_HOST: redis
       REDIS_PORT: 6379
     volumes:

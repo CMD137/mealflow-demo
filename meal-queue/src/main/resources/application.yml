@@ -31,3 +31,8 @@ management:
 mealflow:
   queue:
     waiting-store: ${QUEUE_WAITING_STORE:local}
+    inflight-counter: ${QUEUE_INFLIGHT_COUNTER:local}
+    inflight-reconcile:
+      enabled: ${QUEUE_INFLIGHT_RECONCILE_ENABLED:false}
+      initial-delay-ms: ${QUEUE_INFLIGHT_RECONCILE_INITIAL_DELAY_MS:30000}
+      fixed-delay-ms: ${QUEUE_INFLIGHT_RECONCILE_FIXED_DELAY_MS:30000}
