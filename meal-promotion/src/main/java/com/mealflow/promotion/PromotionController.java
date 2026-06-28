@@ -70,4 +70,9 @@ public class PromotionController {
   public Result<List<VoucherLockView>> locks() {
     return Result.ok(promotionService.locks());
   }
+
+  @PostMapping("/internal/claims/reconcile")
+  public Result<Integer> reconcileClaims() {
+    return Result.ok(promotionService.reconcileRedisClaims());
+  }
 }

@@ -42,4 +42,16 @@ class PromotionPersistenceTest {
           assertThat(voucherLock.orderId()).isEqualTo(10001L);
         });
   }
+
+  @Test
+  void rejectsDuplicateVoucherClaimForSameUser() {
+    SeckillVoucherResponse first = promotionService.seckill(202L, 1000L, "promotion-test-duplicate-1");
+    SeckillVoucherResponse duplicate = promotionService.seckill(202L, 1000L, "promotion-test-duplicate-2");
+
+    assertThat(first.status()).isEqualTo("CLAIMED");
+    assertThat(duplicate.status()).isEqualTo("DUPLICATE");
+    assertThat(promotionService.wallet(202L))
+        .filteredOn(voucher -> voucher.voucherId() == 1000L)
+        .hasSize(1);
+  }
 }

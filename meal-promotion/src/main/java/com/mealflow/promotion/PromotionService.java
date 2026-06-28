@@ -17,9 +17,12 @@ import com.mealflow.promotion.mapper.UserVoucherRow;
 import com.mealflow.promotion.mapper.VoucherClaimRow;
 import com.mealflow.promotion.mapper.VoucherLockRow;
 import com.mealflow.promotion.mapper.VoucherRow;
+import com.mealflow.promotion.seckill.VoucherSeckillGuard;
+import com.mealflow.promotion.seckill.VoucherSeckillGuard.ClaimResult;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,9 +31,11 @@ public class PromotionService {
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
   private final PromotionMapper promotionMapper;
+  private final VoucherSeckillGuard seckillGuard;
 
-  public PromotionService(PromotionMapper promotionMapper) {
+  public PromotionService(PromotionMapper promotionMapper, VoucherSeckillGuard seckillGuard) {
     this.promotionMapper = promotionMapper;
+    this.seckillGuard = seckillGuard;
   }
 
   @PostConstruct
@@ -43,20 +48,29 @@ public class PromotionService {
   @Transactional
   public synchronized SeckillVoucherResponse seckill(long userId, long voucherId, String requestId) {
     return idempotentTemplate.execute("promotion:claim:" + userId + ":" + requestId, () -> {
-      requireVoucher(voucherId);
-      if (hasUserVoucher(userId, voucherId)) {
+      VoucherRow voucher = requireVoucher(voucherId);
+      ClaimResult claimResult = seckillGuard.tryClaim(userId, voucherId, voucher.getStock());
+      if (claimResult == ClaimResult.DUPLICATE) {
         long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.DUPLICATE);
         return new SeckillVoucherResponse(claimId, "DUPLICATE", null);
       }
-      int affected = promotionMapper.decrementStock(voucherId);
-      if (affected != 1) {
+      if (claimResult == ClaimResult.SOLD_OUT) {
         return new SeckillVoucherResponse(null, "SOLD_OUT", null);
       }
-      long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.CLAIMED);
-      long userVoucherId = idGenerator.next("userVoucher");
-      LocalDateTime now = LocalDateTime.now();
-      promotionMapper.insertUserVoucher(userVoucherId, userId, voucherId, UserVoucherStatus.AVAILABLE.name(), now);
-      return new SeckillVoucherResponse(claimId, "CLAIMED", userVoucherId);
+      try {
+        long userVoucherId = idGenerator.next("userVoucher");
+        LocalDateTime now = LocalDateTime.now();
+        promotionMapper.insertUserVoucher(userVoucherId, userId, voucherId, UserVoucherStatus.AVAILABLE.name(), now);
+        long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.CLAIMED);
+        return new SeckillVoucherResponse(claimId, "CLAIMED", userVoucherId);
+      } catch (DuplicateKeyException ex) {
+        seckillGuard.compensate(userId, voucherId);
+        long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.DUPLICATE);
+        return new SeckillVoucherResponse(claimId, "DUPLICATE", null);
+      } catch (RuntimeException ex) {
+        seckillGuard.compensate(userId, voucherId);
+        throw ex;
+      }
     });
   }
 
@@ -128,15 +142,37 @@ public class PromotionService {
     return promotionMapper.findLocks().stream().map(this::lockView).toList();
   }
 
+  @Transactional
+  public synchronized int reconcileRedisClaims() {
+    int repaired = 0;
+    for (VoucherRow voucher : promotionMapper.findVouchers()) {
+      repaired += reconcileRedisClaims(voucher.getId());
+    }
+    return repaired;
+  }
+
+  @Transactional
+  public synchronized int reconcileRedisClaims(long voucherId) {
+    requireVoucher(voucherId);
+    int repaired = 0;
+    for (Long userId : seckillGuard.claimedUsers(voucherId)) {
+      if (promotionMapper.countUserVoucher(userId, voucherId) > 0) {
+        continue;
+      }
+      long userVoucherId = idGenerator.next("userVoucher");
+      LocalDateTime now = LocalDateTime.now();
+      promotionMapper.insertUserVoucher(userVoucherId, userId, voucherId, UserVoucherStatus.AVAILABLE.name(), now);
+      insertClaim(userId, voucherId, VoucherClaimStatus.CLAIMED);
+      repaired++;
+    }
+    return repaired;
+  }
+
   private long insertClaim(long userId, long voucherId, VoucherClaimStatus status) {
     long claimId = idGenerator.next("voucherClaim");
     LocalDateTime now = LocalDateTime.now();
     promotionMapper.insertClaim(claimId, userId, voucherId, status.name(), now);
     return claimId;
-  }
-
-  private boolean hasUserVoucher(long userId, long voucherId) {
-    return promotionMapper.countUserVoucher(userId, voucherId) > 0;
   }
 
   private VoucherRow requireVoucher(long voucherId) {

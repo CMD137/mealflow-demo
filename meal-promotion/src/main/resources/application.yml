@@ -17,6 +17,10 @@ spring:
       discovery:
         server-addr: ${NACOS_ADDR:localhost:8848}
         enabled: ${NACOS_DISCOVERY_ENABLED:false}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 server:
   port: 8107
 management:
@@ -24,3 +28,10 @@ management:
     web:
       exposure:
         include: health,info
+mealflow:
+  promotion:
+    seckill-mode: ${PROMOTION_SECKILL_MODE:mysql}
+    reconcile:
+      enabled: ${PROMOTION_RECONCILE_ENABLED:false}
+      initial-delay-ms: ${PROMOTION_RECONCILE_INITIAL_DELAY_MS:15000}
+      fixed-delay-ms: ${PROMOTION_RECONCILE_FIXED_DELAY_MS:30000}

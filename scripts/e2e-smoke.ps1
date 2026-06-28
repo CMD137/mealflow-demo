@@ -81,6 +81,16 @@ Step "checking seeded catalog data"
 $skus = (Invoke-MealFlow -Method GET -Path "/catalog/merchants/10/skus").data
 Assert-True ($skus.Count -ge 2) "Expected seeded SKUs for merchant 10"
 
+Step "claiming seckill voucher through promotion service"
+$seckillUserId = 900000000000 + $stamp
+$seckill = (Invoke-MealFlow -Method POST -Path "/vouchers/1000/seckill" -Body @{
+  requestId = "e2e-seckill-$stamp"
+} -Headers @{ "X-User-Id" = "$seckillUserId" }).data
+Assert-True ($seckill.status -eq "CLAIMED") "Expected seckill voucher to be claimed"
+$wallet = (Invoke-MealFlow -Method GET -Path "/vouchers/wallet" -Headers @{ "X-User-Id" = "$seckillUserId" }).data
+$claimedVoucher = @($wallet | Where-Object { $_.voucherId -eq 1000 -and $_.status -eq "AVAILABLE" })
+Assert-True ($claimedVoucher.Count -ge 1) "Claimed voucher was not found in wallet"
+
 Step "forcing merchant 10 capacity to 1"
 for ($resetRound = 1; $resetRound -le 20; $resetRound++) {
   $tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens").data

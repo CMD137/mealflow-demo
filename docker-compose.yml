@@ -221,6 +221,8 @@ services:
         condition: service_started
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -228,6 +230,10 @@ services:
       PROMOTION_DB_USERNAME: root
       PROMOTION_DB_PASSWORD: mealflow
       PROMOTION_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      PROMOTION_SECKILL_MODE: redis
+      PROMOTION_RECONCILE_ENABLED: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     volumes:
       - ./meal-promotion/target/meal-promotion-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]

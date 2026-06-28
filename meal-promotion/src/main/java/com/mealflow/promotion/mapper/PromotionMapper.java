@@ -30,8 +30,15 @@ public interface PromotionMapper {
   })
   VoucherRow findVoucher(long id);
 
+  @Select("SELECT id, discount_cent, stock FROM voucher ORDER BY id")
+  @ResultMap("voucherMap")
+  List<VoucherRow> findVouchers();
+
   @Update("UPDATE voucher SET stock = stock - 1 WHERE id = #{id} AND stock > 0")
   int decrementStock(long id);
+
+  @Update("UPDATE voucher SET stock = stock + 1 WHERE id = #{id}")
+  int incrementStock(long id);
 
   @Select("SELECT COUNT(*) FROM user_voucher WHERE user_id = #{userId} AND voucher_id = #{voucherId}")
   int countUserVoucher(@Param("userId") long userId, @Param("voucherId") long voucherId);
