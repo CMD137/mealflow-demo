@@ -1,6 +1,7 @@
 package com.mealflow.notify.mapper;
 
 import com.mealflow.infra.consumer.PersistentConsumerRecordRepository;
+import com.mealflow.infra.consumer.PersistentConsumerRecordState;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.apache.ibatis.annotations.Insert;
@@ -16,6 +17,19 @@ import org.apache.ibatis.annotations.Update;
 public interface ConsumerRecordMapper extends PersistentConsumerRecordRepository {
   @Select("SELECT COALESCE(MAX(id), 10000) FROM consumer_record")
   long maxRecordId();
+
+  @Override
+  @Select("""
+      SELECT status, update_time
+      FROM consumer_record
+      WHERE event_key = #{eventKey} AND consumer_group = #{consumerGroup}
+      """)
+  @Results(id = "consumerRecordStateMap", value = {
+      @Result(column = "status", property = "status"),
+      @Result(column = "update_time", property = "updateTime")
+  })
+  PersistentConsumerRecordState findRecord(@Param("eventKey") String eventKey,
+      @Param("consumerGroup") String consumerGroup);
 
   @Override
   @Select("""
@@ -46,6 +60,16 @@ public interface ConsumerRecordMapper extends PersistentConsumerRecordRepository
       """)
   int markProcessing(@Param("eventKey") String eventKey, @Param("consumerGroup") String consumerGroup,
       @Param("now") LocalDateTime now);
+
+  @Override
+  @Update("""
+      UPDATE consumer_record
+      SET status = 'TIMEOUT', last_error = 'PROCESSING_TIMEOUT', update_time = #{now}
+      WHERE event_key = #{eventKey} AND consumer_group = #{consumerGroup}
+        AND status = 'PROCESSING' AND update_time < #{before}
+      """)
+  int markTimeoutBefore(@Param("eventKey") String eventKey, @Param("consumerGroup") String consumerGroup,
+      @Param("before") LocalDateTime before, @Param("now") LocalDateTime now);
 
   @Override
   @Update("""

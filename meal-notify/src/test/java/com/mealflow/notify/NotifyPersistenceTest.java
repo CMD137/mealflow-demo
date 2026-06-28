@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.mealflow.notify.api.MessageView;
 import com.mealflow.notify.api.PushMessageRequest;
+import com.mealflow.notify.mapper.ConsumerRecordMapper;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +17,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 class NotifyPersistenceTest {
   @Autowired
   private NotifyService notifyService;
+
+  @Autowired
+  private ConsumerRecordMapper consumerRecordMapper;
 
   @Test
   void pushesAndListsMessagesInDatabase() {
@@ -62,5 +67,22 @@ class NotifyPersistenceTest {
     assertThat(notifyService.list(103L))
         .singleElement()
         .satisfies(stored -> assertThat(stored.content()).isEqualTo("订单 10002 已支付，等待商户接单"));
+  }
+
+  @Test
+  void retriesTimedOutProcessingConsumerRecord() {
+    String eventKey = "order:OrderMealReady:10003:1";
+    String consumerGroup = "notify-message-timeout";
+    consumerRecordMapper.insertProcessing(consumerRecordMapper.maxRecordId() + 100, eventKey, consumerGroup,
+        LocalDateTime.now().minusMinutes(10));
+
+    MessageView retried = notifyService.pushOnce(eventKey, consumerGroup,
+        new PushMessageRequest(104L, "ORDER", "meal ready after retry"));
+
+    assertThat(retried).isNotNull();
+    assertThat(notifyService.list(104L))
+        .singleElement()
+        .satisfies(stored -> assertThat(stored.content()).isEqualTo("meal ready after retry"));
+    assertThat(consumerRecordMapper.findByEvent(eventKey, consumerGroup).getStatus()).isEqualTo("SUCCESS");
   }
 }

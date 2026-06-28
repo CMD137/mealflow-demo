@@ -2,15 +2,24 @@ package com.mealflow.infra.consumer;
 
 import com.mealflow.common.status.ConsumerRecordStatus;
 import com.mealflow.infra.id.IdGenerator;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.function.Supplier;
 
 public class PersistentConsumerRecordTemplate {
+  private static final Duration DEFAULT_PROCESSING_TIMEOUT = Duration.ofMinutes(5);
+
   private final IdGenerator idGenerator = new IdGenerator();
   private final PersistentConsumerRecordRepository repository;
+  private final Duration processingTimeout;
 
   public PersistentConsumerRecordTemplate(PersistentConsumerRecordRepository repository) {
+    this(repository, DEFAULT_PROCESSING_TIMEOUT);
+  }
+
+  public PersistentConsumerRecordTemplate(PersistentConsumerRecordRepository repository, Duration processingTimeout) {
     this.repository = repository;
+    this.processingTimeout = processingTimeout;
   }
 
   public void ensureIdAtLeast(long value) {
@@ -18,16 +27,26 @@ public class PersistentConsumerRecordTemplate {
   }
 
   public <T> T consumeOnce(String eventKey, String consumerGroup, Supplier<T> supplier) {
-    String status = repository.findStatus(eventKey, consumerGroup);
-    if (ConsumerRecordStatus.SUCCESS.name().equals(status)
-        || ConsumerRecordStatus.PROCESSING.name().equals(status)) {
+    PersistentConsumerRecordState record = repository.findRecord(eventKey, consumerGroup);
+    LocalDateTime now = LocalDateTime.now();
+    if (record != null && ConsumerRecordStatus.SUCCESS.name().equals(record.getStatus())) {
       return null;
     }
-    LocalDateTime now = LocalDateTime.now();
-    if (status == null) {
+    if (record != null && ConsumerRecordStatus.PROCESSING.name().equals(record.getStatus())) {
+      LocalDateTime timeoutBefore = now.minus(processingTimeout);
+      if (record.getUpdateTime() == null || !record.getUpdateTime().isBefore(timeoutBefore)) {
+        return null;
+      }
+      int timedOut = repository.markTimeoutBefore(eventKey, consumerGroup, timeoutBefore, now);
+      if (timedOut == 0) {
+        return null;
+      }
+      record.setStatus(ConsumerRecordStatus.TIMEOUT.name());
+    }
+    if (record == null) {
       repository.insertProcessing(idGenerator.next("consumerRecord"), eventKey, consumerGroup, now);
-    } else {
-      repository.markProcessing(eventKey, consumerGroup, now);
+    } else if (repository.markProcessing(eventKey, consumerGroup, now) == 0) {
+      return null;
     }
 
     try {

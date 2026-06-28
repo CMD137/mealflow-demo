@@ -25,7 +25,7 @@
 ## 当前尚未完成
 
 - `auth-user`、`merchant`、`cart`、`notify` 已有最小业务接口，但尚未接真实认证、权限、员工体系、SSE/WebSocket 等完整能力。
-- Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order 的真实 MQ 消费已接入 consumer_record，notify 已开始落地 consumer_record 持久化。尚未完成所有消费者的 consumer_record 接入、消费重试和补偿扫描。
+- Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order 的真实 MQ 消费已接入 consumer_record，notify 已开始落地 consumer_record 持久化，持久化消费模板已支持 PROCESSING 超时抢占重试。尚未完成所有消费者的 consumer_record 接入、死信处理和补偿扫描。
 - Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua 和基础领取资格对账补偿已在 `meal-promotion` 接入。更完整的失败重试/死信处理仍需继续补齐。
 - Prometheus/Grafana、压测脚本、故障注入脚本尚未完成。
 
