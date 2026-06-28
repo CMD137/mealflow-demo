@@ -6,6 +6,9 @@ spring:
     username: ${AUTH_USER_DB_USERNAME:sa}
     password: ${AUTH_USER_DB_PASSWORD:}
     driver-class-name: ${AUTH_USER_DB_DRIVER:org.h2.Driver}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:4}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
   sql:
     init:
       mode: always

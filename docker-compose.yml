@@ -300,6 +300,8 @@ services:
         condition: service_started
       mysql:
         condition: service_healthy
+      rocketmq-broker:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -307,6 +309,10 @@ services:
       NOTIFY_DB_USERNAME: root
       NOTIFY_DB_PASSWORD: mealflow
       NOTIFY_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
+      NOTIFY_EVENT_CONSUMER_ENABLED: "true"
+      NOTIFY_EVENT_CONSUMER_GROUP: mealflow-notify-domain-consumer
+      NOTIFY_EVENT_TOPICS: mealflow-order-events
     volumes:
       - ./meal-notify/target/meal-notify-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]

@@ -6,6 +6,9 @@ spring:
     username: ${NOTIFY_DB_USERNAME:sa}
     password: ${NOTIFY_DB_PASSWORD:}
     driver-class-name: ${NOTIFY_DB_DRIVER:org.h2.Driver}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:4}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
   sql:
     init:
       mode: always
@@ -21,3 +24,11 @@ management:
     web:
       exposure:
         include: health,info
+rocketmq:
+  name-server: ${ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+mealflow:
+  mq:
+    notify-consumer:
+      enabled: ${NOTIFY_EVENT_CONSUMER_ENABLED:false}
+      group: ${NOTIFY_EVENT_CONSUMER_GROUP:mealflow-notify-domain-consumer}
+      topics: ${NOTIFY_EVENT_TOPICS:mealflow-order-events}

@@ -47,4 +47,20 @@ class NotifyPersistenceTest {
           assertThat(record.status()).isEqualTo("SUCCESS");
         });
   }
+
+  @Test
+  void consumesDomainEventAsNotificationOnlyOnce() {
+    String payload = "{\"orderId\":10002,\"userId\":103,\"status\":\"WAIT_MERCHANT_ACCEPT\"}";
+
+    MessageView created = notifyService.pushFromDomainEvent("order:OrderPaid:10002:1",
+        "mealflow-notify-domain-consumer", "OrderPaid", payload);
+    MessageView duplicate = notifyService.pushFromDomainEvent("order:OrderPaid:10002:1",
+        "mealflow-notify-domain-consumer", "OrderPaid", payload);
+
+    assertThat(created).isNotNull();
+    assertThat(duplicate).isNull();
+    assertThat(notifyService.list(103L))
+        .singleElement()
+        .satisfies(stored -> assertThat(stored.content()).isEqualTo("订单 10002 已支付，等待商户接单"));
+  }
 }
