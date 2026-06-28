@@ -11,6 +11,9 @@ import org.apache.ibatis.annotations.Select;
 
 @Mapper
 public interface NotifyMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM notify_message")
+  long maxMessageId();
+
   @Insert("""
       INSERT INTO notify_message (id, user_id, biz_type, content, create_time)
       VALUES (#{id}, #{userId}, #{bizType}, #{content}, #{createTime})

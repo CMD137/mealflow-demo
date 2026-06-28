@@ -12,6 +12,9 @@ import org.apache.ibatis.annotations.Select;
 
 @Mapper
 public interface AuthUserMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM user_account")
+  long maxUserId();
+
   @Select("SELECT id, phone, nickname, status FROM user_account WHERE id = #{id}")
   @Results(id = "userMap", value = {
       @Result(column = "id", property = "id"),

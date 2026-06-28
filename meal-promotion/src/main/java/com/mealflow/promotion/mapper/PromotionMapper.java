@@ -13,6 +13,15 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface PromotionMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM user_voucher")
+  long maxUserVoucherId();
+
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM voucher_lock")
+  long maxVoucherLockId();
+
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM voucher_claim")
+  long maxVoucherClaimId();
+
   @Select("SELECT id, discount_cent, stock FROM voucher WHERE id = #{id}")
   @Results(id = "voucherMap", value = {
       @Result(column = "id", property = "id"),

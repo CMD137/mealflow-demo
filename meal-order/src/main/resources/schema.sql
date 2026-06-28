@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS customer_order (
   INDEX idx_customer_order_queue_ticket_id (queue_ticket_id)
 );
 
-CREATE TABLE IF NOT EXISTS local_event (
+CREATE TABLE IF NOT EXISTS order_local_event (
   id BIGINT PRIMARY KEY,
   event_key VARCHAR(256) NOT NULL,
   event_type VARCHAR(128) NOT NULL,

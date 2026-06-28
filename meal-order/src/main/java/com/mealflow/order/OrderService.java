@@ -25,6 +25,7 @@ import com.mealflow.order.mapper.LocalEventRow;
 import com.mealflow.order.mapper.OrderMapper;
 import com.mealflow.order.mapper.OrderRow;
 import com.mealflow.order.outbox.OutboxEventPublisher;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,6 +63,12 @@ public class OrderService {
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
+  }
+
+  @PostConstruct
+  void initializeIdGenerator() {
+    idGenerator.ensureAtLeast("order", orderMapper.maxOrderId());
+    idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
   }
 
   @Transactional

@@ -14,6 +14,7 @@ import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.StockReservationStatus;
 import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +30,11 @@ public class CatalogService {
 
   public CatalogService(CatalogMapper catalogMapper) {
     this.catalogMapper = catalogMapper;
+  }
+
+  @PostConstruct
+  void initializeIdGenerator() {
+    idGenerator.ensureAtLeast("stockReservation", catalogMapper.maxReservationId());
   }
 
   public List<SkuView> listByMerchant(long merchantId) {

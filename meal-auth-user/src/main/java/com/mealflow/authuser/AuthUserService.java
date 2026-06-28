@@ -10,6 +10,7 @@ import com.mealflow.authuser.mapper.UserAddressRow;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.infra.id.IdGenerator;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,11 @@ public class AuthUserService {
 
   public AuthUserService(AuthUserMapper authUserMapper) {
     this.authUserMapper = authUserMapper;
+  }
+
+  @PostConstruct
+  void initializeIdGenerator() {
+    idGenerator.ensureAtLeast("userAccount", authUserMapper.maxUserId());
   }
 
   @Transactional

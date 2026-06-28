@@ -3,9 +3,11 @@ package com.mealflow.fulfillment.outbox;
 import com.mealflow.fulfillment.api.LocalEventView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnProperty(prefix = "mealflow.outbox", name = "publisher", havingValue = "log", matchIfMissing = true)
 public class LoggingOutboxEventPublisher implements OutboxEventPublisher {
   private static final Logger log = LoggerFactory.getLogger(LoggingOutboxEventPublisher.class);
 

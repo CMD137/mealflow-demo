@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS fulfillment_operation_log (
   INDEX idx_fulfillment_request_id (request_id)
 );
 
-CREATE TABLE IF NOT EXISTS local_event (
+CREATE TABLE IF NOT EXISTS fulfillment_local_event (
   id BIGINT PRIMARY KEY,
   event_key VARCHAR(256) NOT NULL,
   event_type VARCHAR(128) NOT NULL,

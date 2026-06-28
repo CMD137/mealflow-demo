@@ -14,6 +14,9 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface CartMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM cart_item")
+  long maxCartItemId();
+
   @Select("SELECT id, user_id, merchant_id, sku_id, quantity, selected FROM cart_item WHERE user_id = #{userId} AND sku_id = #{skuId}")
   @Results(id = "cartItemMap", value = {
       @Result(column = "id", property = "id"),

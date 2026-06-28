@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS payment_order (
   INDEX idx_payment_order_status (status)
 );
 
-CREATE TABLE IF NOT EXISTS local_event (
+CREATE TABLE IF NOT EXISTS payment_local_event (
   id BIGINT PRIMARY KEY,
   event_key VARCHAR(256) NOT NULL,
   event_type VARCHAR(128) NOT NULL,

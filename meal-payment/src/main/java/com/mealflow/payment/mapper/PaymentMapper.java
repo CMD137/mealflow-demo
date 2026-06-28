@@ -13,6 +13,9 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface PaymentMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM payment_order")
+  long maxPaymentOrderId();
+
   @Insert("""
       INSERT INTO payment_order (id, order_id, amount_cent, status, create_time, update_time)
       VALUES (#{id}, #{orderId}, #{amountCent}, #{status}, #{now}, #{now})

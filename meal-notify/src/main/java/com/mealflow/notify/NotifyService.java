@@ -9,6 +9,7 @@ import com.mealflow.notify.mapper.ConsumerRecordMapper;
 import com.mealflow.notify.mapper.ConsumerRecordRow;
 import com.mealflow.notify.mapper.NotifyMapper;
 import com.mealflow.notify.mapper.NotifyMessageRow;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,12 @@ public class NotifyService {
     this.notifyMapper = notifyMapper;
     this.consumerRecordMapper = consumerRecordMapper;
     this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper);
+  }
+
+  @PostConstruct
+  void initializeIdGenerator() {
+    idGenerator.ensureAtLeast("notifyMessage", notifyMapper.maxMessageId());
+    consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
   }
 
   @Transactional

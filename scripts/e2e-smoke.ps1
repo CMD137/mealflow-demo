@@ -82,12 +82,23 @@ $skus = (Invoke-MealFlow -Method GET -Path "/catalog/merchants/10/skus").data
 Assert-True ($skus.Count -ge 2) "Expected seeded SKUs for merchant 10"
 
 Step "forcing merchant 10 capacity to 1"
+for ($resetRound = 1; $resetRound -le 20; $resetRound++) {
+  $tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens").data
+  $heldTokens = @($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" })
+  if ($heldTokens.Count -eq 0) {
+    break
+  }
+  $heldTokens | ForEach-Object {
+    Invoke-MealFlow -Method POST -Path "/queue/internal/capacity/$($_.capacityTokenId)/release" -Body @{
+      requestId = "e2e-reset-$stamp-$resetRound-$($_.capacityTokenId)"
+      reason = "E2E_RESET"
+    } | Out-Null
+  }
+}
 $tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens").data
-@($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" }) | ForEach-Object {
-  Invoke-MealFlow -Method POST -Path "/queue/internal/capacity/$($_.capacityTokenId)/release" -Body @{
-    requestId = "e2e-reset-$stamp-$($_.capacityTokenId)"
-    reason = "E2E_RESET"
-  } | Out-Null
+$heldTokens = @($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" })
+if ($heldTokens.Count -gt 0) {
+  throw "Unable to reset merchant 10 held capacity tokens"
 }
 Invoke-MealFlow -Method POST -Path "/queue/merchants/10/limit" -Body @{ limit = 1 } | Out-Null
 $metrics = (Invoke-MealFlow -Method GET -Path "/queue/merchants/10/metrics").data

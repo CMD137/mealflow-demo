@@ -14,6 +14,9 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface ConsumerRecordMapper extends PersistentConsumerRecordRepository {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM consumer_record")
+  long maxRecordId();
+
   @Override
   @Select("""
       SELECT status

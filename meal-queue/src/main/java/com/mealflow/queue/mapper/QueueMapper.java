@@ -13,6 +13,12 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface QueueMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM queue_ticket")
+  long maxTicketId();
+
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM capacity_token")
+  long maxTokenId();
+
   @Select("""
       SELECT id, ticket_no, merchant_id, score
       FROM queue_ticket

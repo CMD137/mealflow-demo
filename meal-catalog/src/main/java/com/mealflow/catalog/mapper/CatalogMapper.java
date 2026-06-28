@@ -13,6 +13,9 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface CatalogMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM stock_reservation")
+  long maxReservationId();
+
   @Select("SELECT id, merchant_id, name, price_cent, stock FROM sku WHERE merchant_id = #{merchantId} ORDER BY id")
   @Results(id = "skuMap", value = {
       @Result(column = "id", property = "id"),

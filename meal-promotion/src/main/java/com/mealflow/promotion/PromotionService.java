@@ -17,6 +17,7 @@ import com.mealflow.promotion.mapper.UserVoucherRow;
 import com.mealflow.promotion.mapper.VoucherClaimRow;
 import com.mealflow.promotion.mapper.VoucherLockRow;
 import com.mealflow.promotion.mapper.VoucherRow;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,13 @@ public class PromotionService {
 
   public PromotionService(PromotionMapper promotionMapper) {
     this.promotionMapper = promotionMapper;
+  }
+
+  @PostConstruct
+  void initializeIdGenerator() {
+    idGenerator.ensureAtLeast("userVoucher", promotionMapper.maxUserVoucherId());
+    idGenerator.ensureAtLeast("voucherLock", promotionMapper.maxVoucherLockId());
+    idGenerator.ensureAtLeast("voucherClaim", promotionMapper.maxVoucherClaimId());
   }
 
   @Transactional

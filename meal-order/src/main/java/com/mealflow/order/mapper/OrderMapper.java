@@ -18,6 +18,9 @@ public interface OrderMapper {
       reservation_ids_json, voucher_lock_id, items_json, amount_cent
       """;
 
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM customer_order")
+  long maxOrderId();
+
   @Insert("""
       INSERT INTO customer_order (
         id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,

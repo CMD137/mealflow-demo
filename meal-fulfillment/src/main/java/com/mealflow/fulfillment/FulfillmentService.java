@@ -15,6 +15,7 @@ import com.mealflow.fulfillment.mapper.LocalEventRow;
 import com.mealflow.fulfillment.outbox.OutboxEventPublisher;
 import com.mealflow.infra.event.EventKey;
 import com.mealflow.infra.id.IdGenerator;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +45,12 @@ public class FulfillmentService {
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
+  }
+
+  @PostConstruct
+  void initializeIdGenerator() {
+    idGenerator.ensureAtLeast("fulfillmentOperation", fulfillmentMapper.maxOperationId());
+    idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
   }
 
   @Transactional

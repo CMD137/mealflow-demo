@@ -161,6 +161,8 @@ services:
         condition: service_started
       meal-payment:
         condition: service_started
+      rocketmq-broker:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -172,6 +174,10 @@ services:
       MEAL_PROMOTION_URI: http://meal-promotion:8107
       MEAL_QUEUE_URI: http://meal-queue:8106
       MEAL_PAYMENT_URI: http://meal-payment:8108
+      OUTBOX_PUBLISHER: rocketmq
+      OUTBOX_TOPIC: mealflow-order-events
+      ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
+      ROCKETMQ_PRODUCER_GROUP: mealflow-order-producer
     volumes:
       - ./meal-order/target/meal-order-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -233,6 +239,8 @@ services:
         condition: service_started
       mysql:
         condition: service_healthy
+      rocketmq-broker:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -240,6 +248,10 @@ services:
       PAYMENT_DB_USERNAME: root
       PAYMENT_DB_PASSWORD: mealflow
       PAYMENT_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      OUTBOX_PUBLISHER: rocketmq
+      OUTBOX_TOPIC: mealflow-payment-events
+      ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
+      ROCKETMQ_PRODUCER_GROUP: mealflow-payment-producer
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -256,6 +268,8 @@ services:
         condition: service_started
       meal-queue:
         condition: service_started
+      rocketmq-broker:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -265,6 +279,10 @@ services:
       FULFILLMENT_DB_DRIVER: com.mysql.cj.jdbc.Driver
       MEAL_ORDER_URI: http://meal-order:8105
       MEAL_QUEUE_URI: http://meal-queue:8106
+      OUTBOX_PUBLISHER: rocketmq
+      OUTBOX_TOPIC: mealflow-fulfillment-events
+      ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
+      ROCKETMQ_PRODUCER_GROUP: mealflow-fulfillment-producer
     volumes:
       - ./meal-fulfillment/target/meal-fulfillment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]

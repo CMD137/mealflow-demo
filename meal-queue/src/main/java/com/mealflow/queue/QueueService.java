@@ -48,6 +48,8 @@ public class QueueService {
 
   @PostConstruct
   void rebuildWaitingQueues() {
+    idGenerator.ensureAtLeast("queueTicket", queueMapper.maxTicketId());
+    idGenerator.ensureAtLeast("capacityToken", queueMapper.maxTokenId());
     waitingQueueStore.rebuild(queueMapper.findWaitingTickets(QueueTicketStatus.WAITING.name(), LocalDateTime.now())
         .stream()
         .map(ticket -> new WaitingTicketEntry(ticket.getMerchantId(), ticket.getId(), ticket.getTicketNo(),

@@ -17,6 +17,7 @@ import com.mealflow.payment.mapper.LocalEventRow;
 import com.mealflow.payment.mapper.PaymentMapper;
 import com.mealflow.payment.mapper.PaymentOrderRow;
 import com.mealflow.payment.outbox.OutboxEventPublisher;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,12 @@ public class PaymentService {
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
+  }
+
+  @PostConstruct
+  void initializeIdGenerator() {
+    idGenerator.ensureAtLeast("paymentOrder", paymentMapper.maxPaymentOrderId());
+    idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
   }
 
   @Transactional

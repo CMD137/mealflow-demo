@@ -7,6 +7,7 @@ import com.mealflow.cart.mapper.CartMapper;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.infra.id.IdGenerator;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,11 @@ public class CartService {
 
   public CartService(CartMapper cartMapper) {
     this.cartMapper = cartMapper;
+  }
+
+  @PostConstruct
+  void initializeIdGenerator() {
+    idGenerator.ensureAtLeast("cartItem", cartMapper.maxCartItemId());
   }
 
   @Transactional

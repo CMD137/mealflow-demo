@@ -13,8 +13,11 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface LocalEventMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM order_local_event")
+  long maxEventId();
+
   @Insert("""
-      INSERT INTO local_event (
+      INSERT INTO order_local_event (
         id, event_key, event_type, event_version, aggregate_type, aggregate_id,
         payload_json, status, retry_count, last_error, create_time, update_time
       )
@@ -32,7 +35,7 @@ public interface LocalEventMapper {
   @Select("""
       SELECT id, event_key, event_type, event_version, aggregate_type, aggregate_id,
              payload_json, status, retry_count, last_error, create_time, update_time
-      FROM local_event
+      FROM order_local_event
       ORDER BY id
       """)
   @Results(id = "localEventMap", value = {
@@ -54,7 +57,7 @@ public interface LocalEventMapper {
   @Select("""
       SELECT id, event_key, event_type, event_version, aggregate_type, aggregate_id,
              payload_json, status, retry_count, last_error, create_time, update_time
-      FROM local_event
+      FROM order_local_event
       WHERE status IN ('NEW', 'FAILED')
       ORDER BY id
       LIMIT #{limit}
@@ -65,28 +68,28 @@ public interface LocalEventMapper {
   @Select("""
       SELECT id, event_key, event_type, event_version, aggregate_type, aggregate_id,
              payload_json, status, retry_count, last_error, create_time, update_time
-      FROM local_event
+      FROM order_local_event
       WHERE event_key = #{eventKey}
       """)
   @ResultMap("localEventMap")
   LocalEventRow findByEventKey(String eventKey);
 
   @Update("""
-      UPDATE local_event
+      UPDATE order_local_event
       SET status = 'SENDING', retry_count = retry_count + 1, update_time = #{now}
       WHERE id = #{id} AND status IN ('NEW', 'FAILED')
       """)
   int markSending(@Param("id") long id, @Param("now") LocalDateTime now);
 
   @Update("""
-      UPDATE local_event
+      UPDATE order_local_event
       SET status = 'SENT', last_error = NULL, update_time = #{now}
       WHERE id = #{id} AND status = 'SENDING'
       """)
   int markSent(@Param("id") long id, @Param("now") LocalDateTime now);
 
   @Update("""
-      UPDATE local_event
+      UPDATE order_local_event
       SET status = 'FAILED', last_error = #{lastError}, update_time = #{now}
       WHERE id = #{id} AND status = 'SENDING'
       """)

@@ -13,6 +13,10 @@ public class PersistentConsumerRecordTemplate {
     this.repository = repository;
   }
 
+  public void ensureIdAtLeast(long value) {
+    idGenerator.ensureAtLeast("consumerRecord", value);
+  }
+
   public <T> T consumeOnce(String eventKey, String consumerGroup, Supplier<T> supplier) {
     String status = repository.findStatus(eventKey, consumerGroup);
     if (ConsumerRecordStatus.SUCCESS.name().equals(status)

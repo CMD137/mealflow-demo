@@ -11,6 +11,9 @@ import org.apache.ibatis.annotations.Select;
 
 @Mapper
 public interface FulfillmentMapper {
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM fulfillment_operation_log")
+  long maxOperationId();
+
   @Insert("""
       INSERT INTO fulfillment_operation_log (
         id, request_id, order_id, action, status, message, create_time
