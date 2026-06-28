@@ -13,10 +13,16 @@ public class RocketMqConsumerClient implements AutoCloseable {
   private final String nameServerAddress;
   private final Collection<String> topics;
   private final Consumer<RocketMqEventMessage> messageConsumer;
+  private final int maxReconsumeTimes;
   private DefaultMQPushConsumer consumer;
 
   public RocketMqConsumerClient(String consumerGroup, String nameServerAddress, Collection<String> topics,
       Consumer<RocketMqEventMessage> messageConsumer) {
+    this(consumerGroup, nameServerAddress, topics, messageConsumer, 16);
+  }
+
+  public RocketMqConsumerClient(String consumerGroup, String nameServerAddress, Collection<String> topics,
+      Consumer<RocketMqEventMessage> messageConsumer, int maxReconsumeTimes) {
     this.consumerGroup = requireText(consumerGroup, "consumerGroup");
     this.nameServerAddress = requireText(nameServerAddress, "nameServerAddress");
     this.topics = topics.stream().map(String::trim).filter(topic -> !topic.isBlank()).toList();
@@ -24,6 +30,7 @@ public class RocketMqConsumerClient implements AutoCloseable {
       throw new IllegalArgumentException("topics must not be empty");
     }
     this.messageConsumer = messageConsumer;
+    this.maxReconsumeTimes = Math.max(1, maxReconsumeTimes);
   }
 
   public synchronized void start() {
@@ -33,6 +40,7 @@ public class RocketMqConsumerClient implements AutoCloseable {
     try {
       DefaultMQPushConsumer currentConsumer = new DefaultMQPushConsumer(consumerGroup);
       currentConsumer.setNamesrvAddr(nameServerAddress);
+      currentConsumer.setMaxReconsumeTimes(maxReconsumeTimes);
       for (String topic : topics) {
         currentConsumer.subscribe(topic, "*");
       }

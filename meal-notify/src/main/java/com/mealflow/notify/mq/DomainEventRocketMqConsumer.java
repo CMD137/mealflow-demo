@@ -22,11 +22,12 @@ public class DomainEventRocketMqConsumer {
       @Value("${rocketmq.name-server}") String nameServerAddress,
       @Value("${mealflow.mq.notify-consumer.group:mealflow-notify-domain-consumer}") String consumerGroup,
       @Value("${mealflow.mq.notify-consumer.topics:mealflow-order-events}")
-      String topics) {
+      String topics,
+      @Value("${mealflow.mq.notify-consumer.max-reconsume-times:16}") int maxReconsumeTimes) {
     this.notifyService = notifyService;
     this.consumerGroup = consumerGroup;
     this.client = new RocketMqConsumerClient(consumerGroup, nameServerAddress, Arrays.asList(topics.split(",")),
-        this::consume);
+        this::consume, maxReconsumeTimes);
   }
 
   @PostConstruct

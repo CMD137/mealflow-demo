@@ -23,11 +23,12 @@ public class PaymentEventRocketMqConsumer {
       OrderService orderService,
       @Value("${rocketmq.name-server}") String nameServerAddress,
       @Value("${mealflow.mq.payment-consumer.group:mealflow-order-payment-consumer}") String consumerGroup,
-      @Value("${mealflow.mq.payment-consumer.topics:mealflow-payment-events}") String topics) {
+      @Value("${mealflow.mq.payment-consumer.topics:mealflow-payment-events}") String topics,
+      @Value("${mealflow.mq.payment-consumer.max-reconsume-times:16}") int maxReconsumeTimes) {
     this.orderService = orderService;
     this.consumerGroup = consumerGroup;
     this.client = new RocketMqConsumerClient(consumerGroup, nameServerAddress, Arrays.asList(topics.split(",")),
-        this::consume);
+        this::consume, maxReconsumeTimes);
   }
 
   @PostConstruct

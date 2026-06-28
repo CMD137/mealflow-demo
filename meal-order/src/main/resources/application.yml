@@ -40,6 +40,7 @@ mealflow:
       enabled: ${PAYMENT_EVENT_CONSUMER_ENABLED:false}
       group: ${PAYMENT_EVENT_CONSUMER_GROUP:mealflow-order-payment-consumer}
       topics: ${PAYMENT_EVENT_TOPICS:mealflow-payment-events}
+      max-reconsume-times: ${PAYMENT_EVENT_MAX_RECONSUME_TIMES:16}
   services:
     catalog: ${MEAL_CATALOG_URI:http://localhost:8103}
     promotion: ${MEAL_PROMOTION_URI:http://localhost:8107}

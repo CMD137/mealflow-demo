@@ -181,6 +181,7 @@ services:
       PAYMENT_EVENT_CONSUMER_ENABLED: "true"
       PAYMENT_EVENT_CONSUMER_GROUP: mealflow-order-payment-consumer
       PAYMENT_EVENT_TOPICS: mealflow-payment-events
+      PAYMENT_EVENT_MAX_RECONSUME_TIMES: 5
     volumes:
       - ./meal-order/target/meal-order-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -321,6 +322,7 @@ services:
       NOTIFY_EVENT_CONSUMER_ENABLED: "true"
       NOTIFY_EVENT_CONSUMER_GROUP: mealflow-notify-domain-consumer
       NOTIFY_EVENT_TOPICS: mealflow-order-events
+      NOTIFY_EVENT_MAX_RECONSUME_TIMES: 5
     volumes:
       - ./meal-notify/target/meal-notify-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]

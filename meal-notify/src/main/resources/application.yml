@@ -32,3 +32,4 @@ mealflow:
       enabled: ${NOTIFY_EVENT_CONSUMER_ENABLED:false}
       group: ${NOTIFY_EVENT_CONSUMER_GROUP:mealflow-notify-domain-consumer}
       topics: ${NOTIFY_EVENT_TOPICS:mealflow-order-events}
+      max-reconsume-times: ${NOTIFY_EVENT_MAX_RECONSUME_TIMES:16}
