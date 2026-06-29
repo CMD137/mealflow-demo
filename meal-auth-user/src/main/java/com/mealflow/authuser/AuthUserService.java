@@ -3,21 +3,29 @@ package com.mealflow.authuser;
 import com.mealflow.authuser.api.AddressView;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
+import com.mealflow.authuser.api.TokenPrincipalView;
 import com.mealflow.authuser.api.UserView;
 import com.mealflow.authuser.mapper.AuthUserMapper;
+import com.mealflow.authuser.mapper.AuthTokenRow;
+import com.mealflow.authuser.mapper.MerchantEmployeeRow;
 import com.mealflow.authuser.mapper.UserAccountRow;
 import com.mealflow.authuser.mapper.UserAddressRow;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.infra.id.IdGenerator;
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthUserService {
+  private static final String CUSTOMER_ROLE = "CUSTOMER";
+  private static final Duration TOKEN_TTL = Duration.ofDays(7);
+
   private final IdGenerator idGenerator = new IdGenerator();
   private final AuthUserMapper authUserMapper;
 
@@ -38,7 +46,25 @@ public class AuthUserService {
       authUserMapper.insertUser(id, request.phone(), "New User " + id, "NORMAL", LocalDateTime.now());
       user = authUserMapper.findUser(id);
     }
-    return new LoginResponse(user.getId(), "demo-token-" + user.getId(), user.getNickname());
+    TokenPrincipalView principal = principalFor(user);
+    String token = "mf-" + UUID.randomUUID();
+    LocalDateTime now = LocalDateTime.now();
+    authUserMapper.insertToken(token, user.getId(), principal.roleCode(), principal.merchantId(), now.plus(TOKEN_TTL), now);
+    return new LoginResponse(user.getId(), token, user.getNickname(), principal.roleCode(), principal.merchantId(),
+        principal.permissions());
+  }
+
+  public TokenPrincipalView validateToken(String token) {
+    if (token == null || token.isBlank()) {
+      return null;
+    }
+    AuthTokenRow row = authUserMapper.findToken(token);
+    if (row == null || row.isRevoked() || row.getExpireTime().isBefore(LocalDateTime.now())
+        || "DISABLED".equals(row.getStatus())) {
+      return null;
+    }
+    return new TokenPrincipalView(row.getUserId(), row.getPhone(), row.getNickname(), row.getRoleCode(),
+        row.getMerchantId(), authUserMapper.findPermissions(row.getRoleCode()));
   }
 
   public UserView get(long userId) {
@@ -57,5 +83,13 @@ public class AuthUserService {
   private AddressView addressView(UserAddressRow address) {
     return new AddressView(address.getId(), address.getUserId(), address.getContactName(),
         address.getContactPhone(), address.getDetail());
+  }
+
+  private TokenPrincipalView principalFor(UserAccountRow user) {
+    MerchantEmployeeRow employee = authUserMapper.findActiveEmployeeByUserId(user.getId());
+    String roleCode = employee == null ? CUSTOMER_ROLE : employee.getRoleCode();
+    Long merchantId = employee == null ? null : employee.getMerchantId();
+    return new TokenPrincipalView(user.getId(), user.getPhone(), user.getNickname(), roleCode, merchantId,
+        authUserMapper.findPermissions(roleCode));
   }
 }

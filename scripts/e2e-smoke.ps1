@@ -62,6 +62,11 @@ function Step {
   Write-Host "[mealflow-e2e] $Message"
 }
 
+function New-AuthHeaders {
+  param([string]$Token)
+  return @{ Authorization = "Bearer $Token" }
+}
+
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
 Step "checking gateway and service pings"
@@ -81,19 +86,41 @@ Step "checking seeded catalog data"
 $skus = (Invoke-MealFlow -Method GET -Path "/catalog/merchants/10/skus").data
 Assert-True ($skus.Count -ge 2) "Expected seeded SKUs for merchant 10"
 
+Step "logging in users through auth service"
+$adminLogin = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
+  phone = "13800000000"
+  password = "123456"
+}).data
+$firstUserLogin = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
+  phone = "13800000001"
+  password = "123456"
+}).data
+$secondUserLogin = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
+  phone = "13800000002"
+  password = "123456"
+}).data
+$seckillLogin = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
+  phone = "139$($stamp % 100000000)"
+  password = "123456"
+}).data
+$adminHeaders = New-AuthHeaders -Token $adminLogin.token
+$firstUserHeaders = New-AuthHeaders -Token $firstUserLogin.token
+$secondUserHeaders = New-AuthHeaders -Token $secondUserLogin.token
+$seckillHeaders = New-AuthHeaders -Token $seckillLogin.token
+Assert-True ($adminLogin.roleCode -eq "MERCHANT_ADMIN") "Expected demo admin to have merchant admin role"
+
 Step "claiming seckill voucher through promotion service"
-$seckillUserId = 900000000000 + $stamp
 $seckill = (Invoke-MealFlow -Method POST -Path "/vouchers/1000/seckill" -Body @{
   requestId = "e2e-seckill-$stamp"
-} -Headers @{ "X-User-Id" = "$seckillUserId" }).data
+} -Headers $seckillHeaders).data
 Assert-True ($seckill.status -eq "CLAIMED") "Expected seckill voucher to be claimed"
-$wallet = (Invoke-MealFlow -Method GET -Path "/vouchers/wallet" -Headers @{ "X-User-Id" = "$seckillUserId" }).data
+$wallet = (Invoke-MealFlow -Method GET -Path "/vouchers/wallet" -Headers $seckillHeaders).data
 $claimedVoucher = @($wallet | Where-Object { $_.voucherId -eq 1000 -and $_.status -eq "AVAILABLE" })
 Assert-True ($claimedVoucher.Count -ge 1) "Claimed voucher was not found in wallet"
 
 Step "forcing merchant 10 capacity to 1"
 for ($resetRound = 1; $resetRound -le 20; $resetRound++) {
-  $tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens").data
+  $tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens" -Headers $adminHeaders).data
   $heldTokens = @($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" })
   if ($heldTokens.Count -eq 0) {
     break
@@ -102,16 +129,16 @@ for ($resetRound = 1; $resetRound -le 20; $resetRound++) {
     Invoke-MealFlow -Method POST -Path "/queue/internal/capacity/$($_.capacityTokenId)/release" -Body @{
       requestId = "e2e-reset-$stamp-$resetRound-$($_.capacityTokenId)"
       reason = "E2E_RESET"
-    } | Out-Null
+    } -Headers $adminHeaders | Out-Null
   }
 }
-$tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens").data
+$tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens" -Headers $adminHeaders).data
 $heldTokens = @($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" })
 if ($heldTokens.Count -gt 0) {
   throw "Unable to reset merchant 10 held capacity tokens"
 }
-Invoke-MealFlow -Method POST -Path "/queue/merchants/10/limit" -Body @{ limit = 1 } | Out-Null
-$metrics = (Invoke-MealFlow -Method GET -Path "/queue/merchants/10/metrics").data
+Invoke-MealFlow -Method POST -Path "/queue/merchants/10/limit" -Body @{ limit = 1 } -Headers $adminHeaders | Out-Null
+$metrics = (Invoke-MealFlow -Method GET -Path "/queue/merchants/10/metrics" -Headers $adminHeaders).data
 Assert-True ([int]$metrics.limit -eq 1) "Merchant queue limit was not updated"
 
 $firstRequestId = "e2e-submit-first-$stamp"
@@ -134,38 +161,38 @@ $secondOrderBody = @{
 }
 
 Step "submitting first order"
-$firstSubmit = (Invoke-MealFlow -Method POST -Path "/orders/submit" -Body $firstOrderBody -Headers @{ "X-User-Id" = "101" }).data
+$firstSubmit = (Invoke-MealFlow -Method POST -Path "/orders/submit" -Body $firstOrderBody -Headers $firstUserHeaders).data
 Assert-True ($firstSubmit.mode -eq "ORDER_CREATED") "First order should be created immediately"
 Assert-True ($null -ne $firstSubmit.orderId) "First orderId is missing"
 Assert-True ($null -ne $firstSubmit.payOrderId) "First payOrderId is missing"
 
 Step "submitting second order and expecting queue"
-$secondSubmit = (Invoke-MealFlow -Method POST -Path "/orders/submit" -Body $secondOrderBody -Headers @{ "X-User-Id" = "102" }).data
+$secondSubmit = (Invoke-MealFlow -Method POST -Path "/orders/submit" -Body $secondOrderBody -Headers $secondUserHeaders).data
 Assert-True ($secondSubmit.mode -eq "QUEUED") "Second order should be queued"
 Assert-True ($null -ne $secondSubmit.ticketId) "Queued ticketId is missing"
 
 Step "mocking payment and waiting for payment event consumption"
-Invoke-MealFlow -Method POST -Path "/payments/$($firstSubmit.payOrderId)/mock-pay" | Out-Null
-Invoke-MealFlow -Method POST -Path "/payments/internal/events/dispatch" | Out-Null
+Invoke-MealFlow -Method POST -Path "/payments/$($firstSubmit.payOrderId)/mock-pay" -Headers $firstUserHeaders | Out-Null
+Invoke-MealFlow -Method POST -Path "/payments/internal/events/dispatch" -Headers $adminHeaders | Out-Null
 for ($paidAttempt = 1; $paidAttempt -le 24; $paidAttempt++) {
-  $paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)").data
+  $paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)" -Headers $firstUserHeaders).data
   if ($paidOrder.status -eq "WAIT_MERCHANT_ACCEPT") {
     break
   }
   Start-Sleep -Seconds 5
 }
-$paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)").data
+$paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)" -Headers $firstUserHeaders).data
 Assert-True ($paidOrder.status -eq "WAIT_MERCHANT_ACCEPT") "PaymentPaid event was not consumed by order-service"
 
 Step "accepting and marking meal ready"
-Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/accept" -Body @{ requestId = "e2e-accept-$stamp" } | Out-Null
-Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/meal-ready" -Body @{ requestId = "e2e-ready-$stamp" } | Out-Null
+Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/accept" -Body @{ requestId = "e2e-accept-$stamp" } -Headers $adminHeaders | Out-Null
+Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/meal-ready" -Body @{ requestId = "e2e-ready-$stamp" } -Headers $adminHeaders | Out-Null
 
 Step "verifying queued ticket became an order"
-$ticket = (Invoke-MealFlow -Method GET -Path "/queue/tickets/$($secondSubmit.ticketId)").data
+$ticket = (Invoke-MealFlow -Method GET -Path "/queue/tickets/$($secondSubmit.ticketId)" -Headers $secondUserHeaders).data
 Assert-True ($ticket.status -eq "ORDER_CREATED") "Queued ticket was not converted to ORDER_CREATED"
 
-$orders = (Invoke-MealFlow -Method GET -Path "/orders").data
+$orders = (Invoke-MealFlow -Method GET -Path "/orders" -Headers $secondUserHeaders).data
 $converted = @($orders | Where-Object { $_.queueTicketId -eq $secondSubmit.ticketId })
 Assert-True ($converted.Count -ge 1) "Converted order was not found in order list"
 

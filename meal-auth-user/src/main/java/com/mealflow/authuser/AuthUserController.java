@@ -3,6 +3,8 @@ package com.mealflow.authuser;
 import com.mealflow.authuser.api.AddressView;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
+import com.mealflow.authuser.api.TokenPrincipalView;
+import com.mealflow.authuser.api.TokenValidationRequest;
 import com.mealflow.authuser.api.UserView;
 import com.mealflow.common.api.Result;
 import jakarta.validation.Valid;
@@ -29,6 +31,15 @@ public class AuthUserController {
   @PostMapping("/auth/login")
   public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
     return Result.ok(authUserService.login(request));
+  }
+
+  @PostMapping("/auth/internal/tokens/validate")
+  public Result<TokenPrincipalView> validate(@Valid @RequestBody TokenValidationRequest request) {
+    TokenPrincipalView principal = authUserService.validateToken(request.token());
+    if (principal == null) {
+      return new Result<>(false, "UNAUTHORIZED", "invalid token", null);
+    }
+    return Result.ok(principal);
   }
 
   @GetMapping("/users/me")

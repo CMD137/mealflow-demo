@@ -18,3 +18,35 @@ CREATE TABLE IF NOT EXISTS user_address (
   update_time TIMESTAMP NOT NULL,
   INDEX idx_user_address_user_id (user_id)
 );
+
+CREATE TABLE IF NOT EXISTS auth_token (
+  token VARCHAR(128) PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  role_code VARCHAR(64) NOT NULL,
+  merchant_id BIGINT NULL,
+  expire_time TIMESTAMP NOT NULL,
+  revoked BOOLEAN NOT NULL DEFAULT FALSE,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  INDEX idx_auth_token_user_id (user_id),
+  INDEX idx_auth_token_expire_time (expire_time)
+);
+
+CREATE TABLE IF NOT EXISTS merchant_employee (
+  id BIGINT PRIMARY KEY,
+  merchant_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  role_code VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_merchant_employee_user (merchant_id, user_id),
+  INDEX idx_merchant_employee_user_id (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS role_permission (
+  role_code VARCHAR(64) NOT NULL,
+  permission_code VARCHAR(64) NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  PRIMARY KEY (role_code, permission_code)
+);

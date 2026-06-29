@@ -49,4 +49,58 @@ public interface AuthUserMapper {
       @Result(column = "detail", property = "detail")
   })
   List<UserAddressRow> findAddresses(long userId);
+
+  @Select("""
+      SELECT id, merchant_id, user_id, role_code, status
+      FROM merchant_employee
+      WHERE user_id = #{userId} AND status = 'ACTIVE'
+      ORDER BY id
+      LIMIT 1
+      """)
+  @Results(id = "employeeMap", value = {
+      @Result(column = "id", property = "id"),
+      @Result(column = "merchant_id", property = "merchantId"),
+      @Result(column = "user_id", property = "userId"),
+      @Result(column = "role_code", property = "roleCode"),
+      @Result(column = "status", property = "status")
+  })
+  MerchantEmployeeRow findActiveEmployeeByUserId(long userId);
+
+  @Select("""
+      SELECT permission_code
+      FROM role_permission
+      WHERE role_code = #{roleCode}
+      ORDER BY permission_code
+      """)
+  List<String> findPermissions(String roleCode);
+
+  @Insert("""
+      INSERT INTO auth_token
+        (token, user_id, role_code, merchant_id, expire_time, revoked, create_time, update_time)
+      VALUES
+        (#{token}, #{userId}, #{roleCode}, #{merchantId}, #{expireTime}, FALSE, #{now}, #{now})
+      """)
+  int insertToken(@Param("token") String token, @Param("userId") long userId,
+      @Param("roleCode") String roleCode, @Param("merchantId") Long merchantId,
+      @Param("expireTime") LocalDateTime expireTime, @Param("now") LocalDateTime now);
+
+  @Select("""
+      SELECT t.token, t.user_id, t.role_code, t.merchant_id, t.expire_time, t.revoked,
+             u.phone, u.nickname, u.status
+      FROM auth_token t
+      JOIN user_account u ON u.id = t.user_id
+      WHERE t.token = #{token}
+      """)
+  @Results(id = "tokenMap", value = {
+      @Result(column = "token", property = "token"),
+      @Result(column = "user_id", property = "userId"),
+      @Result(column = "role_code", property = "roleCode"),
+      @Result(column = "merchant_id", property = "merchantId"),
+      @Result(column = "expire_time", property = "expireTime"),
+      @Result(column = "revoked", property = "revoked"),
+      @Result(column = "phone", property = "phone"),
+      @Result(column = "nickname", property = "nickname"),
+      @Result(column = "status", property = "status")
+  })
+  AuthTokenRow findToken(String token);
 }

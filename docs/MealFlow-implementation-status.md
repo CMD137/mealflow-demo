@@ -6,9 +6,10 @@
 
 - `meal-common`：统一响应、异常、业务状态码枚举。
 - `meal-infra`：本地 ID、requestId 幂等、Outbox/consumer 语义的基础组件。
-- `meal-gateway`：独立 Spring Cloud Gateway，端口 `8080`，按业务前缀路由到各服务。
+- `meal-gateway`：独立 Spring Cloud Gateway，端口 `8080`，按业务前缀路由到各服务；已接入 Bearer token 鉴权过滤器，可调用 `auth-user` 校验 token 并向下游注入可信 `X-User-Id`、`X-Role`、`X-Merchant-Id`。
 - 独立业务服务均已拆为 Spring Boot 模块：`meal-auth-user`、`meal-merchant`、`meal-catalog`、`meal-cart`、`meal-order`、`meal-queue`、`meal-promotion`、`meal-payment`、`meal-fulfillment`、`meal-notify`。
 - `auth-user`、`merchant`、`catalog`、`cart`、`order`、`queue`、`promotion`、`payment`、`fulfillment`、`notify` 的核心业务事实已接入 MyBatis Mapper；Docker 环境使用 MySQL，本地测试默认 H2。
+- `meal-auth-user` 已新增 MyBatis 持久化 token、角色权限和商户员工表；登录后签发 `mf-*` token，内部校验接口返回用户、角色、商户和权限，网关按权限保护用户、商户、履约和内部运维类接口。
 - 各持久化服务启动时会通过 MyBatis 查询对应业务表最大 ID，推进本地 ID 生成器，避免 Docker/MySQL 持久数据下服务重启后主键回绕。
 - `meal-order` 通过 HTTP 编排 `catalog`、`promotion`、`queue`、`payment` 完成提交订单主链路。
 - `meal-fulfillment` 通过 HTTP 推进订单履约状态，出餐完成会释放 `queue` 产能并触发排队 ticket 转订单。
@@ -19,12 +20,12 @@
 - `meal-promotion` 秒杀领券已支持可配置资格校验模式；本地测试默认 MyBatis/MySQL 路径，Docker 环境使用 Redis Lua 原子扣减 `voucher:stock:{voucherId}` 并写入 `voucher:user:{voucherId}` 一人一券集合，Lua 成功后再落 MyBatis `voucher_claim` 和 `user_voucher` 事实记录，并提供定时/手动 Redis-MyBatis 领取资格对账补偿。
 - `meal-queue` 的票据、产能 token、商户产能配置已持久化；启动时可以从 MySQL 重建 WAITING 队列运行时索引和商户产能 inflight 派生计数，Docker 环境可使用 Redis ZSet 作为等待队列热索引、使用 `capacity:merchant:{merchantId}:inflight` 作为产能热计数，本地测试默认使用内存实现。
 - `docker-compose.yml` 已包含 Nacos、MySQL、Redis、RocketMQ、gateway 和所有业务服务；MySQL 使用 healthcheck，业务服务等待 MySQL healthy 后启动。
-- `scripts/e2e-smoke.ps1` 覆盖 gateway ping、种子商品检查、秒杀券领取、产能限流、第一单成单、第二单排队、支付成功事件异步消费、履约出餐、产能释放后排队 ticket 自动转单。
+- `scripts/e2e-smoke.ps1` 覆盖 gateway ping、登录取 token、种子商品检查、秒杀券领取、产能限流、第一单成单、第二单排队、支付成功事件异步消费、履约出餐、产能释放后排队 ticket 自动转单。
 - 当前验证通过：`mvn -q test`、`mvn -q -DskipTests compile`、`docker compose config`、`scripts/e2e-smoke.ps1`。
 
 ## 当前尚未完成
 
-- `auth-user`、`merchant`、`cart` 已有最小业务接口，但尚未接真实认证、权限、员工体系等完整能力；`notify` 已具备站内信和 SSE 实时推送，尚未接短信/多渠道模板。
+- `auth-user` 已具备基础 token、角色权限和商户员工能力；`merchant`、`cart` 仍是最小业务接口，尚未补完整后台菜单、细粒度员工管理、地址管理等能力；`notify` 已具备站内信和 SSE 实时推送，尚未接短信/多渠道模板。
 - Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order 的真实 MQ 消费已接入 consumer_record，notify 已开始落地 consumer_record 持久化，持久化消费模板已支持 PROCESSING 超时抢占重试，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。尚未完成所有消费者的 consumer_record 接入和补偿扫描。
 - Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua 和基础领取资格对账补偿已在 `meal-promotion` 接入。更完整的失败重试/死信处理仍需继续补齐。
 - Prometheus/Grafana、压测脚本、故障注入脚本尚未完成。
