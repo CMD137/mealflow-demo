@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.PaymentView;
+import com.mealflow.payment.mapper.LocalEventMapper;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +21,9 @@ class PaymentPersistenceTest {
   @Autowired
   private PaymentService paymentService;
 
+  @Autowired
+  private LocalEventMapper localEventMapper;
+
   @Test
   void createsAndPaysOrderInDatabase() {
     PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-1", 2001L, 3200));
@@ -29,10 +34,10 @@ class PaymentPersistenceTest {
 
     assertThat(paid.status()).isEqualTo("PAID");
     assertThat(paymentService.get(created.payOrderId()).status()).isEqualTo("PAID");
-    assertThat(paymentService.events())
+    String eventKey = "payment:PaymentPaid:" + created.payOrderId() + ":1";
+    assertThat(paymentService.events().stream().filter(event -> event.eventKey().equals(eventKey)).toList())
         .singleElement()
         .satisfies(event -> {
-          assertThat(event.eventKey()).isEqualTo("payment:PaymentPaid:" + created.payOrderId() + ":1");
           assertThat(event.eventType()).isEqualTo("PaymentPaid");
           assertThat(event.aggregateId()).isEqualTo(created.payOrderId());
           assertThat(event.status()).isEqualTo("NEW");
@@ -41,16 +46,39 @@ class PaymentPersistenceTest {
 
     paymentService.mockPay(created.payOrderId());
 
-    assertThat(paymentService.events()).hasSize(1);
+    assertThat(paymentService.events().stream().filter(event -> event.eventKey().equals(eventKey)).toList()).hasSize(1);
 
     int sent = paymentService.dispatchPendingEvents(10);
 
-    assertThat(sent).isEqualTo(1);
-    assertThat(paymentService.events())
+    assertThat(sent).isGreaterThanOrEqualTo(1);
+    assertThat(paymentService.events().stream().filter(event -> event.eventKey().equals(eventKey)).toList())
         .singleElement()
         .satisfies(event -> {
           assertThat(event.status()).isEqualTo("SENT");
           assertThat(event.retryCount()).isEqualTo(1);
+        });
+  }
+
+  @Test
+  void recoversStaleSendingOutboxEvent() {
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-stale-sending", 2002L, 1800));
+    paymentService.mockPay(created.payOrderId());
+    String eventKey = "payment:PaymentPaid:" + created.payOrderId() + ":1";
+    long eventId = paymentService.events().stream()
+        .filter(event -> event.eventKey().equals(eventKey))
+        .findFirst()
+        .orElseThrow()
+        .id();
+    localEventMapper.markSending(eventId, LocalDateTime.now().minusMinutes(2));
+
+    int sent = paymentService.dispatchPendingEvents(10);
+
+    assertThat(sent).isGreaterThanOrEqualTo(1);
+    assertThat(paymentService.events().stream().filter(event -> event.eventKey().equals(eventKey)).toList())
+        .singleElement()
+        .satisfies(event -> {
+          assertThat(event.status()).isEqualTo("SENT");
+          assertThat(event.retryCount()).isEqualTo(2);
         });
   }
 }

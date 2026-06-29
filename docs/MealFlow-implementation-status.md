@@ -13,7 +13,7 @@
 - `meal-order` 通过 HTTP 编排 `catalog`、`promotion`、`queue`、`payment` 完成提交订单主链路。
 - `meal-fulfillment` 通过 HTTP 推进订单履约状态，出餐完成会释放 `queue` 产能并触发排队 ticket 转订单。
 - `meal-fulfillment` 已新增独立履约操作日志表、MyBatis Mapper 和查询接口，可记录商户接单、出餐、取餐、送达等动作。
-- `meal-order`、`meal-payment`、`meal-fulfillment` 已新增服务私有本地事件表和 MyBatis Mapper；订单创建、订单支付成功、支付成功、履约接单/出餐/取餐/送达等关键动作会在本地事务内写入 `NEW` 事件，并支持内部 dispatch、定时扫描和 RocketMQ 发布将事件推进为 `SENDING`/`SENT`/`FAILED`。
+- `meal-order`、`meal-payment`、`meal-fulfillment` 已新增服务私有本地事件表和 MyBatis Mapper；订单创建、订单支付成功、支付成功、履约接单/出餐/取餐/送达等关键动作会在本地事务内写入 `NEW` 事件，并支持内部 dispatch、定时扫描、`SENDING` 超时回收和 RocketMQ 发布将事件推进为 `SENDING`/`SENT`/`FAILED`。
 - `meal-order` 已新增服务私有 `order_consumer_record` 表和 MyBatis Mapper，可消费 `meal-payment` 发布的 `PaymentPaid` RocketMQ 事件，并按 `eventKey + consumerGroup` 幂等推进订单为待商户接单。
 - `meal-notify` 已新增 `consumer_record` MyBatis 持久化消费记录和 RocketMQ 领域事件消费者，默认订阅订单事件并按 `eventKey + consumerGroup` 去重落用户通知；同时提供 `/notify/messages/stream` SSE 实时通知流，消息事实仍以 MyBatis `notify_message` 为准。
 - `meal-promotion` 秒杀领券已支持可配置资格校验模式；本地测试默认 MyBatis/MySQL 路径，Docker 环境使用 Redis Lua 原子扣减 `voucher:stock:{voucherId}` 并写入 `voucher:user:{voucherId}` 一人一券集合，Lua 成功后再落 MyBatis `voucher_claim` 和 `user_voucher` 事实记录，并提供定时/手动 Redis-MyBatis 领取资格对账补偿。

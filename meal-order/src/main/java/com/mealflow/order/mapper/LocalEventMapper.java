@@ -83,6 +83,13 @@ public interface LocalEventMapper {
 
   @Update("""
       UPDATE order_local_event
+      SET status = 'FAILED', last_error = 'SENDING_TIMEOUT', update_time = #{now}
+      WHERE status = 'SENDING' AND update_time < #{before}
+      """)
+  int markStaleSendingFailedBefore(@Param("before") LocalDateTime before, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE order_local_event
       SET status = 'SENT', last_error = NULL, update_time = #{now}
       WHERE id = #{id} AND status = 'SENDING'
       """)

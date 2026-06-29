@@ -16,6 +16,7 @@ import com.mealflow.fulfillment.outbox.OutboxEventPublisher;
 import com.mealflow.infra.event.EventKey;
 import com.mealflow.infra.id.IdGenerator;
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,6 +30,8 @@ import org.springframework.web.client.RestTemplate;
 
 @Service
 public class FulfillmentService {
+  private static final Duration OUTBOX_SENDING_TIMEOUT = Duration.ofMinutes(1);
+
   private final IdGenerator idGenerator = new IdGenerator();
   private final RestTemplate restTemplate;
   private final ServiceEndpoints endpoints;
@@ -101,6 +104,7 @@ public class FulfillmentService {
   }
 
   public int dispatchPendingEvents(int limit) {
+    recoverStaleSendingEvents();
     int sent = 0;
     for (LocalEventRow row : localEventMapper.findDispatchable(limit)) {
       if (localEventMapper.markSending(row.getId(), LocalDateTime.now()) == 0) {
@@ -115,6 +119,11 @@ public class FulfillmentService {
       }
     }
     return sent;
+  }
+
+  public int recoverStaleSendingEvents() {
+    LocalDateTime now = LocalDateTime.now();
+    return localEventMapper.markStaleSendingFailedBefore(now.minus(OUTBOX_SENDING_TIMEOUT), now);
   }
 
   private OrderView postOrder(long orderId, String action) {

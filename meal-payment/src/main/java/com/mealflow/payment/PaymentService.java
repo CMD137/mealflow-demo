@@ -18,6 +18,7 @@ import com.mealflow.payment.mapper.PaymentMapper;
 import com.mealflow.payment.mapper.PaymentOrderRow;
 import com.mealflow.payment.outbox.OutboxEventPublisher;
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentService {
+  private static final Duration OUTBOX_SENDING_TIMEOUT = Duration.ofMinutes(1);
+
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
   private final PaymentMapper paymentMapper;
@@ -97,6 +100,7 @@ public class PaymentService {
   }
 
   public int dispatchPendingEvents(int limit) {
+    recoverStaleSendingEvents();
     int sent = 0;
     for (LocalEventRow row : localEventMapper.findDispatchable(limit)) {
       if (localEventMapper.markSending(row.getId(), LocalDateTime.now()) == 0) {
@@ -111,6 +115,11 @@ public class PaymentService {
       }
     }
     return sent;
+  }
+
+  public int recoverStaleSendingEvents() {
+    LocalDateTime now = LocalDateTime.now();
+    return localEventMapper.markStaleSendingFailedBefore(now.minus(OUTBOX_SENDING_TIMEOUT), now);
   }
 
   private PaymentView requirePayment(long payOrderId) {

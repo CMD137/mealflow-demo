@@ -28,6 +28,7 @@ import com.mealflow.order.mapper.OrderMapper;
 import com.mealflow.order.mapper.OrderRow;
 import com.mealflow.order.outbox.OutboxEventPublisher;
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OrderService {
+  private static final Duration OUTBOX_SENDING_TIMEOUT = Duration.ofMinutes(1);
   private static final TypeReference<List<Long>> LONG_LIST = new TypeReference<>() {
   };
   private static final TypeReference<List<OrderItemSnapshot>> ITEM_LIST = new TypeReference<>() {
@@ -215,6 +217,7 @@ public class OrderService {
   }
 
   public int dispatchPendingEvents(int limit) {
+    recoverStaleSendingEvents();
     int sent = 0;
     for (LocalEventRow row : localEventMapper.findDispatchable(limit)) {
       if (localEventMapper.markSending(row.getId(), LocalDateTime.now()) == 0) {
@@ -229,6 +232,11 @@ public class OrderService {
       }
     }
     return sent;
+  }
+
+  public int recoverStaleSendingEvents() {
+    LocalDateTime now = LocalDateTime.now();
+    return localEventMapper.markStaleSendingFailedBefore(now.minus(OUTBOX_SENDING_TIMEOUT), now);
   }
 
   private synchronized OrderRecord createOrder(long userId, long merchantId, Long ticketId, long capacityTokenId,
