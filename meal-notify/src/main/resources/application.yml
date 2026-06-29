@@ -27,6 +27,8 @@ management:
 rocketmq:
   name-server: ${ROCKETMQ_NAMESRV_ADDR:localhost:9876}
 mealflow:
+  notify:
+    sse-timeout-ms: ${NOTIFY_SSE_TIMEOUT_MS:300000}
   mq:
     notify-consumer:
       enabled: ${NOTIFY_EVENT_CONSUMER_ENABLED:false}

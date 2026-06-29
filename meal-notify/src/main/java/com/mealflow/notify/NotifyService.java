@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class NotifyService {
@@ -28,12 +30,15 @@ public class NotifyService {
   private final NotifyMapper notifyMapper;
   private final ConsumerRecordMapper consumerRecordMapper;
   private final PersistentConsumerRecordTemplate consumerRecordTemplate;
+  private final NotifyStreamService notifyStreamService;
   private final ObjectMapper objectMapper;
 
-  public NotifyService(NotifyMapper notifyMapper, ConsumerRecordMapper consumerRecordMapper, ObjectMapper objectMapper) {
+  public NotifyService(NotifyMapper notifyMapper, ConsumerRecordMapper consumerRecordMapper,
+      NotifyStreamService notifyStreamService, ObjectMapper objectMapper) {
     this.notifyMapper = notifyMapper;
     this.consumerRecordMapper = consumerRecordMapper;
     this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper);
+    this.notifyStreamService = notifyStreamService;
     this.objectMapper = objectMapper;
   }
 
@@ -48,7 +53,9 @@ public class NotifyService {
     long id = idGenerator.next("notifyMessage");
     LocalDateTime createTime = LocalDateTime.now();
     notifyMapper.insert(id, request.userId(), request.bizType(), request.content(), createTime);
-    return new MessageView(id, request.userId(), request.bizType(), request.content(), createTime);
+    MessageView message = new MessageView(id, request.userId(), request.bizType(), request.content(), createTime);
+    afterCommitOrNow(() -> notifyStreamService.publish(message));
+    return message;
   }
 
   @Transactional
@@ -88,6 +95,20 @@ public class NotifyService {
   private ConsumerRecordView recordView(ConsumerRecordRow row) {
     return new ConsumerRecordView(row.getId(), row.getEventKey(), row.getConsumerGroup(), row.getStatus(),
         row.getLastError(), row.getCreateTime(), row.getUpdateTime());
+  }
+
+  private void afterCommitOrNow(Runnable action) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()
+        && TransactionSynchronizationManager.isActualTransactionActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          action.run();
+        }
+      });
+      return;
+    }
+    action.run();
   }
 
   private Map<String, Object> fromJson(String payloadJson) {

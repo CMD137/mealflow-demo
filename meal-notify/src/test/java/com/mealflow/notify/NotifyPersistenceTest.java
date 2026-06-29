@@ -19,6 +19,9 @@ class NotifyPersistenceTest {
   private NotifyService notifyService;
 
   @Autowired
+  private NotifyStreamService notifyStreamService;
+
+  @Autowired
   private ConsumerRecordMapper consumerRecordMapper;
 
   @Test
@@ -30,6 +33,17 @@ class NotifyPersistenceTest {
           assertThat(stored.messageId()).isEqualTo(message.messageId());
           assertThat(stored.content()).isEqualTo("meal ready");
         });
+  }
+
+  @Test
+  void registersAndRemovesSseConnections() {
+    notifyStreamService.subscribe(105L);
+
+    assertThat(notifyStreamService.activeConnections(105L)).isEqualTo(1);
+
+    notifyStreamService.disconnect(105L);
+
+    assertThat(notifyStreamService.activeConnections(105L)).isZero();
   }
 
   @Test
