@@ -2,10 +2,13 @@ package com.mealflow.notify;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.mealflow.notify.api.DeliveryView;
 import com.mealflow.notify.api.MessageView;
 import com.mealflow.notify.api.PushMessageRequest;
+import com.mealflow.notify.api.TemplateMessageRequest;
 import com.mealflow.notify.mapper.ConsumerRecordMapper;
 import java.time.LocalDateTime;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,6 +35,26 @@ class NotifyPersistenceTest {
         .anySatisfy(stored -> {
           assertThat(stored.messageId()).isEqualTo(message.messageId());
           assertThat(stored.content()).isEqualTo("meal ready");
+        });
+  }
+
+  @Test
+  void pushesTemplateToMultipleChannels() {
+    MessageView message = notifyService.pushTemplated("ORDER_PAID",
+        new TemplateMessageRequest(106L, Map.of("orderId", "30001"), "13800003001"));
+
+    assertThat(message.content()).isEqualTo("Order 30001 has been paid and is waiting for merchant acceptance.");
+    assertThat(notifyService.list(106L))
+        .singleElement()
+        .satisfies(stored -> assertThat(stored.messageId()).isEqualTo(message.messageId()));
+    assertThat(notifyService.deliveries(106L))
+        .extracting(DeliveryView::channel)
+        .containsExactlyInAnyOrder("IN_APP", "SMS_MOCK");
+    assertThat(notifyService.deliveries(106L))
+        .anySatisfy(delivery -> {
+          assertThat(delivery.channel()).isEqualTo("SMS_MOCK");
+          assertThat(delivery.target()).isEqualTo("13800003001");
+          assertThat(delivery.status()).isEqualTo("SENT");
         });
   }
 

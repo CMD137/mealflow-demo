@@ -3,17 +3,24 @@ package com.mealflow.notify;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mealflow.infra.id.IdGenerator;
+import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.exception.BizException;
 import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
+import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.notify.api.ConsumerRecordView;
+import com.mealflow.notify.api.DeliveryView;
 import com.mealflow.notify.api.MessageView;
 import com.mealflow.notify.api.PushMessageRequest;
+import com.mealflow.notify.api.TemplateMessageRequest;
 import com.mealflow.notify.mapper.ConsumerRecordMapper;
 import com.mealflow.notify.mapper.ConsumerRecordRow;
+import com.mealflow.notify.mapper.NotifyDeliveryRow;
 import com.mealflow.notify.mapper.NotifyMapper;
 import com.mealflow.notify.mapper.NotifyMessageRow;
+import com.mealflow.notify.mapper.NotifyTemplateRow;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -45,6 +52,7 @@ public class NotifyService {
   @PostConstruct
   void initializeIdGenerator() {
     idGenerator.ensureAtLeast("notifyMessage", notifyMapper.maxMessageId());
+    idGenerator.ensureAtLeast("notifyDelivery", notifyMapper.maxDeliveryId());
     consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
   }
 
@@ -55,6 +63,18 @@ public class NotifyService {
     notifyMapper.insert(id, request.userId(), request.bizType(), request.content(), createTime);
     MessageView message = new MessageView(id, request.userId(), request.bizType(), request.content(), createTime);
     afterCommitOrNow(() -> notifyStreamService.publish(message));
+    return message;
+  }
+
+  @Transactional
+  public MessageView pushTemplated(String templateCode, TemplateMessageRequest request) {
+    NotifyTemplateRow template = notifyMapper.findTemplate(templateCode);
+    if (template == null || !template.isEnabled()) {
+      throw new BizException(ErrorCode.NOT_FOUND, "notify template not available: " + templateCode);
+    }
+    String content = render(template.getContentTemplate(), request.variables());
+    MessageView message = push(new PushMessageRequest(request.userId(), template.getBizType(), content));
+    createDeliveries(message, template.getChannels(), request.targetPhone());
     return message;
   }
 
@@ -83,6 +103,10 @@ public class NotifyService {
     return notifyMapper.findByUser(userId).stream().map(this::view).toList();
   }
 
+  public List<DeliveryView> deliveries(long userId) {
+    return notifyMapper.findDeliveriesByUser(userId).stream().map(this::deliveryView).toList();
+  }
+
   public List<ConsumerRecordView> consumerRecords() {
     return consumerRecordMapper.findAll().stream().map(this::recordView).toList();
   }
@@ -96,9 +120,39 @@ public class NotifyService {
         message.getCreateTime());
   }
 
+  private DeliveryView deliveryView(NotifyDeliveryRow row) {
+    return new DeliveryView(row.getId(), row.getMessageId(), row.getUserId(), row.getChannel(), row.getTarget(),
+        row.getStatus(), row.getContent(), row.getCreateTime());
+  }
+
   private ConsumerRecordView recordView(ConsumerRecordRow row) {
     return new ConsumerRecordView(row.getId(), row.getEventKey(), row.getConsumerGroup(), row.getStatus(),
         row.getLastError(), row.getCreateTime(), row.getUpdateTime());
+  }
+
+  private void createDeliveries(MessageView message, String channels, String targetPhone) {
+    Arrays.stream(channels.split(","))
+        .map(String::trim)
+        .filter(channel -> !channel.isBlank())
+        .distinct()
+        .forEach(channel -> notifyMapper.insertDelivery(idGenerator.next("notifyDelivery"), message.messageId(),
+            message.userId(), channel, deliveryTarget(channel, message.userId(), targetPhone), "SENT",
+            message.content(), LocalDateTime.now()));
+  }
+
+  private String deliveryTarget(String channel, long userId, String targetPhone) {
+    if ("SMS_MOCK".equals(channel)) {
+      return targetPhone == null || targetPhone.isBlank() ? "sms-mock:" + userId : targetPhone;
+    }
+    return "user:" + userId;
+  }
+
+  private String render(String template, Map<String, String> variables) {
+    String rendered = template;
+    for (Map.Entry<String, String> entry : variables.entrySet()) {
+      rendered = rendered.replace("{{" + entry.getKey() + "}}", entry.getValue());
+    }
+    return rendered;
   }
 
   private void afterCommitOrNow(Runnable action) {
