@@ -27,6 +27,21 @@ CREATE TABLE IF NOT EXISTS voucher_claim (
   INDEX idx_voucher_claim_status (status)
 );
 
+CREATE TABLE IF NOT EXISTS voucher_claim_retry (
+  id BIGINT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  voucher_id BIGINT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  retry_count INT NOT NULL DEFAULT 0,
+  max_retries INT NOT NULL DEFAULT 3,
+  last_error VARCHAR(512) NULL,
+  next_retry_time TIMESTAMP NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_voucher_claim_retry_user_voucher (user_id, voucher_id),
+  INDEX idx_voucher_claim_retry_status_time (status, next_retry_time)
+);
+
 CREATE TABLE IF NOT EXISTS voucher_lock (
   id BIGINT PRIMARY KEY,
   user_voucher_id BIGINT NOT NULL,

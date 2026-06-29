@@ -22,6 +22,27 @@ public interface PromotionMapper {
   @Select("SELECT COALESCE(MAX(id), 10000) FROM voucher_claim")
   long maxVoucherClaimId();
 
+  @Update("""
+      CREATE TABLE IF NOT EXISTS voucher_claim_retry (
+        id BIGINT PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        voucher_id BIGINT NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        retry_count INT NOT NULL DEFAULT 0,
+        max_retries INT NOT NULL DEFAULT 3,
+        last_error VARCHAR(512) NULL,
+        next_retry_time TIMESTAMP NOT NULL,
+        create_time TIMESTAMP NOT NULL,
+        update_time TIMESTAMP NOT NULL,
+        UNIQUE KEY uk_voucher_claim_retry_user_voucher (user_id, voucher_id),
+        INDEX idx_voucher_claim_retry_status_time (status, next_retry_time)
+      )
+      """)
+  int createClaimRetryTable();
+
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM voucher_claim_retry")
+  long maxVoucherClaimRetryId();
+
   @Select("SELECT id, discount_cent, stock FROM voucher WHERE id = #{id}")
   @Results(id = "voucherMap", value = {
       @Result(column = "id", property = "id"),
@@ -90,6 +111,75 @@ public interface PromotionMapper {
       @Result(column = "status", property = "status")
   })
   List<VoucherClaimRow> findClaims();
+
+  @Insert("""
+      INSERT INTO voucher_claim_retry (
+        id, user_id, voucher_id, status, retry_count, max_retries, last_error,
+        next_retry_time, create_time, update_time
+      )
+      VALUES (
+        #{id}, #{userId}, #{voucherId}, #{status}, #{retryCount}, #{maxRetries}, #{lastError},
+        #{nextRetryTime}, #{now}, #{now}
+      )
+      """)
+  int insertClaimRetry(@Param("id") long id, @Param("userId") long userId, @Param("voucherId") long voucherId,
+      @Param("status") String status, @Param("retryCount") int retryCount, @Param("maxRetries") int maxRetries,
+      @Param("lastError") String lastError, @Param("nextRetryTime") LocalDateTime nextRetryTime,
+      @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE voucher_claim_retry
+      SET status = #{status}, last_error = #{lastError}, next_retry_time = #{nextRetryTime}, update_time = #{now}
+      WHERE user_id = #{userId} AND voucher_id = #{voucherId} AND status <> 'REPAIRED'
+      """)
+  int touchClaimRetry(@Param("userId") long userId, @Param("voucherId") long voucherId,
+      @Param("status") String status, @Param("lastError") String lastError,
+      @Param("nextRetryTime") LocalDateTime nextRetryTime, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE voucher_claim_retry
+      SET status = #{status}, retry_count = #{retryCount}, last_error = #{lastError},
+        next_retry_time = #{nextRetryTime}, update_time = #{now}
+      WHERE id = #{id}
+      """)
+  int updateClaimRetry(@Param("id") long id, @Param("status") String status,
+      @Param("retryCount") int retryCount, @Param("lastError") String lastError,
+      @Param("nextRetryTime") LocalDateTime nextRetryTime, @Param("now") LocalDateTime now);
+
+  @Select("""
+      SELECT id, user_id, voucher_id, status, retry_count, max_retries, last_error, next_retry_time
+      FROM voucher_claim_retry
+      WHERE user_id = #{userId} AND voucher_id = #{voucherId}
+      """)
+  @Results(id = "claimRetryMap", value = {
+      @Result(column = "id", property = "id"),
+      @Result(column = "user_id", property = "userId"),
+      @Result(column = "voucher_id", property = "voucherId"),
+      @Result(column = "status", property = "status"),
+      @Result(column = "retry_count", property = "retryCount"),
+      @Result(column = "max_retries", property = "maxRetries"),
+      @Result(column = "last_error", property = "lastError"),
+      @Result(column = "next_retry_time", property = "nextRetryTime")
+  })
+  VoucherClaimRetryRow findClaimRetry(@Param("userId") long userId, @Param("voucherId") long voucherId);
+
+  @Select("""
+      SELECT id, user_id, voucher_id, status, retry_count, max_retries, last_error, next_retry_time
+      FROM voucher_claim_retry
+      ORDER BY id
+      """)
+  @ResultMap("claimRetryMap")
+  List<VoucherClaimRetryRow> findClaimRetries();
+
+  @Select("""
+      SELECT id, user_id, voucher_id, status, retry_count, max_retries, last_error, next_retry_time
+      FROM voucher_claim_retry
+      WHERE status IN ('PENDING', 'RETRY') AND next_retry_time <= #{now}
+      ORDER BY id
+      LIMIT #{limit}
+      """)
+  @ResultMap("claimRetryMap")
+  List<VoucherClaimRetryRow> findDueClaimRetries(@Param("now") LocalDateTime now, @Param("limit") int limit);
 
   @Insert("""
       INSERT INTO voucher_lock (id, user_voucher_id, status, ticket_id, order_id, create_time, update_time)

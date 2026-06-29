@@ -10,9 +10,11 @@ import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
 import com.mealflow.promotion.api.UserVoucherView;
 import com.mealflow.promotion.api.VoucherClaimView;
+import com.mealflow.promotion.api.VoucherClaimRetryView;
 import com.mealflow.promotion.api.VoucherLockResponse;
 import com.mealflow.promotion.api.VoucherLockView;
 import com.mealflow.promotion.mapper.PromotionMapper;
+import com.mealflow.promotion.mapper.VoucherClaimRetryRow;
 import com.mealflow.promotion.mapper.UserVoucherRow;
 import com.mealflow.promotion.mapper.VoucherClaimRow;
 import com.mealflow.promotion.mapper.VoucherLockRow;
@@ -23,6 +25,7 @@ import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,17 +35,22 @@ public class PromotionService {
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
   private final PromotionMapper promotionMapper;
   private final VoucherSeckillGuard seckillGuard;
+  private final int claimRetryMaxRetries;
 
-  public PromotionService(PromotionMapper promotionMapper, VoucherSeckillGuard seckillGuard) {
+  public PromotionService(PromotionMapper promotionMapper, VoucherSeckillGuard seckillGuard,
+      @Value("${mealflow.promotion.claim-retry.max-retries:3}") int claimRetryMaxRetries) {
     this.promotionMapper = promotionMapper;
     this.seckillGuard = seckillGuard;
+    this.claimRetryMaxRetries = Math.max(1, claimRetryMaxRetries);
   }
 
   @PostConstruct
   void initializeIdGenerator() {
+    promotionMapper.createClaimRetryTable();
     idGenerator.ensureAtLeast("userVoucher", promotionMapper.maxUserVoucherId());
     idGenerator.ensureAtLeast("voucherLock", promotionMapper.maxVoucherLockId());
     idGenerator.ensureAtLeast("voucherClaim", promotionMapper.maxVoucherClaimId());
+    idGenerator.ensureAtLeast("voucherClaimRetry", promotionMapper.maxVoucherClaimRetryId());
   }
 
   @Transactional
@@ -138,6 +146,10 @@ public class PromotionService {
     return promotionMapper.findClaims().stream().map(this::claimView).toList();
   }
 
+  public List<VoucherClaimRetryView> claimRetries() {
+    return promotionMapper.findClaimRetries().stream().map(this::claimRetryView).toList();
+  }
+
   public List<VoucherLockView> locks() {
     return promotionMapper.findLocks().stream().map(this::lockView).toList();
   }
@@ -154,18 +166,73 @@ public class PromotionService {
   @Transactional
   public synchronized int reconcileRedisClaims(long voucherId) {
     requireVoucher(voucherId);
+    discoverRedisClaimRetries(voucherId);
+    return retryClaimRetries(100);
+  }
+
+  @Transactional
+  public synchronized int retryClaimRetries(int limit) {
     int repaired = 0;
+    for (VoucherClaimRetryRow row : promotionMapper.findDueClaimRetries(LocalDateTime.now(), limit)) {
+      if (repairClaimRetry(row)) {
+        repaired++;
+      }
+    }
+    return repaired;
+  }
+
+  private int discoverRedisClaimRetries(long voucherId) {
+    int discovered = 0;
     for (Long userId : seckillGuard.claimedUsers(voucherId)) {
       if (promotionMapper.countUserVoucher(userId, voucherId) > 0) {
         continue;
       }
-      long userVoucherId = idGenerator.next("userVoucher");
-      LocalDateTime now = LocalDateTime.now();
-      promotionMapper.insertUserVoucher(userVoucherId, userId, voucherId, UserVoucherStatus.AVAILABLE.name(), now);
-      insertClaim(userId, voucherId, VoucherClaimStatus.CLAIMED);
-      repaired++;
+      enqueueClaimRetry(userId, voucherId, "REDIS_ACCEPTED_DB_MISSING");
+      discovered++;
     }
-    return repaired;
+    return discovered;
+  }
+
+  private void enqueueClaimRetry(long userId, long voucherId, String lastError) {
+    LocalDateTime now = LocalDateTime.now();
+    VoucherClaimRetryRow existing = promotionMapper.findClaimRetry(userId, voucherId);
+    if (existing == null) {
+      promotionMapper.insertClaimRetry(idGenerator.next("voucherClaimRetry"), userId, voucherId,
+          ClaimRetryStatus.PENDING.name(), 0, claimRetryMaxRetries, lastError, now, now);
+      return;
+    }
+    if (ClaimRetryStatus.REPAIRED.name().equals(existing.getStatus())) {
+      return;
+    }
+    promotionMapper.touchClaimRetry(userId, voucherId, ClaimRetryStatus.PENDING.name(), lastError, now, now);
+  }
+
+  private boolean repairClaimRetry(VoucherClaimRetryRow row) {
+    LocalDateTime now = LocalDateTime.now();
+    try {
+      requireVoucher(row.getVoucherId());
+      if (promotionMapper.countUserVoucher(row.getUserId(), row.getVoucherId()) == 0) {
+        long userVoucherId = idGenerator.next("userVoucher");
+        promotionMapper.insertUserVoucher(userVoucherId, row.getUserId(), row.getVoucherId(),
+            UserVoucherStatus.AVAILABLE.name(), now);
+        insertClaim(row.getUserId(), row.getVoucherId(), VoucherClaimStatus.CLAIMED);
+      }
+      promotionMapper.updateClaimRetry(row.getId(), ClaimRetryStatus.REPAIRED.name(), row.getRetryCount(), null, now,
+          now);
+      return true;
+    } catch (DuplicateKeyException ex) {
+      promotionMapper.updateClaimRetry(row.getId(), ClaimRetryStatus.REPAIRED.name(), row.getRetryCount(), null, now,
+          now);
+      return true;
+    } catch (RuntimeException ex) {
+      int retryCount = row.getRetryCount() + 1;
+      String status = retryCount >= row.getMaxRetries()
+          ? ClaimRetryStatus.DEAD.name()
+          : ClaimRetryStatus.RETRY.name();
+      promotionMapper.updateClaimRetry(row.getId(), status, retryCount, trimError(ex),
+          now.plusSeconds(30L * retryCount), now);
+      return false;
+    }
   }
 
   private long insertClaim(long userId, long voucherId, VoucherClaimStatus status) {
@@ -204,13 +271,27 @@ public class PromotionService {
     return new VoucherClaimView(claim.getId(), claim.getUserId(), claim.getVoucherId(), claim.getStatus());
   }
 
+  private VoucherClaimRetryView claimRetryView(VoucherClaimRetryRow retry) {
+    return new VoucherClaimRetryView(retry.getId(), retry.getUserId(), retry.getVoucherId(), retry.getStatus(),
+        retry.getRetryCount(), retry.getMaxRetries(), retry.getLastError(), retry.getNextRetryTime());
+  }
+
   private VoucherLockView lockView(VoucherLockRow lock) {
     return new VoucherLockView(lock.getId(), lock.getUserVoucherId(), lock.getStatus(), lock.getTicketId(),
         lock.getOrderId());
   }
 
+  private String trimError(RuntimeException ex) {
+    String message = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+    return message.length() <= 512 ? message : message.substring(0, 512);
+  }
+
   enum UserVoucherStatus {
     AVAILABLE, LOCKED, USED
+  }
+
+  enum ClaimRetryStatus {
+    PENDING, RETRY, REPAIRED, DEAD
   }
 
   record VoucherLock(long id, long userVoucherId, String status, Long ticketId, Long orderId) {

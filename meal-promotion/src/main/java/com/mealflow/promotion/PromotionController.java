@@ -6,6 +6,7 @@ import com.mealflow.promotion.api.SeckillVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
 import com.mealflow.promotion.api.UserVoucherView;
 import com.mealflow.promotion.api.VoucherClaimView;
+import com.mealflow.promotion.api.VoucherClaimRetryView;
 import com.mealflow.promotion.api.VoucherLockResponse;
 import com.mealflow.promotion.api.VoucherLockView;
 import com.mealflow.promotion.api.VoucherTransitionRequest;
@@ -64,6 +65,16 @@ public class PromotionController {
   @GetMapping("/internal/claims")
   public Result<List<VoucherClaimView>> claims() {
     return Result.ok(promotionService.claims());
+  }
+
+  @GetMapping("/internal/claims/retries")
+  public Result<List<VoucherClaimRetryView>> claimRetries() {
+    return Result.ok(promotionService.claimRetries());
+  }
+
+  @PostMapping("/internal/claims/retries/retry")
+  public Result<Integer> retryClaimRetries() {
+    return Result.ok(promotionService.retryClaimRetries(100));
   }
 
   @GetMapping("/internal/locks")
