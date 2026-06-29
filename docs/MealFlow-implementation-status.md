@@ -27,6 +27,7 @@
 - `meal-order`、`meal-payment`、`meal-fulfillment` 已暴露 Outbox 状态指标 `mealflow_outbox_events`，`meal-order`、`meal-notify` 已暴露 consumer_record 状态指标 `mealflow_consumer_records`，`meal-promotion` 已暴露秒杀领取修复任务指标 `mealflow_voucher_claim_retries`；Grafana 面板已展示 Outbox 积压、消费记录异常和券修复任务状态。
 - `scripts/e2e-smoke.ps1` 覆盖 gateway ping、登录取 token、种子商品检查、秒杀券领取、产能限流、第一单成单、第二单排队、支付成功事件异步消费、履约出餐、产能释放后排队 ticket 自动转单。
 - `scripts/load-seckill.ps1`、`scripts/load-peak-orders.ps1` 和 `scripts/fault-demo.ps1` 已覆盖秒杀并发、高峰下单、鉴权拒绝、Redis 热索引重建和 capacity token 重复释放幂等演示。
+- `meal-app` 已从默认 Maven reactor 移出，仅保留在 `legacy-demo` profile 下作为本地内存版演示模块，避免与当前微服务主线混淆。
 - 当前验证通过：`mvn -q test`、`mvn -q -DskipTests compile`、`docker compose config`、`scripts/e2e-smoke.ps1`。
 
 ## 当前尚未完成
@@ -38,4 +39,4 @@
 
 ## 下一阶段实施顺序
 
-1. 将 `meal-app` 降级为仅用于本地演示的兼容模块，最终移除或改成 e2e demo client。
+1. 默认微服务主线已基本闭环；后续可继续把 `meal-app` 完全替换为独立 e2e demo client，或扩展更多故障注入自动断言。

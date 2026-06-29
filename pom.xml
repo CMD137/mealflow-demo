@@ -31,8 +31,16 @@
     <module>meal-payment</module>
     <module>meal-fulfillment</module>
     <module>meal-notify</module>
-    <module>meal-app</module>
   </modules>
+
+  <profiles>
+    <profile>
+      <id>legacy-demo</id>
+      <modules>
+        <module>meal-app</module>
+      </modules>
+    </profile>
+  </profiles>
 
   <properties>
     <java.version>17</java.version>
