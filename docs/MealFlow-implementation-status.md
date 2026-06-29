@@ -32,13 +32,13 @@
 - `meal-app` 已从默认 Maven reactor 移出，仅保留在 `legacy-demo` profile 下作为本地内存版演示模块，避免与当前微服务主线混淆。
 - 当前验证通过：`mvn -q test`、`mvn -q -DskipTests compile`、`docker compose config`、`scripts/e2e-smoke.ps1`。
 
-## 当前尚未完成
+## 后续增强方向
 
 - `auth-user`、`merchant`、`cart` 已补齐当前演示链路所需的地址管理、商户营业状态和购物车基础管理能力；更细粒度的后台菜单/员工配置可以作为后续管理端增强。
 - Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order、domain event 到 notify 的真实 MQ 消费均已接入 consumer_record，持久化消费模板已支持 PROCESSING 超时抢占重试和基于保存 payload 的本地重放，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。
 - Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua、领取资格对账补偿、领取修复重试和死信记录已在 `meal-promotion` 接入。后续可继续扩展更多 Redis/MQ 故障注入断言。
 - Prometheus/Grafana、业务积压指标和基础压测/故障脚本已完成；后续可继续扩展更细的队列等待 P90/P99、秒杀失败原因分布和故障注入自动断言。
 
-## 下一阶段实施顺序
+## 后续实施顺序
 
 1. 默认微服务主线已基本闭环；后续可继续把 `meal-app` 完全替换为独立 e2e demo client，或扩展更多故障注入自动断言。
