@@ -35,3 +35,7 @@ mealflow:
       group: ${NOTIFY_EVENT_CONSUMER_GROUP:mealflow-notify-domain-consumer}
       topics: ${NOTIFY_EVENT_TOPICS:mealflow-order-events}
       max-reconsume-times: ${NOTIFY_EVENT_MAX_RECONSUME_TIMES:16}
+      recovery:
+        enabled: ${NOTIFY_EVENT_CONSUMER_RECOVERY_ENABLED:true}
+        initial-delay-ms: ${NOTIFY_EVENT_CONSUMER_RECOVERY_INITIAL_DELAY_MS:30000}
+        fixed-delay-ms: ${NOTIFY_EVENT_CONSUMER_RECOVERY_FIXED_DELAY_MS:30000}

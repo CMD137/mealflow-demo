@@ -16,6 +16,8 @@ import com.mealflow.order.client.CatalogClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
+import com.mealflow.order.mapper.ConsumerRecordMapper;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +34,9 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 class OrderPersistenceTest {
   @Autowired
   private OrderService orderService;
+
+  @Autowired
+  private ConsumerRecordMapper consumerRecordMapper;
 
   @MockBean
   private CatalogClient catalogClient;
@@ -91,5 +96,18 @@ class OrderPersistenceTest {
     verify(catalogClient).confirm(any());
     verify(promotionClient).confirm(any());
     verify(queueClient).bindOrder(eq(6001L), any());
+  }
+
+  @Test
+  void recoversTimedOutConsumerRecord() {
+    String eventKey = "payment:PaymentPaid:99901:1";
+    String consumerGroup = "mealflow-order-payment-consumer-test";
+    consumerRecordMapper.insertProcessing(consumerRecordMapper.maxRecordId() + 100, eventKey, consumerGroup,
+        LocalDateTime.now().minusMinutes(10));
+
+    int recovered = orderService.recoverTimedOutConsumerRecords();
+
+    assertThat(recovered).isGreaterThanOrEqualTo(1);
+    assertThat(consumerRecordMapper.findStatus(eventKey, consumerGroup)).isEqualTo("TIMEOUT");
   }
 }

@@ -147,6 +147,10 @@ public class OrderService {
     });
   }
 
+  public int recoverTimedOutConsumerRecords() {
+    return consumerRecordTemplate.recoverProcessingTimeouts();
+  }
+
   @Transactional
   public synchronized void cancel(long orderId, String reason) {
     OrderRecord order = requireOrder(orderId);

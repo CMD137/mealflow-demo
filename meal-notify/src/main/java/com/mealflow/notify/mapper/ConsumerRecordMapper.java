@@ -74,6 +74,14 @@ public interface ConsumerRecordMapper extends PersistentConsumerRecordRepository
   @Override
   @Update("""
       UPDATE consumer_record
+      SET status = 'TIMEOUT', last_error = 'PROCESSING_TIMEOUT', update_time = #{now}
+      WHERE status = 'PROCESSING' AND update_time < #{before}
+      """)
+  int markProcessingTimeoutsBefore(@Param("before") LocalDateTime before, @Param("now") LocalDateTime now);
+
+  @Override
+  @Update("""
+      UPDATE consumer_record
       SET status = 'SUCCESS', last_error = NULL, update_time = #{now}
       WHERE event_key = #{eventKey} AND consumer_group = #{consumerGroup}
         AND status = 'PROCESSING'

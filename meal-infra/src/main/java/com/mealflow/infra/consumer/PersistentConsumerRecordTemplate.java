@@ -26,6 +26,11 @@ public class PersistentConsumerRecordTemplate {
     idGenerator.ensureAtLeast("consumerRecord", value);
   }
 
+  public int recoverProcessingTimeouts() {
+    LocalDateTime now = LocalDateTime.now();
+    return repository.markProcessingTimeoutsBefore(now.minus(processingTimeout), now);
+  }
+
   public <T> T consumeOnce(String eventKey, String consumerGroup, Supplier<T> supplier) {
     PersistentConsumerRecordState record = repository.findRecord(eventKey, consumerGroup);
     LocalDateTime now = LocalDateTime.now();

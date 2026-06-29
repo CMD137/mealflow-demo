@@ -87,6 +87,10 @@ public class NotifyService {
     return consumerRecordMapper.findAll().stream().map(this::recordView).toList();
   }
 
+  public int recoverTimedOutConsumerRecords() {
+    return consumerRecordTemplate.recoverProcessingTimeouts();
+  }
+
   private MessageView view(NotifyMessageRow message) {
     return new MessageView(message.getId(), message.getUserId(), message.getBizType(), message.getContent(),
         message.getCreateTime());

@@ -99,4 +99,17 @@ class NotifyPersistenceTest {
         .satisfies(stored -> assertThat(stored.content()).isEqualTo("meal ready after retry"));
     assertThat(consumerRecordMapper.findByEvent(eventKey, consumerGroup).getStatus()).isEqualTo("SUCCESS");
   }
+
+  @Test
+  void recoversTimedOutProcessingConsumerRecord() {
+    String eventKey = "order:OrderPaid:10004:1";
+    String consumerGroup = "notify-recovery-test";
+    consumerRecordMapper.insertProcessing(consumerRecordMapper.maxRecordId() + 200, eventKey, consumerGroup,
+        LocalDateTime.now().minusMinutes(10));
+
+    int recovered = notifyService.recoverTimedOutConsumerRecords();
+
+    assertThat(recovered).isGreaterThanOrEqualTo(1);
+    assertThat(consumerRecordMapper.findByEvent(eventKey, consumerGroup).getStatus()).isEqualTo("TIMEOUT");
+  }
 }

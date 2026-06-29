@@ -94,4 +94,9 @@ public class OrderController {
   public Result<Integer> dispatchEvents() {
     return Result.ok(orderService.dispatchPendingEvents(100));
   }
+
+  @PostMapping("/internal/consumer-records/recover")
+  public Result<Integer> recoverConsumerRecords() {
+    return Result.ok(orderService.recoverTimedOutConsumerRecords());
+  }
 }

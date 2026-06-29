@@ -41,6 +41,10 @@ mealflow:
       group: ${PAYMENT_EVENT_CONSUMER_GROUP:mealflow-order-payment-consumer}
       topics: ${PAYMENT_EVENT_TOPICS:mealflow-payment-events}
       max-reconsume-times: ${PAYMENT_EVENT_MAX_RECONSUME_TIMES:16}
+      recovery:
+        enabled: ${PAYMENT_EVENT_CONSUMER_RECOVERY_ENABLED:true}
+        initial-delay-ms: ${PAYMENT_EVENT_CONSUMER_RECOVERY_INITIAL_DELAY_MS:30000}
+        fixed-delay-ms: ${PAYMENT_EVENT_CONSUMER_RECOVERY_FIXED_DELAY_MS:30000}
   services:
     catalog: ${MEAL_CATALOG_URI:http://localhost:8103}
     promotion: ${MEAL_PROMOTION_URI:http://localhost:8107}

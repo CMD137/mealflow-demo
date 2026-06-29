@@ -13,6 +13,8 @@ public interface PersistentConsumerRecordRepository {
 
   int markTimeoutBefore(String eventKey, String consumerGroup, LocalDateTime before, LocalDateTime now);
 
+  int markProcessingTimeoutsBefore(LocalDateTime before, LocalDateTime now);
+
   int markSuccess(String eventKey, String consumerGroup, LocalDateTime now);
 
   int markFailed(String eventKey, String consumerGroup, String lastError, LocalDateTime now);

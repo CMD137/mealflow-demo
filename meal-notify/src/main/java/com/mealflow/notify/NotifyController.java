@@ -55,4 +55,9 @@ public class NotifyController {
   public Result<List<ConsumerRecordView>> consumerRecords() {
     return Result.ok(notifyService.consumerRecords());
   }
+
+  @PostMapping("/internal/consumer-records/recover")
+  public Result<Integer> recoverConsumerRecords() {
+    return Result.ok(notifyService.recoverTimedOutConsumerRecords());
+  }
 }
