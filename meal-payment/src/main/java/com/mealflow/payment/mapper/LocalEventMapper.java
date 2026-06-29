@@ -16,6 +16,9 @@ public interface LocalEventMapper {
   @Select("SELECT COALESCE(MAX(id), 10000) FROM payment_local_event")
   long maxEventId();
 
+  @Select("SELECT COUNT(*) FROM payment_local_event WHERE status = #{status}")
+  long countByStatus(String status);
+
   @Insert("""
       INSERT INTO payment_local_event (
         id, event_key, event_type, event_version, aggregate_type, aggregate_id,

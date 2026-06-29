@@ -43,6 +43,9 @@ public interface PromotionMapper {
   @Select("SELECT COALESCE(MAX(id), 10000) FROM voucher_claim_retry")
   long maxVoucherClaimRetryId();
 
+  @Select("SELECT COUNT(*) FROM voucher_claim_retry WHERE status = #{status}")
+  long countClaimRetryByStatus(String status);
+
   @Select("SELECT id, discount_cent, stock FROM voucher WHERE id = #{id}")
   @Results(id = "voucherMap", value = {
       @Result(column = "id", property = "id"),

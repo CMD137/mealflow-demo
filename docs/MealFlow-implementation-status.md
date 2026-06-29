@@ -24,6 +24,7 @@
 - `meal-queue` 的票据、产能 token、商户产能配置已持久化；启动时可以从 MySQL 重建 WAITING 队列运行时索引和商户产能 inflight 派生计数，Docker 环境可使用 Redis ZSet 作为等待队列热索引、使用 `capacity:merchant:{merchantId}:inflight` 作为产能热计数，本地测试默认使用内存实现。
 - `docker-compose.yml` 已包含 Nacos、MySQL、Redis、RocketMQ、gateway、所有业务服务、Prometheus 和 Grafana；MySQL 使用 healthcheck，业务服务等待 MySQL healthy 后启动。
 - 所有业务服务和网关已暴露 `/actuator/prometheus`，Prometheus 默认抓取各服务指标，Grafana 自动 provision Prometheus 数据源和 `MealFlow Overview` 基础面板。
+- `meal-order`、`meal-payment`、`meal-fulfillment` 已暴露 Outbox 状态指标 `mealflow_outbox_events`，`meal-order`、`meal-notify` 已暴露 consumer_record 状态指标 `mealflow_consumer_records`，`meal-promotion` 已暴露秒杀领取修复任务指标 `mealflow_voucher_claim_retries`；Grafana 面板已展示 Outbox 积压、消费记录异常和券修复任务状态。
 - `scripts/e2e-smoke.ps1` 覆盖 gateway ping、登录取 token、种子商品检查、秒杀券领取、产能限流、第一单成单、第二单排队、支付成功事件异步消费、履约出餐、产能释放后排队 ticket 自动转单。
 - `scripts/load-seckill.ps1`、`scripts/load-peak-orders.ps1` 和 `scripts/fault-demo.ps1` 已覆盖秒杀并发、高峰下单、鉴权拒绝、Redis 热索引重建和 capacity token 重复释放幂等演示。
 - 当前验证通过：`mvn -q test`、`mvn -q -DskipTests compile`、`docker compose config`、`scripts/e2e-smoke.ps1`。
@@ -33,9 +34,8 @@
 - `auth-user` 已具备基础 token、角色权限和商户员工能力；`merchant`、`cart` 仍是最小业务接口，尚未补完整后台菜单、细粒度员工管理、地址管理等能力。
 - Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order、domain event 到 notify 的真实 MQ 消费均已接入 consumer_record，持久化消费模板已支持 PROCESSING 超时抢占重试和基于保存 payload 的本地重放，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。
 - Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua、领取资格对账补偿、领取修复重试和死信记录已在 `meal-promotion` 接入。后续可继续扩展更多 Redis/MQ 故障注入断言。
-- Prometheus/Grafana 和基础压测/故障脚本已完成；后续可继续细化业务指标采集，例如 Outbox 积压、consumer_record 重试次数、队列等待 P90/P99 和秒杀失败原因分布。
+- Prometheus/Grafana、业务积压指标和基础压测/故障脚本已完成；后续可继续扩展更细的队列等待 P90/P99、秒杀失败原因分布和故障注入自动断言。
 
 ## 下一阶段实施顺序
 
-1. 细化业务可观测性指标和 Grafana 面板，补充更多故障注入场景自动化断言。
-2. 将 `meal-app` 降级为仅用于本地演示的兼容模块，最终移除或改成 e2e demo client。
+1. 将 `meal-app` 降级为仅用于本地演示的兼容模块，最终移除或改成 e2e demo client。

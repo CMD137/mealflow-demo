@@ -18,6 +18,9 @@ public interface ConsumerRecordMapper extends PersistentConsumerRecordRepository
   @Select("SELECT COALESCE(MAX(id), 10000) FROM consumer_record")
   long maxRecordId();
 
+  @Select("SELECT COUNT(*) FROM consumer_record WHERE status = #{status}")
+  long countByStatus(String status);
+
   @Select("""
       SELECT COUNT(*)
       FROM INFORMATION_SCHEMA.COLUMNS
