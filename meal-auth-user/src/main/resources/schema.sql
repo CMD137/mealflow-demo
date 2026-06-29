@@ -44,6 +44,31 @@ CREATE TABLE IF NOT EXISTS merchant_employee (
   INDEX idx_merchant_employee_user_id (user_id)
 );
 
+CREATE TABLE IF NOT EXISTS merchant_role (
+  role_code VARCHAR(64) PRIMARY KEY,
+  role_name VARCHAR(64) NOT NULL,
+  description VARCHAR(255) NOT NULL,
+  builtin BOOLEAN NOT NULL DEFAULT FALSE,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS menu_permission (
+  id BIGINT PRIMARY KEY,
+  parent_id BIGINT NULL,
+  menu_code VARCHAR(64) NOT NULL,
+  menu_name VARCHAR(64) NOT NULL,
+  path VARCHAR(128) NOT NULL,
+  permission_code VARCHAR(64) NOT NULL,
+  sort_order INT NOT NULL,
+  visible BOOLEAN NOT NULL DEFAULT TRUE,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_menu_permission_code (menu_code),
+  UNIQUE KEY uk_menu_permission_permission (permission_code),
+  INDEX idx_menu_permission_parent (parent_id)
+);
+
 CREATE TABLE IF NOT EXISTS role_permission (
   role_code VARCHAR(64) NOT NULL,
   permission_code VARCHAR(64) NOT NULL,

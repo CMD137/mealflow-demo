@@ -4,8 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.mealflow.authuser.api.AddressRequest;
 import com.mealflow.authuser.api.AddressView;
+import com.mealflow.authuser.api.EmployeeRequest;
+import com.mealflow.authuser.api.EmployeeView;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
+import com.mealflow.authuser.api.RoleRequest;
+import com.mealflow.authuser.api.RoleView;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,7 +32,8 @@ class AuthUserPersistenceTest {
     assertThat(existing.token()).startsWith("mf-");
     assertThat(existing.roleCode()).isEqualTo("MERCHANT_ADMIN");
     assertThat(existing.merchantId()).isEqualTo(10L);
-    assertThat(existing.permissions()).contains("MERCHANT_MANAGE", "INTERNAL_OPERATE");
+    assertThat(existing.permissions()).contains("MERCHANT_MANAGE", "CATALOG_MANAGE", "INTERNAL_OPERATE");
+    assertThat(existing.menus()).extracting("menuCode").contains("catalog", "operations");
     assertThat(created.userId()).isGreaterThan(1000L);
     assertThat(created.roleCode()).isEqualTo("CUSTOMER");
     assertThat(authUserService.validateToken(created.token()).userId()).isEqualTo(created.userId());
@@ -58,5 +64,31 @@ class AuthUserPersistenceTest {
 
     assertThat(authUserService.addresses(100L))
         .noneSatisfy(address -> assertThat(address.addressId()).isEqualTo(created.addressId()));
+  }
+
+  @Test
+  void managesMerchantRolesMenusAndEmployeesInDatabase() {
+    RoleView role = authUserService.saveRole(new RoleRequest("KITCHEN_MANAGER", "Kitchen Manager",
+        "Can maintain catalog and operate kitchen", List.of("CATALOG_MANAGE", "FULFILLMENT_OPERATE")));
+
+    assertThat(role.permissions()).containsExactlyInAnyOrder("CATALOG_MANAGE", "FULFILLMENT_OPERATE");
+    assertThat(authUserService.roles()).extracting("roleCode").contains("KITCHEN_MANAGER");
+    assertThat(authUserService.menus()).extracting("menuCode").contains("catalog", "fulfillment");
+
+    EmployeeView employee = authUserService.addEmployee(10L,
+        new EmployeeRequest("13800000066", "Kitchen Lead", "KITCHEN_MANAGER"));
+
+    assertThat(employee.employeeId()).isGreaterThan(1000L);
+    assertThat(employee.merchantId()).isEqualTo(10L);
+    assertThat(employee.roleCode()).isEqualTo("KITCHEN_MANAGER");
+    assertThat(authUserService.employees(10L)).extracting("phone").contains("13800000066");
+
+    LoginResponse login = authUserService.login(new LoginRequest("13800000066", "123456"));
+    assertThat(login.permissions()).contains("CATALOG_MANAGE", "FULFILLMENT_OPERATE");
+    assertThat(login.menus()).extracting("menuCode").contains("catalog", "fulfillment");
+
+    EmployeeView disabled = authUserService.changeEmployeeStatus(10L, employee.employeeId(), "DISABLED");
+    assertThat(disabled.status()).isEqualTo("DISABLED");
+    assertThat(authUserService.validateToken(login.token())).isNull();
   }
 }

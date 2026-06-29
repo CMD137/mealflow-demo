@@ -135,8 +135,14 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     if (path.contains("/internal/")) {
       return "INTERNAL_OPERATE";
     }
+    if (path.startsWith("/auth/admin/")) {
+      return "MERCHANT_MANAGE";
+    }
     if (path.startsWith("/fulfillment/")) {
       return "FULFILLMENT_OPERATE";
+    }
+    if (path.startsWith("/catalog/admin/")) {
+      return "CATALOG_MANAGE";
     }
     if (path.startsWith("/merchant/") || path.startsWith("/merchants/")) {
       return "MERCHANT_MANAGE";

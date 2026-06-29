@@ -2,8 +2,15 @@ package com.mealflow.authuser;
 
 import com.mealflow.authuser.api.AddressView;
 import com.mealflow.authuser.api.AddressRequest;
+import com.mealflow.authuser.api.EmployeeRequest;
+import com.mealflow.authuser.api.EmployeeRoleRequest;
+import com.mealflow.authuser.api.EmployeeStatusRequest;
+import com.mealflow.authuser.api.EmployeeView;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
+import com.mealflow.authuser.api.MenuView;
+import com.mealflow.authuser.api.RoleRequest;
+import com.mealflow.authuser.api.RoleView;
 import com.mealflow.authuser.api.TokenPrincipalView;
 import com.mealflow.authuser.api.TokenValidationRequest;
 import com.mealflow.authuser.api.UserView;
@@ -25,11 +32,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthUserController {
   private final AuthUserService authUserService;
   private final long defaultUserId;
+  private final long defaultMerchantId;
 
   public AuthUserController(AuthUserService authUserService,
-      @Value("${mealflow.demo.default-user-id:100}") long defaultUserId) {
+      @Value("${mealflow.demo.default-user-id:100}") long defaultUserId,
+      @Value("${mealflow.demo.default-merchant-id:10}") long defaultMerchantId) {
     this.authUserService = authUserService;
     this.defaultUserId = defaultUserId;
+    this.defaultMerchantId = defaultMerchantId;
   }
 
   @PostMapping("/auth/login")
@@ -73,5 +83,51 @@ public class AuthUserController {
       @PathVariable long addressId) {
     authUserService.deleteAddress(userId == null ? defaultUserId : userId, addressId);
     return Result.ok();
+  }
+
+  @GetMapping("/auth/admin/menus")
+  public Result<List<MenuView>> menus() {
+    return Result.ok(authUserService.menus());
+  }
+
+  @GetMapping("/auth/admin/roles")
+  public Result<List<RoleView>> roles() {
+    return Result.ok(authUserService.roles());
+  }
+
+  @PostMapping("/auth/admin/roles")
+  public Result<RoleView> saveRole(@Valid @RequestBody RoleRequest request) {
+    return Result.ok(authUserService.saveRole(request));
+  }
+
+  @GetMapping("/auth/admin/employees")
+  public Result<List<EmployeeView>> employees(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    return Result.ok(authUserService.employees(merchantId == null ? defaultMerchantId : merchantId));
+  }
+
+  @PostMapping("/auth/admin/employees")
+  public Result<EmployeeView> addEmployee(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @Valid @RequestBody EmployeeRequest request) {
+    return Result.ok(authUserService.addEmployee(merchantId == null ? defaultMerchantId : merchantId, request));
+  }
+
+  @PutMapping("/auth/admin/employees/{employeeId}/role")
+  public Result<EmployeeView> changeEmployeeRole(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @PathVariable long employeeId,
+      @Valid @RequestBody EmployeeRoleRequest request) {
+    return Result.ok(authUserService.changeEmployeeRole(merchantId == null ? defaultMerchantId : merchantId,
+        employeeId, request.roleCode()));
+  }
+
+  @PutMapping("/auth/admin/employees/{employeeId}/status")
+  public Result<EmployeeView> changeEmployeeStatus(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @PathVariable long employeeId,
+      @Valid @RequestBody EmployeeStatusRequest request) {
+    return Result.ok(authUserService.changeEmployeeStatus(merchantId == null ? defaultMerchantId : merchantId,
+        employeeId, request.status()));
   }
 }

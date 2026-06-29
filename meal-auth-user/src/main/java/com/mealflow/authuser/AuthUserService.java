@@ -2,13 +2,21 @@ package com.mealflow.authuser;
 
 import com.mealflow.authuser.api.AddressView;
 import com.mealflow.authuser.api.AddressRequest;
+import com.mealflow.authuser.api.EmployeeRequest;
+import com.mealflow.authuser.api.EmployeeView;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
+import com.mealflow.authuser.api.MenuView;
+import com.mealflow.authuser.api.RoleRequest;
+import com.mealflow.authuser.api.RoleView;
 import com.mealflow.authuser.api.TokenPrincipalView;
 import com.mealflow.authuser.api.UserView;
 import com.mealflow.authuser.mapper.AuthUserMapper;
 import com.mealflow.authuser.mapper.AuthTokenRow;
+import com.mealflow.authuser.mapper.EmployeeDetailRow;
+import com.mealflow.authuser.mapper.MenuPermissionRow;
 import com.mealflow.authuser.mapper.MerchantEmployeeRow;
+import com.mealflow.authuser.mapper.MerchantRoleRow;
 import com.mealflow.authuser.mapper.UserAccountRow;
 import com.mealflow.authuser.mapper.UserAddressRow;
 import com.mealflow.common.api.ErrorCode;
@@ -38,6 +46,7 @@ public class AuthUserService {
   void initializeIdGenerator() {
     idGenerator.ensureAtLeast("userAccount", authUserMapper.maxUserId());
     idGenerator.ensureAtLeast("userAddress", authUserMapper.maxAddressId());
+    idGenerator.ensureAtLeast("merchantEmployee", authUserMapper.maxEmployeeId());
   }
 
   @Transactional
@@ -53,7 +62,7 @@ public class AuthUserService {
     LocalDateTime now = LocalDateTime.now();
     authUserMapper.insertToken(token, user.getId(), principal.roleCode(), principal.merchantId(), now.plus(TOKEN_TTL), now);
     return new LoginResponse(user.getId(), token, user.getNickname(), principal.roleCode(), principal.merchantId(),
-        principal.permissions());
+        principal.permissions(), principal.menus());
   }
 
   public TokenPrincipalView validateToken(String token) {
@@ -65,8 +74,17 @@ public class AuthUserService {
         || "DISABLED".equals(row.getStatus())) {
       return null;
     }
-    return new TokenPrincipalView(row.getUserId(), row.getPhone(), row.getNickname(), row.getRoleCode(),
-        row.getMerchantId(), authUserMapper.findPermissions(row.getRoleCode()));
+    String roleCode = row.getRoleCode();
+    Long merchantId = row.getMerchantId();
+    if (merchantId != null) {
+      MerchantEmployeeRow employee = authUserMapper.findActiveEmployeeByUserId(row.getUserId());
+      if (employee == null || employee.getMerchantId() != merchantId) {
+        return null;
+      }
+      roleCode = employee.getRoleCode();
+      merchantId = employee.getMerchantId();
+    }
+    return principalView(row.getUserId(), row.getPhone(), row.getNickname(), roleCode, merchantId);
   }
 
   public UserView get(long userId) {
@@ -105,6 +123,79 @@ public class AuthUserService {
     authUserMapper.deleteAddress(address.getId());
   }
 
+  public List<MenuView> menus() {
+    return authUserMapper.findMenus().stream().map(this::menuView).toList();
+  }
+
+  public List<RoleView> roles() {
+    return authUserMapper.findRoles().stream().map(this::roleView).toList();
+  }
+
+  @Transactional
+  public RoleView saveRole(RoleRequest request) {
+    LocalDateTime now = LocalDateTime.now();
+    MerchantRoleRow role = authUserMapper.findRole(request.roleCode());
+    String description = request.description() == null ? "" : request.description();
+    if (role == null) {
+      authUserMapper.insertRole(request.roleCode(), request.roleName(), description, false, now);
+    } else {
+      authUserMapper.updateRole(request.roleCode(), request.roleName(), description, now);
+    }
+    authUserMapper.deleteRolePermissions(request.roleCode());
+    for (String permission : request.permissions()) {
+      if (permission == null || permission.isBlank()) {
+        throw new BizException(ErrorCode.BAD_REQUEST, "permission must not be blank");
+      }
+      authUserMapper.insertRolePermission(request.roleCode(), permission, now);
+    }
+    return roleView(authUserMapper.findRole(request.roleCode()));
+  }
+
+  public List<EmployeeView> employees(long merchantId) {
+    return authUserMapper.findEmployees(merchantId).stream().map(this::employeeView).toList();
+  }
+
+  @Transactional
+  public EmployeeView addEmployee(long merchantId, EmployeeRequest request) {
+    requireRole(request.roleCode());
+    LocalDateTime now = LocalDateTime.now();
+    UserAccountRow user = authUserMapper.findUserByPhone(request.phone());
+    if (user == null) {
+      long userId = idGenerator.next("userAccount");
+      authUserMapper.insertUser(userId, request.phone(), request.nickname(), "NORMAL", now);
+      user = authUserMapper.findUser(userId);
+    } else {
+      authUserMapper.updateUserProfile(user.getId(), request.nickname(), user.getStatus(), now);
+    }
+
+    MerchantEmployeeRow existing = authUserMapper.findEmployeeByMerchantAndUser(merchantId, user.getId());
+    if (existing == null) {
+      long employeeId = idGenerator.next("merchantEmployee");
+      authUserMapper.insertEmployee(employeeId, merchantId, user.getId(), request.roleCode(), "ACTIVE", now);
+      return employeeView(authUserMapper.findEmployee(employeeId));
+    }
+    authUserMapper.updateEmployee(existing.getId(), request.roleCode(), "ACTIVE", now);
+    return employeeView(authUserMapper.findEmployee(existing.getId()));
+  }
+
+  @Transactional
+  public EmployeeView changeEmployeeRole(long merchantId, long employeeId, String roleCode) {
+    requireRole(roleCode);
+    EmployeeDetailRow employee = requireEmployee(merchantId, employeeId);
+    authUserMapper.updateEmployee(employee.getEmployeeId(), roleCode, employee.getStatus(), LocalDateTime.now());
+    return employeeView(authUserMapper.findEmployee(employee.getEmployeeId()));
+  }
+
+  @Transactional
+  public EmployeeView changeEmployeeStatus(long merchantId, long employeeId, String status) {
+    if (!List.of("ACTIVE", "DISABLED").contains(status)) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "employee status must be ACTIVE or DISABLED");
+    }
+    EmployeeDetailRow employee = requireEmployee(merchantId, employeeId);
+    authUserMapper.updateEmployee(employee.getEmployeeId(), employee.getRoleCode(), status, LocalDateTime.now());
+    return employeeView(authUserMapper.findEmployee(employee.getEmployeeId()));
+  }
+
   private UserAddressRow requireAddress(long userId, long addressId) {
     UserAddressRow address = authUserMapper.findAddress(addressId);
     if (address == null || address.getUserId() != userId) {
@@ -122,7 +213,45 @@ public class AuthUserService {
     MerchantEmployeeRow employee = authUserMapper.findActiveEmployeeByUserId(user.getId());
     String roleCode = employee == null ? CUSTOMER_ROLE : employee.getRoleCode();
     Long merchantId = employee == null ? null : employee.getMerchantId();
-    return new TokenPrincipalView(user.getId(), user.getPhone(), user.getNickname(), roleCode, merchantId,
-        authUserMapper.findPermissions(roleCode));
+    return principalView(user.getId(), user.getPhone(), user.getNickname(), roleCode, merchantId);
+  }
+
+  private TokenPrincipalView principalView(long userId, String phone, String nickname, String roleCode,
+      Long merchantId) {
+    return new TokenPrincipalView(userId, phone, nickname, roleCode, merchantId,
+        authUserMapper.findPermissions(roleCode), authUserMapper.findMenusByRole(roleCode).stream()
+            .map(this::menuView)
+            .toList());
+  }
+
+  private RoleView roleView(MerchantRoleRow role) {
+    return new RoleView(role.getRoleCode(), role.getRoleName(), role.getDescription(), role.isBuiltin(),
+        authUserMapper.findPermissions(role.getRoleCode()));
+  }
+
+  private MenuView menuView(MenuPermissionRow row) {
+    return new MenuView(row.getId(), row.getParentId(), row.getMenuCode(), row.getMenuName(), row.getPath(),
+        row.getPermissionCode(), row.getSortOrder(), row.isVisible());
+  }
+
+  private EmployeeView employeeView(EmployeeDetailRow row) {
+    return new EmployeeView(row.getEmployeeId(), row.getMerchantId(), row.getUserId(), row.getPhone(),
+        row.getNickname(), row.getRoleCode(), row.getRoleName(), row.getStatus());
+  }
+
+  private MerchantRoleRow requireRole(String roleCode) {
+    MerchantRoleRow role = authUserMapper.findRole(roleCode);
+    if (role == null) {
+      throw new BizException(ErrorCode.NOT_FOUND, "role not found");
+    }
+    return role;
+  }
+
+  private EmployeeDetailRow requireEmployee(long merchantId, long employeeId) {
+    EmployeeDetailRow employee = authUserMapper.findEmployee(employeeId);
+    if (employee == null || employee.getMerchantId() != merchantId) {
+      throw new BizException(ErrorCode.NOT_FOUND, "employee not found");
+    }
+    return employee;
   }
 }
