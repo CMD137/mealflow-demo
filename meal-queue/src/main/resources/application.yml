@@ -27,7 +27,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
 mealflow:
   queue:
     waiting-store: ${QUEUE_WAITING_STORE:local}

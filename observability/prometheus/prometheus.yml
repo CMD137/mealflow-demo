@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: mealflow-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - meal-gateway:8080
+          - meal-auth-user:8101
+          - meal-merchant:8102
+          - meal-catalog:8103
+          - meal-cart:8104
+          - meal-order:8105
+          - meal-queue:8106
+          - meal-promotion:8107
+          - meal-payment:8108
+          - meal-fulfillment:8109
+          - meal-notify:8110
+        labels:
+          system: mealflow

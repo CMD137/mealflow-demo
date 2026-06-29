@@ -361,3 +361,41 @@ services:
     command: ["java", "-jar", "/app/app.jar"]
     ports:
       - "8080:8080"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: mealflow-prometheus
+    depends_on:
+      - meal-gateway
+      - meal-auth-user
+      - meal-merchant
+      - meal-catalog
+      - meal-cart
+      - meal-order
+      - meal-queue
+      - meal-promotion
+      - meal-payment
+      - meal-fulfillment
+      - meal-notify
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: mealflow-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: mealflow
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
