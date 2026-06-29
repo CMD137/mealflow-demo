@@ -33,4 +33,12 @@ public interface MerchantMapper {
       """)
   int updateCapacity(@Param("id") long id, @Param("baseCapacity") int baseCapacity,
       @Param("manualFactor") double manualFactor, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE merchant
+      SET business_status = #{businessStatus}, update_time = #{now}
+      WHERE id = #{id}
+      """)
+  int updateBusinessStatus(@Param("id") long id, @Param("businessStatus") String businessStatus,
+      @Param("now") LocalDateTime now);
 }

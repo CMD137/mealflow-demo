@@ -27,7 +27,21 @@ class CartPersistenceTest {
     CartItemView updated = cartService.update(101L, added.cartItemId(), 1);
     assertThat(updated.quantity()).isEqualTo(1);
 
+    CartItemView unselected = cartService.select(101L, added.cartItemId(), false);
+    assertThat(unselected.selected()).isFalse();
+
     cartService.delete(101L, added.cartItemId());
     assertThat(cartService.list(101L)).isEmpty();
+  }
+
+  @Test
+  void clearsCartItemsInDatabase() {
+    cartService.add(102L, new AddCartItemRequest(10L, 1L, 2));
+    cartService.add(102L, new AddCartItemRequest(10L, 2L, 1));
+
+    int cleared = cartService.clear(102L);
+
+    assertThat(cleared).isEqualTo(2);
+    assertThat(cartService.list(102L)).isEmpty();
   }
 }

@@ -9,11 +9,16 @@ import org.apache.ibatis.annotations.Result;
 import org.apache.ibatis.annotations.ResultMap;
 import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.Delete;
 
 @Mapper
 public interface AuthUserMapper {
   @Select("SELECT COALESCE(MAX(id), 10000) FROM user_account")
   long maxUserId();
+
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM user_address")
+  long maxAddressId();
 
   @Select("SELECT id, phone, nickname, status FROM user_account WHERE id = #{id}")
   @Results(id = "userMap", value = {
@@ -49,6 +54,33 @@ public interface AuthUserMapper {
       @Result(column = "detail", property = "detail")
   })
   List<UserAddressRow> findAddresses(long userId);
+
+  @Select("""
+      SELECT id, user_id, contact_name, contact_phone, detail
+      FROM user_address
+      WHERE id = #{id}
+      """)
+  @ResultMap("addressMap")
+  UserAddressRow findAddress(long id);
+
+  @Insert("""
+      INSERT INTO user_address (id, user_id, contact_name, contact_phone, detail, create_time, update_time)
+      VALUES (#{id}, #{userId}, #{contactName}, #{contactPhone}, #{detail}, #{now}, #{now})
+      """)
+  int insertAddress(@Param("id") long id, @Param("userId") long userId,
+      @Param("contactName") String contactName, @Param("contactPhone") String contactPhone,
+      @Param("detail") String detail, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE user_address
+      SET contact_name = #{contactName}, contact_phone = #{contactPhone}, detail = #{detail}, update_time = #{now}
+      WHERE id = #{id}
+      """)
+  int updateAddress(@Param("id") long id, @Param("contactName") String contactName,
+      @Param("contactPhone") String contactPhone, @Param("detail") String detail, @Param("now") LocalDateTime now);
+
+  @Delete("DELETE FROM user_address WHERE id = #{id}")
+  int deleteAddress(long id);
 
   @Select("""
       SELECT id, merchant_id, user_id, role_code, status

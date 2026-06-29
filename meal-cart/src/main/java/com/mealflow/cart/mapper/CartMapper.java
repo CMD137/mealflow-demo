@@ -58,6 +58,16 @@ public interface CartMapper {
       """)
   int updateQuantity(@Param("id") long id, @Param("quantity") int quantity, @Param("now") LocalDateTime now);
 
+  @Update("""
+      UPDATE cart_item
+      SET selected = #{selected}, update_time = #{now}
+      WHERE id = #{id}
+      """)
+  int updateSelected(@Param("id") long id, @Param("selected") boolean selected, @Param("now") LocalDateTime now);
+
   @Delete("DELETE FROM cart_item WHERE id = #{id}")
   int delete(long id);
+
+  @Delete("DELETE FROM cart_item WHERE user_id = #{userId}")
+  int deleteByUser(long userId);
 }

@@ -1,6 +1,7 @@
 package com.mealflow.authuser;
 
 import com.mealflow.authuser.api.AddressView;
+import com.mealflow.authuser.api.AddressRequest;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
 import com.mealflow.authuser.api.TokenPrincipalView;
@@ -36,6 +37,7 @@ public class AuthUserService {
   @PostConstruct
   void initializeIdGenerator() {
     idGenerator.ensureAtLeast("userAccount", authUserMapper.maxUserId());
+    idGenerator.ensureAtLeast("userAddress", authUserMapper.maxAddressId());
   }
 
   @Transactional
@@ -78,6 +80,37 @@ public class AuthUserService {
   public List<AddressView> addresses(long userId) {
     get(userId);
     return authUserMapper.findAddresses(userId).stream().map(this::addressView).toList();
+  }
+
+  @Transactional
+  public AddressView addAddress(long userId, AddressRequest request) {
+    get(userId);
+    long id = idGenerator.next("userAddress");
+    authUserMapper.insertAddress(id, userId, request.contactName(), request.phone(), request.detail(),
+        LocalDateTime.now());
+    return addressView(authUserMapper.findAddress(id));
+  }
+
+  @Transactional
+  public AddressView updateAddress(long userId, long addressId, AddressRequest request) {
+    UserAddressRow address = requireAddress(userId, addressId);
+    authUserMapper.updateAddress(address.getId(), request.contactName(), request.phone(), request.detail(),
+        LocalDateTime.now());
+    return addressView(authUserMapper.findAddress(address.getId()));
+  }
+
+  @Transactional
+  public void deleteAddress(long userId, long addressId) {
+    UserAddressRow address = requireAddress(userId, addressId);
+    authUserMapper.deleteAddress(address.getId());
+  }
+
+  private UserAddressRow requireAddress(long userId, long addressId) {
+    UserAddressRow address = authUserMapper.findAddress(addressId);
+    if (address == null || address.getUserId() != userId) {
+      throw new BizException(ErrorCode.NOT_FOUND, "address not found");
+    }
+    return address;
   }
 
   private AddressView addressView(UserAddressRow address) {

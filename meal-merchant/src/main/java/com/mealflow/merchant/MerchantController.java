@@ -2,6 +2,7 @@ package com.mealflow.merchant;
 
 import com.mealflow.common.api.Result;
 import com.mealflow.merchant.api.CapacityConfigRequest;
+import com.mealflow.merchant.api.BusinessStatusRequest;
 import com.mealflow.merchant.api.MerchantView;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -35,5 +36,11 @@ public class MerchantController {
   public Result<MerchantView> updateCapacity(@PathVariable long merchantId,
       @Valid @RequestBody CapacityConfigRequest request) {
     return Result.ok(merchantService.updateCapacity(merchantId, request));
+  }
+
+  @PostMapping("/{merchantId}/business-status")
+  public Result<MerchantView> updateBusinessStatus(@PathVariable long merchantId,
+      @Valid @RequestBody BusinessStatusRequest request) {
+    return Result.ok(merchantService.updateBusinessStatus(merchantId, request));
   }
 }

@@ -48,9 +48,21 @@ public class CartService {
   }
 
   @Transactional
+  public synchronized CartItemView select(long userId, long cartItemId, boolean selected) {
+    CartItemRow item = requireItem(userId, cartItemId);
+    cartMapper.updateSelected(item.getId(), selected, LocalDateTime.now());
+    return view(cartMapper.findById(item.getId()));
+  }
+
+  @Transactional
   public synchronized void delete(long userId, long cartItemId) {
     CartItemRow item = requireItem(userId, cartItemId);
     cartMapper.delete(item.getId());
+  }
+
+  @Transactional
+  public synchronized int clear(long userId) {
+    return cartMapper.deleteByUser(userId);
   }
 
   public List<CartItemView> list(long userId) {

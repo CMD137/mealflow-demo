@@ -3,6 +3,7 @@ package com.mealflow.merchant;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.merchant.api.CapacityConfigRequest;
+import com.mealflow.merchant.api.BusinessStatusRequest;
 import com.mealflow.merchant.api.MerchantView;
 import com.mealflow.merchant.mapper.MerchantMapper;
 import com.mealflow.merchant.mapper.MerchantRow;
@@ -32,6 +33,17 @@ public class MerchantService {
     requireMerchant(merchantId);
     double manualFactor = request.manualFactor() <= 0 ? 1.0 : request.manualFactor();
     merchantMapper.updateCapacity(merchantId, request.baseCapacity(), manualFactor, LocalDateTime.now());
+    return get(merchantId);
+  }
+
+  @Transactional
+  public MerchantView updateBusinessStatus(long merchantId, BusinessStatusRequest request) {
+    requireMerchant(merchantId);
+    String status = request.businessStatus().trim().toUpperCase();
+    if (!List.of("OPEN", "CLOSED", "SUSPENDED").contains(status)) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "unsupported merchant business status");
+    }
+    merchantMapper.updateBusinessStatus(merchantId, status, LocalDateTime.now());
     return get(merchantId);
   }
 

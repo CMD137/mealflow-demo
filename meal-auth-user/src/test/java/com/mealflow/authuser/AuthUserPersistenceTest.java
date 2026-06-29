@@ -2,6 +2,8 @@ package com.mealflow.authuser;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.mealflow.authuser.api.AddressRequest;
+import com.mealflow.authuser.api.AddressView;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
 import org.junit.jupiter.api.Test;
@@ -31,5 +33,30 @@ class AuthUserPersistenceTest {
     assertThat(authUserService.validateToken(created.token()).userId()).isEqualTo(created.userId());
     assertThat(authUserService.get(created.userId()).phone()).isEqualTo("13900000000");
     assertThat(authUserService.addresses(100L)).isNotEmpty();
+  }
+
+  @Test
+  void managesUserAddressesInDatabase() {
+    AddressView created = authUserService.addAddress(100L,
+        new AddressRequest("Alice", "13800009999", "Building 1"));
+
+    assertThat(created.addressId()).isGreaterThan(1000L);
+    assertThat(authUserService.addresses(100L))
+        .anySatisfy(address -> {
+          assertThat(address.addressId()).isEqualTo(created.addressId());
+          assertThat(address.contactName()).isEqualTo("Alice");
+        });
+
+    AddressView updated = authUserService.updateAddress(100L, created.addressId(),
+        new AddressRequest("Bob", "13800008888", "Building 2"));
+
+    assertThat(updated.contactName()).isEqualTo("Bob");
+    assertThat(updated.phone()).isEqualTo("13800008888");
+    assertThat(updated.detail()).isEqualTo("Building 2");
+
+    authUserService.deleteAddress(100L, created.addressId());
+
+    assertThat(authUserService.addresses(100L))
+        .noneSatisfy(address -> assertThat(address.addressId()).isEqualTo(created.addressId()));
   }
 }
