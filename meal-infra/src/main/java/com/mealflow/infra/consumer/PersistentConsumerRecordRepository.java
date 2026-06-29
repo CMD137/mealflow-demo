@@ -7,9 +7,10 @@ public interface PersistentConsumerRecordRepository {
 
   String findStatus(String eventKey, String consumerGroup);
 
-  int insertProcessing(long id, String eventKey, String consumerGroup, LocalDateTime now);
+  int insertProcessing(long id, String eventKey, String consumerGroup, String eventType, String payloadJson,
+      LocalDateTime now);
 
-  int markProcessing(String eventKey, String consumerGroup, LocalDateTime now);
+  int markProcessing(String eventKey, String consumerGroup, String eventType, String payloadJson, LocalDateTime now);
 
   int markTimeoutBefore(String eventKey, String consumerGroup, LocalDateTime before, LocalDateTime now);
 

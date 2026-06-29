@@ -74,4 +74,9 @@ public class NotifyController {
   public Result<Integer> recoverConsumerRecords() {
     return Result.ok(notifyService.recoverTimedOutConsumerRecords());
   }
+
+  @PostMapping("/internal/consumer-records/{eventKey}/groups/{consumerGroup}/replay")
+  public Result<MessageView> replayConsumerRecord(@PathVariable String eventKey, @PathVariable String consumerGroup) {
+    return Result.ok(notifyService.replayDomainConsumerRecord(eventKey, consumerGroup));
+  }
 }

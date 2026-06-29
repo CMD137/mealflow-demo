@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 
 public class PersistentConsumerRecordState {
   private String status;
+  private String eventType;
+  private String payloadJson;
   private LocalDateTime updateTime;
 
   public String getStatus() {
@@ -12,6 +14,22 @@ public class PersistentConsumerRecordState {
 
   public void setStatus(String status) {
     this.status = status;
+  }
+
+  public String getEventType() {
+    return eventType;
+  }
+
+  public void setEventType(String eventType) {
+    this.eventType = eventType;
+  }
+
+  public String getPayloadJson() {
+    return payloadJson;
+  }
+
+  public void setPayloadJson(String payloadJson) {
+    this.payloadJson = payloadJson;
   }
 
   public LocalDateTime getUpdateTime() {

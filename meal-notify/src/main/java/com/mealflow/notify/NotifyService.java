@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
+import com.mealflow.common.status.ConsumerRecordStatus;
 import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
 import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.notify.api.ConsumerRecordView;
@@ -51,9 +52,19 @@ public class NotifyService {
 
   @PostConstruct
   void initializeIdGenerator() {
+    ensureConsumerRecordPayloadColumns();
     idGenerator.ensureAtLeast("notifyMessage", notifyMapper.maxMessageId());
     idGenerator.ensureAtLeast("notifyDelivery", notifyMapper.maxDeliveryId());
     consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
+  }
+
+  private void ensureConsumerRecordPayloadColumns() {
+    if (consumerRecordMapper.countColumn("event_type") == 0) {
+      consumerRecordMapper.addEventTypeColumn();
+    }
+    if (consumerRecordMapper.countColumn("payload_json") == 0) {
+      consumerRecordMapper.addPayloadJsonColumn();
+    }
   }
 
   @Transactional
@@ -85,7 +96,7 @@ public class NotifyService {
 
   @Transactional
   public MessageView pushFromDomainEvent(String eventKey, String consumerGroup, String eventType, String payloadJson) {
-    return consumerRecordTemplate.consumeOnce(eventKey, consumerGroup, () -> {
+    return consumerRecordTemplate.consumeOnce(eventKey, consumerGroup, eventType, payloadJson, () -> {
       Map<String, Object> payload = fromJson(payloadJson);
       long userId = longNumber(payload.get("userId"));
       if (userId <= 0) {
@@ -115,6 +126,22 @@ public class NotifyService {
     return consumerRecordTemplate.recoverProcessingTimeouts();
   }
 
+  @Transactional
+  public MessageView replayDomainConsumerRecord(String eventKey, String consumerGroup) {
+    ConsumerRecordRow row = consumerRecordMapper.findByEvent(eventKey, consumerGroup);
+    if (row == null) {
+      throw new BizException(ErrorCode.NOT_FOUND, "consumer record not found");
+    }
+    if (ConsumerRecordStatus.SUCCESS.name().equals(row.getStatus())) {
+      return null;
+    }
+    if (row.getEventType() == null || row.getEventType().isBlank()
+        || row.getPayloadJson() == null || row.getPayloadJson().isBlank()) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "consumer record payload is not replayable");
+    }
+    return pushFromDomainEvent(eventKey, consumerGroup, row.getEventType(), row.getPayloadJson());
+  }
+
   private MessageView view(NotifyMessageRow message) {
     return new MessageView(message.getId(), message.getUserId(), message.getBizType(), message.getContent(),
         message.getCreateTime());
@@ -126,8 +153,8 @@ public class NotifyService {
   }
 
   private ConsumerRecordView recordView(ConsumerRecordRow row) {
-    return new ConsumerRecordView(row.getId(), row.getEventKey(), row.getConsumerGroup(), row.getStatus(),
-        row.getLastError(), row.getCreateTime(), row.getUpdateTime());
+    return new ConsumerRecordView(row.getId(), row.getEventKey(), row.getConsumerGroup(), row.getEventType(),
+        row.getStatus(), row.getLastError(), row.getCreateTime(), row.getUpdateTime());
   }
 
   private void createDeliveries(MessageView message, String channels, String targetPhone) {

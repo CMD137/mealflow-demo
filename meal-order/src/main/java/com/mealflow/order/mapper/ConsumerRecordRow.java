@@ -1,4 +1,4 @@
-package com.mealflow.notify.mapper;
+package com.mealflow.order.mapper;
 
 import java.time.LocalDateTime;
 

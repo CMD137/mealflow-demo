@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
+import com.mealflow.common.status.ConsumerRecordStatus;
 import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.OrderStatus;
 import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
@@ -22,6 +23,7 @@ import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
 import com.mealflow.order.mapper.ConsumerRecordMapper;
+import com.mealflow.order.mapper.ConsumerRecordRow;
 import com.mealflow.order.mapper.LocalEventMapper;
 import com.mealflow.order.mapper.LocalEventRow;
 import com.mealflow.order.mapper.OrderMapper;
@@ -77,9 +79,19 @@ public class OrderService {
 
   @PostConstruct
   void initializeIdGenerator() {
+    ensureConsumerRecordPayloadColumns();
     idGenerator.ensureAtLeast("order", orderMapper.maxOrderId());
     idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
     consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
+  }
+
+  private void ensureConsumerRecordPayloadColumns() {
+    if (consumerRecordMapper.countColumn("event_type") == 0) {
+      consumerRecordMapper.addEventTypeColumn();
+    }
+    if (consumerRecordMapper.countColumn("payload_json") == 0) {
+      consumerRecordMapper.addPayloadJsonColumn();
+    }
   }
 
   @Transactional
@@ -139,8 +151,8 @@ public class OrderService {
   }
 
   @Transactional
-  public void consumePaymentPaid(String eventKey, String consumerGroup, String payloadJson) {
-    consumerRecordTemplate.consumeOnce(eventKey, consumerGroup, () -> {
+  public Boolean consumePaymentPaid(String eventKey, String consumerGroup, String payloadJson) {
+    return consumerRecordTemplate.consumeOnce(eventKey, consumerGroup, "PaymentPaid", payloadJson, () -> {
       Map<String, Object> payload = fromJson(payloadJson, EVENT_PAYLOAD);
       markPaid(longNumber(payload.get("orderId")));
       return Boolean.TRUE;
@@ -149,6 +161,18 @@ public class OrderService {
 
   public int recoverTimedOutConsumerRecords() {
     return consumerRecordTemplate.recoverProcessingTimeouts();
+  }
+
+  @Transactional
+  public Boolean replayPaymentConsumerRecord(String eventKey, String consumerGroup) {
+    ConsumerRecordRow row = requireConsumerRecord(eventKey, consumerGroup);
+    if (ConsumerRecordStatus.SUCCESS.name().equals(row.getStatus())) {
+      return null;
+    }
+    if (!"PaymentPaid".equals(row.getEventType()) || row.getPayloadJson() == null || row.getPayloadJson().isBlank()) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "consumer record payload is not replayable");
+    }
+    return consumePaymentPaid(eventKey, consumerGroup, row.getPayloadJson());
   }
 
   @Transactional
@@ -296,6 +320,14 @@ public class OrderService {
 
   private OrderRecord requireOrder(long orderId) {
     return findOrder(orderId).orElseThrow(() -> new BizException(ErrorCode.NOT_FOUND, "order not found"));
+  }
+
+  private ConsumerRecordRow requireConsumerRecord(String eventKey, String consumerGroup) {
+    ConsumerRecordRow row = consumerRecordMapper.findByEvent(eventKey, consumerGroup);
+    if (row == null) {
+      throw new BizException(ErrorCode.NOT_FOUND, "consumer record not found");
+    }
+    return row;
   }
 
   private Optional<OrderRecord> findOrder(long orderId) {

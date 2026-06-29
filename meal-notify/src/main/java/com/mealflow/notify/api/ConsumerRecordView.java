@@ -6,6 +6,7 @@ public record ConsumerRecordView(
     long id,
     String eventKey,
     String consumerGroup,
+    String eventType,
     String status,
     String lastError,
     LocalDateTime createTime,

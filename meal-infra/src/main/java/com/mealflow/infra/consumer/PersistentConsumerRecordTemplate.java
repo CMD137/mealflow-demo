@@ -32,6 +32,11 @@ public class PersistentConsumerRecordTemplate {
   }
 
   public <T> T consumeOnce(String eventKey, String consumerGroup, Supplier<T> supplier) {
+    return consumeOnce(eventKey, consumerGroup, null, null, supplier);
+  }
+
+  public <T> T consumeOnce(String eventKey, String consumerGroup, String eventType, String payloadJson,
+      Supplier<T> supplier) {
     PersistentConsumerRecordState record = repository.findRecord(eventKey, consumerGroup);
     LocalDateTime now = LocalDateTime.now();
     if (record != null && ConsumerRecordStatus.SUCCESS.name().equals(record.getStatus())) {
@@ -49,8 +54,9 @@ public class PersistentConsumerRecordTemplate {
       record.setStatus(ConsumerRecordStatus.TIMEOUT.name());
     }
     if (record == null) {
-      repository.insertProcessing(idGenerator.next("consumerRecord"), eventKey, consumerGroup, now);
-    } else if (repository.markProcessing(eventKey, consumerGroup, now) == 0) {
+      repository.insertProcessing(idGenerator.next("consumerRecord"), eventKey, consumerGroup, eventType, payloadJson,
+          now);
+    } else if (repository.markProcessing(eventKey, consumerGroup, eventType, payloadJson, now) == 0) {
       return null;
     }
 

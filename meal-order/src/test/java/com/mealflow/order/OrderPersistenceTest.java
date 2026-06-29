@@ -103,11 +103,45 @@ class OrderPersistenceTest {
     String eventKey = "payment:PaymentPaid:99901:1";
     String consumerGroup = "mealflow-order-payment-consumer-test";
     consumerRecordMapper.insertProcessing(consumerRecordMapper.maxRecordId() + 100, eventKey, consumerGroup,
-        LocalDateTime.now().minusMinutes(10));
+        "PaymentPaid", "{\"orderId\":99901}", LocalDateTime.now().minusMinutes(10));
 
     int recovered = orderService.recoverTimedOutConsumerRecords();
 
     assertThat(recovered).isGreaterThanOrEqualTo(1);
     assertThat(consumerRecordMapper.findStatus(eventKey, consumerGroup)).isEqualTo("TIMEOUT");
+  }
+
+  @Test
+  void replaysTimedOutPaymentConsumerRecordFromStoredPayload() {
+    when(catalogClient.snapshots(eq(10L), anyList()))
+        .thenReturn(List.of(new OrderItemSnapshot(1L, "Replay Rice", 1000, 1)));
+    when(catalogClient.reserve(any()))
+        .thenReturn(new CatalogClient.ReserveStockResponse(List.of(8101L), "RESERVED"));
+    when(promotionClient.lock(any()))
+        .thenReturn(new PromotionClient.VoucherLockResponse(7101L, "LOCKED", 0));
+    when(queueClient.apply(any()))
+        .thenReturn(new QueueClient.QueueApplyResponse("READY", 6101L, null, null, 0, 0, null));
+    when(paymentClient.create(any()))
+        .thenReturn(new PaymentClient.PaymentView(5101L, 10101L, 1000, "UNPAID"));
+
+    SubmitOrderResponse response = orderService.submit(101L,
+        new SubmitOrderRequest("order-replay-1", 10L, null, null,
+            List.of(new OrderSkuItem(1L, 1)), null, "replay"));
+    String eventKey = "payment:PaymentPaid:" + response.payOrderId() + ":1";
+    String consumerGroup = "mealflow-order-payment-consumer-replay";
+    String payload = "{\"orderId\":" + response.orderId() + "}";
+    consumerRecordMapper.insertProcessing(consumerRecordMapper.maxRecordId() + 300, eventKey, consumerGroup,
+        "PaymentPaid", payload, LocalDateTime.now().minusMinutes(10));
+
+    Boolean replayed = orderService.replayPaymentConsumerRecord(eventKey, consumerGroup);
+
+    assertThat(replayed).isTrue();
+    assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
+    assertThat(consumerRecordMapper.findByEvent(eventKey, consumerGroup))
+        .satisfies(record -> {
+          assertThat(record.getStatus()).isEqualTo("SUCCESS");
+          assertThat(record.getEventType()).isEqualTo("PaymentPaid");
+          assertThat(record.getPayloadJson()).isEqualTo(payload);
+        });
   }
 }

@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS consumer_record (
   id BIGINT PRIMARY KEY,
   event_key VARCHAR(256) NOT NULL,
   consumer_group VARCHAR(128) NOT NULL,
+  event_type VARCHAR(128) NULL,
+  payload_json TEXT NULL,
   status VARCHAR(32) NOT NULL,
   last_error VARCHAR(512) NULL,
   create_time TIMESTAMP NOT NULL,

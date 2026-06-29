@@ -104,6 +104,11 @@ class NotifyPersistenceTest {
     assertThat(notifyService.list(103L))
         .singleElement()
         .satisfies(stored -> assertThat(stored.content()).isEqualTo("订单 10002 已支付，等待商户接单"));
+    assertThat(consumerRecordMapper.findByEvent("order:OrderPaid:10002:1", "mealflow-notify-domain-consumer"))
+        .satisfies(record -> {
+          assertThat(record.getEventType()).isEqualTo("OrderPaid");
+          assertThat(record.getPayloadJson()).isEqualTo(payload);
+        });
   }
 
   @Test
@@ -111,7 +116,7 @@ class NotifyPersistenceTest {
     String eventKey = "order:OrderMealReady:10003:1";
     String consumerGroup = "notify-message-timeout";
     consumerRecordMapper.insertProcessing(consumerRecordMapper.maxRecordId() + 100, eventKey, consumerGroup,
-        LocalDateTime.now().minusMinutes(10));
+        null, null, LocalDateTime.now().minusMinutes(10));
 
     MessageView retried = notifyService.pushOnce(eventKey, consumerGroup,
         new PushMessageRequest(104L, "ORDER", "meal ready after retry"));
@@ -128,11 +133,34 @@ class NotifyPersistenceTest {
     String eventKey = "order:OrderPaid:10004:1";
     String consumerGroup = "notify-recovery-test";
     consumerRecordMapper.insertProcessing(consumerRecordMapper.maxRecordId() + 200, eventKey, consumerGroup,
-        LocalDateTime.now().minusMinutes(10));
+        "OrderPaid", "{\"orderId\":10004,\"userId\":104}", LocalDateTime.now().minusMinutes(10));
 
     int recovered = notifyService.recoverTimedOutConsumerRecords();
 
     assertThat(recovered).isGreaterThanOrEqualTo(1);
     assertThat(consumerRecordMapper.findByEvent(eventKey, consumerGroup).getStatus()).isEqualTo("TIMEOUT");
+  }
+
+  @Test
+  void replaysTimedOutDomainConsumerRecordFromStoredPayload() {
+    String eventKey = "order:OrderMealReady:10005:1";
+    String consumerGroup = "notify-replay-test";
+    String payload = "{\"orderId\":10005,\"userId\":105,\"status\":\"WAIT_RIDER_PICKUP\"}";
+    consumerRecordMapper.insertProcessing(consumerRecordMapper.maxRecordId() + 300, eventKey, consumerGroup,
+        "OrderMealReady", payload, LocalDateTime.now().minusMinutes(10));
+
+    MessageView replayed = notifyService.replayDomainConsumerRecord(eventKey, consumerGroup);
+
+    assertThat(replayed).isNotNull();
+    assertThat(replayed.content()).isEqualTo("订单 10005 已出餐，等待骑手取餐");
+    assertThat(notifyService.list(105L))
+        .singleElement()
+        .satisfies(stored -> assertThat(stored.messageId()).isEqualTo(replayed.messageId()));
+    assertThat(consumerRecordMapper.findByEvent(eventKey, consumerGroup))
+        .satisfies(record -> {
+          assertThat(record.getStatus()).isEqualTo("SUCCESS");
+          assertThat(record.getEventType()).isEqualTo("OrderMealReady");
+          assertThat(record.getPayloadJson()).isEqualTo(payload);
+        });
   }
 }

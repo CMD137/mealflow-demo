@@ -17,6 +17,7 @@
 - `meal-order`、`meal-payment`、`meal-fulfillment` 已新增服务私有本地事件表和 MyBatis Mapper；订单创建、订单支付成功、支付成功、履约接单/出餐/取餐/送达等关键动作会在本地事务内写入 `NEW` 事件，并支持内部 dispatch、定时扫描、`SENDING` 超时回收和 RocketMQ 发布将事件推进为 `SENDING`/`SENT`/`FAILED`。
 - `meal-order` 已新增服务私有 `order_consumer_record` 表和 MyBatis Mapper，可消费 `meal-payment` 发布的 `PaymentPaid` RocketMQ 事件，并按 `eventKey + consumerGroup` 幂等推进订单为待商户接单；同时支持定时/手动扫描过期 `PROCESSING` 消费记录并标记 `TIMEOUT`，避免租约卡死阻塞后续重投。
 - `meal-notify` 已新增 `consumer_record` MyBatis 持久化消费记录和 RocketMQ 领域事件消费者，默认订阅订单事件并按 `eventKey + consumerGroup` 去重落用户通知；同时提供 `/notify/messages/stream` SSE 实时通知流，消息事实仍以 MyBatis `notify_message` 为准，并支持消费记录超时补偿扫描。
+- `meal-order` 和 `meal-notify` 的 consumer_record 已保存事件类型与 payload，失败或超时记录可通过内部 replay 接口按本地记录重放，重放仍走同一套幂等消费模板和业务状态机。
 - `meal-notify` 已支持通知模板和多渠道投递事实表，模板消息可同时生成站内信与 `SMS_MOCK` 投递记录，便于演示短信模拟和后续真实渠道扩展。
 - `meal-promotion` 秒杀领券已支持可配置资格校验模式；本地测试默认 MyBatis/MySQL 路径，Docker 环境使用 Redis Lua 原子扣减 `voucher:stock:{voucherId}` 并写入 `voucher:user:{voucherId}` 一人一券集合，Lua 成功后再落 MyBatis `voucher_claim` 和 `user_voucher` 事实记录，并提供定时/手动 Redis-MyBatis 领取资格对账补偿。
 - `meal-queue` 的票据、产能 token、商户产能配置已持久化；启动时可以从 MySQL 重建 WAITING 队列运行时索引和商户产能 inflight 派生计数，Docker 环境可使用 Redis ZSet 作为等待队列热索引、使用 `capacity:merchant:{merchantId}:inflight` 作为产能热计数，本地测试默认使用内存实现。
@@ -29,13 +30,12 @@
 ## 当前尚未完成
 
 - `auth-user` 已具备基础 token、角色权限和商户员工能力；`merchant`、`cart` 仍是最小业务接口，尚未补完整后台菜单、细粒度员工管理、地址管理等能力。
-- Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order、domain event 到 notify 的真实 MQ 消费均已接入 consumer_record，持久化消费模板已支持 PROCESSING 超时抢占重试，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。后续可继续增强 consumer_record 保存事件 payload 后的本地重放能力。
+- Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order、domain event 到 notify 的真实 MQ 消费均已接入 consumer_record，持久化消费模板已支持 PROCESSING 超时抢占重试和基于保存 payload 的本地重放，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。
 - Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua 和基础领取资格对账补偿已在 `meal-promotion` 接入。更完整的失败重试/死信处理仍需继续补齐。
 - Prometheus/Grafana 和基础压测/故障脚本已完成；后续可继续细化业务指标采集，例如 Outbox 积压、consumer_record 重试次数、队列等待 P90/P99 和秒杀失败原因分布。
 
 ## 下一阶段实施顺序
 
-1. 增强 consumer_record 保存事件 payload 后的本地重放能力。
-2. 补齐秒杀失败重试/死信处理等剩余 Redis/MQ 异常兜底能力。
-3. 细化业务可观测性指标和 Grafana 面板，补充更多故障注入场景自动化断言。
-4. 将 `meal-app` 降级为仅用于本地演示的兼容模块，最终移除或改成 e2e demo client。
+1. 补齐秒杀失败重试/死信处理等剩余 Redis/MQ 异常兜底能力。
+2. 细化业务可观测性指标和 Grafana 面板，补充更多故障注入场景自动化断言。
+3. 将 `meal-app` 降级为仅用于本地演示的兼容模块，最终移除或改成 e2e demo client。

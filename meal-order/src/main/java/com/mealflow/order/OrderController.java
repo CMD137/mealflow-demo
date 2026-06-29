@@ -99,4 +99,9 @@ public class OrderController {
   public Result<Integer> recoverConsumerRecords() {
     return Result.ok(orderService.recoverTimedOutConsumerRecords());
   }
+
+  @PostMapping("/internal/consumer-records/{eventKey}/groups/{consumerGroup}/replay")
+  public Result<Boolean> replayConsumerRecord(@PathVariable String eventKey, @PathVariable String consumerGroup) {
+    return Result.ok(orderService.replayPaymentConsumerRecord(eventKey, consumerGroup));
+  }
 }
