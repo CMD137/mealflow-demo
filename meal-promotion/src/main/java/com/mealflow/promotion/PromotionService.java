@@ -358,6 +358,7 @@ public class PromotionService {
     if (promotionMapper.countVoucherColumn("update_time") == 0) {
       promotionMapper.addVoucherUpdateTimeColumn();
     }
+    promotionMapper.hydrateSeedVoucherMetadata();
   }
 
   enum UserVoucherStatus {

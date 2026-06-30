@@ -272,6 +272,7 @@ public class CatalogService {
     if (catalogMapper.countSkuColumn("update_time") == 0) {
       catalogMapper.addSkuUpdateTimeColumn();
     }
+    catalogMapper.hydrateSeedSkuMetadata();
   }
 
   private String statusName(int code) {

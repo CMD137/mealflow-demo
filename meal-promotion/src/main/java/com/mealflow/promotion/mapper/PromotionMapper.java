@@ -54,6 +54,16 @@ public interface PromotionMapper {
   int addVoucherUpdateTimeColumn();
 
   @Update("""
+      UPDATE voucher
+      SET name = CASE WHEN name = '' THEN 'Lunch Peak Seckill Coupon' ELSE name END,
+          type = CASE WHEN type = '' THEN 'SECKILL' ELSE type END,
+          status = CASE WHEN status = '' THEN 'ACTIVE' ELSE status END,
+          update_time = CURRENT_TIMESTAMP
+      WHERE id = 1000
+      """)
+  int hydrateSeedVoucherMetadata();
+
+  @Update("""
       CREATE TABLE IF NOT EXISTS voucher_claim_retry (
         id BIGINT PRIMARY KEY,
         user_id BIGINT NOT NULL,

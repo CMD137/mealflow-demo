@@ -33,6 +33,13 @@ public interface AuthUserMapper {
   @Update("ALTER TABLE user_address ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT FALSE")
   int addAddressDefaultColumn();
 
+  @Update("""
+      UPDATE user_address
+      SET is_default = TRUE, update_time = CURRENT_TIMESTAMP
+      WHERE id IN (20, 21) AND is_default = FALSE
+      """)
+  int hydrateSeedDefaultAddresses();
+
   @Select("SELECT id, phone, nickname, status FROM user_account WHERE id = #{id}")
   @Results(id = "userMap", value = {
       @Result(column = "id", property = "id"),

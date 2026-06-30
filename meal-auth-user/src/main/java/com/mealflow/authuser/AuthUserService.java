@@ -269,5 +269,6 @@ public class AuthUserService {
     if (authUserMapper.countAddressColumn("is_default") == 0) {
       authUserMapper.addAddressDefaultColumn();
     }
+    authUserMapper.hydrateSeedDefaultAddresses();
   }
 }

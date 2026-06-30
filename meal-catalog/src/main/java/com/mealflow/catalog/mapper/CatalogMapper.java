@@ -47,6 +47,24 @@ public interface CatalogMapper {
   @Update("ALTER TABLE sku ADD COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
   int addSkuUpdateTimeColumn();
 
+  @Update("""
+      UPDATE sku
+      SET category_id = CASE
+            WHEN category_id IS NULL AND id IN (1, 2) THEN 1
+            WHEN category_id IS NULL AND id = 3 THEN 2
+            ELSE category_id
+          END,
+          description = CASE
+            WHEN description = '' AND id = 1 THEN 'Beef rice bowl for lunch peak'
+            WHEN description = '' AND id = 2 THEN 'Grilled chicken rice bowl'
+            WHEN description = '' AND id = 3 THEN 'Cold lemon tea'
+            ELSE description
+          END,
+          update_time = CURRENT_TIMESTAMP
+      WHERE merchant_id = 10 AND id IN (1, 2, 3)
+      """)
+  int hydrateSeedSkuMetadata();
+
   @Select("""
       SELECT s.id, s.merchant_id, s.category_id, c.name AS category_name, s.name, s.description,
              s.image_url, s.price_cent, s.stock, s.status

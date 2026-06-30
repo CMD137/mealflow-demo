@@ -34,7 +34,8 @@
 - `scripts/load-seckill.ps1`、`scripts/load-peak-orders.ps1` 和 `scripts/fault-demo.ps1` 已覆盖秒杀并发、高峰下单、鉴权拒绝、Redis 热索引重建和 capacity token 重复释放幂等演示。
 - `meal-app` 已从默认 Maven reactor 移出，仅保留在 `legacy-demo` profile 下作为本地内存版演示模块，避免与当前微服务主线混淆。
 - 最近一次后端主线全量验证通过：`mvn -q test`、`mvn -q -DskipTests package`、`docker compose config`、`docker compose up -d --build`、`scripts/e2e-smoke.ps1`。
-- 本轮新增管理端能力已验证通过：`mvn -q -pl meal-auth-user -am test`、`mvn -q -pl meal-catalog -am test`、`mvn -q -pl meal-order -am test`、`mvn -q -pl meal-promotion -am test`、`mvn -q test`、`mvn -q -DskipTests package`。新增后 Docker e2e 因当前 Docker Engine 未连接，仍需在 Docker 启动后重跑。
+- 本轮新增管理端能力已验证通过：`mvn -q -pl meal-auth-user -am test`、`mvn -q -pl meal-catalog -am test`、`mvn -q -pl meal-order -am test`、`mvn -q -pl meal-promotion -am test`、`mvn -q test`、`mvn -q -DskipTests package`。
+- Docker 复验进展：已修复旧 MySQL 表结构下 `data.sql` 先于启动迁移执行导致的 catalog/auth-user/promotion 初始化兼容问题；`catalog`、`auth-user`、`promotion`、`gateway`、`payment`、`fulfillment` 的 ping 和相关模块测试已通过。完整 `scripts/e2e-smoke.ps1` 当前卡在 `meal-queue` 管理接口，已用干净依赖重新打包 `meal-queue`，待 Docker 提权恢复后重建 `meal-queue` 容器并复跑 smoke。
 
 ## 剩余增强方向
 
