@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS user_address (
   contact_name VARCHAR(64) NOT NULL,
   contact_phone VARCHAR(32) NOT NULL,
   detail VARCHAR(255) NOT NULL,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   INDEX idx_user_address_user_id (user_id)

@@ -68,4 +68,76 @@ public interface OrderMapper {
   @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order ORDER BY id")
   @ResultMap("orderMap")
   List<OrderRow> findAll();
+
+  @Select("""
+      <script>
+      SELECT
+      """ + ORDER_COLUMNS + """
+      FROM customer_order
+      WHERE 1 = 1
+      <if test="merchantId != null">
+        AND merchant_id = #{merchantId}
+      </if>
+      <if test="userId != null">
+        AND user_id = #{userId}
+      </if>
+      <if test="status != null and status != ''">
+        AND status = #{status}
+      </if>
+      <if test="beginTime != null">
+        AND create_time &gt;= #{beginTime}
+      </if>
+      <if test="endTime != null">
+        AND create_time &lt;= #{endTime}
+      </if>
+      ORDER BY id DESC
+      </script>
+      """)
+  @ResultMap("orderMap")
+  List<OrderRow> findAdminOrders(@Param("merchantId") Long merchantId, @Param("userId") Long userId,
+      @Param("status") String status, @Param("beginTime") LocalDateTime beginTime,
+      @Param("endTime") LocalDateTime endTime);
+
+  @Select("""
+      <script>
+      SELECT status, COUNT(*) AS count
+      FROM customer_order
+      WHERE 1 = 1
+      <if test="merchantId != null">
+        AND merchant_id = #{merchantId}
+      </if>
+      <if test="beginTime != null">
+        AND create_time &gt;= #{beginTime}
+      </if>
+      <if test="endTime != null">
+        AND create_time &lt;= #{endTime}
+      </if>
+      GROUP BY status
+      </script>
+      """)
+  @Results(id = "statusCountMap", value = {
+      @Result(column = "status", property = "status"),
+      @Result(column = "count", property = "count")
+  })
+  List<StatusCountRow> countByStatus(@Param("merchantId") Long merchantId,
+      @Param("beginTime") LocalDateTime beginTime, @Param("endTime") LocalDateTime endTime);
+
+  @Select("""
+      <script>
+      SELECT COALESCE(SUM(amount_cent), 0)
+      FROM customer_order
+      WHERE status = 'COMPLETED'
+      <if test="merchantId != null">
+        AND merchant_id = #{merchantId}
+      </if>
+      <if test="beginTime != null">
+        AND create_time &gt;= #{beginTime}
+      </if>
+      <if test="endTime != null">
+        AND create_time &lt;= #{endTime}
+      </if>
+      </script>
+      """)
+  int sumCompletedAmount(@Param("merchantId") Long merchantId, @Param("beginTime") LocalDateTime beginTime,
+      @Param("endTime") LocalDateTime endTime);
 }

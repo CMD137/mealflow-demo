@@ -22,6 +22,37 @@ public interface PromotionMapper {
   @Select("SELECT COALESCE(MAX(id), 10000) FROM voucher_claim")
   long maxVoucherClaimId();
 
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM voucher")
+  long maxVoucherId();
+
+  @Select("""
+      SELECT COUNT(*)
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE UPPER(TABLE_NAME) = UPPER('voucher') AND UPPER(COLUMN_NAME) = UPPER(#{columnName})
+      """)
+  int countVoucherColumn(String columnName);
+
+  @Update("ALTER TABLE voucher ADD COLUMN name VARCHAR(128) NOT NULL DEFAULT ''")
+  int addVoucherNameColumn();
+
+  @Update("ALTER TABLE voucher ADD COLUMN type VARCHAR(32) NOT NULL DEFAULT 'SECKILL'")
+  int addVoucherTypeColumn();
+
+  @Update("ALTER TABLE voucher ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE'")
+  int addVoucherStatusColumn();
+
+  @Update("ALTER TABLE voucher ADD COLUMN start_time TIMESTAMP NULL")
+  int addVoucherStartTimeColumn();
+
+  @Update("ALTER TABLE voucher ADD COLUMN end_time TIMESTAMP NULL")
+  int addVoucherEndTimeColumn();
+
+  @Update("ALTER TABLE voucher ADD COLUMN create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
+  int addVoucherCreateTimeColumn();
+
+  @Update("ALTER TABLE voucher ADD COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
+  int addVoucherUpdateTimeColumn();
+
   @Update("""
       CREATE TABLE IF NOT EXISTS voucher_claim_retry (
         id BIGINT PRIMARY KEY,
@@ -46,17 +77,38 @@ public interface PromotionMapper {
   @Select("SELECT COUNT(*) FROM voucher_claim_retry WHERE status = #{status}")
   long countClaimRetryByStatus(String status);
 
-  @Select("SELECT id, discount_cent, stock FROM voucher WHERE id = #{id}")
+  @Select("SELECT id, name, type, discount_cent, stock, status FROM voucher WHERE id = #{id}")
   @Results(id = "voucherMap", value = {
       @Result(column = "id", property = "id"),
+      @Result(column = "name", property = "name"),
+      @Result(column = "type", property = "type"),
       @Result(column = "discount_cent", property = "discountCent"),
-      @Result(column = "stock", property = "stock")
+      @Result(column = "stock", property = "stock"),
+      @Result(column = "status", property = "status")
   })
   VoucherRow findVoucher(long id);
 
-  @Select("SELECT id, discount_cent, stock FROM voucher ORDER BY id")
+  @Select("SELECT id, name, type, discount_cent, stock, status FROM voucher ORDER BY id")
   @ResultMap("voucherMap")
   List<VoucherRow> findVouchers();
+
+  @Insert("""
+      INSERT INTO voucher (id, name, type, discount_cent, stock, status, create_time, update_time)
+      VALUES (#{id}, #{name}, #{type}, #{discountCent}, #{stock}, #{status}, #{now}, #{now})
+      """)
+  int insertVoucher(@Param("id") long id, @Param("name") String name, @Param("type") String type,
+      @Param("discountCent") int discountCent, @Param("stock") int stock, @Param("status") String status,
+      @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE voucher
+      SET name = #{name}, type = #{type}, discount_cent = #{discountCent}, stock = #{stock},
+          status = #{status}, update_time = #{now}
+      WHERE id = #{id}
+      """)
+  int updateVoucher(@Param("id") long id, @Param("name") String name, @Param("type") String type,
+      @Param("discountCent") int discountCent, @Param("stock") int stock, @Param("status") String status,
+      @Param("now") LocalDateTime now);
 
   @Update("UPDATE voucher SET stock = stock - 1 WHERE id = #{id} AND stock > 0")
   int decrementStock(long id);

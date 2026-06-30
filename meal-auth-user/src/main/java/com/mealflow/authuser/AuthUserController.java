@@ -85,6 +85,12 @@ public class AuthUserController {
     return Result.ok();
   }
 
+  @PutMapping("/users/addresses/{addressId}/default")
+  public Result<AddressView> setDefaultAddress(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+      @PathVariable long addressId) {
+    return Result.ok(authUserService.setDefaultAddress(userId == null ? defaultUserId : userId, addressId));
+  }
+
   @GetMapping("/auth/admin/menus")
   public Result<List<MenuView>> menus() {
     return Result.ok(authUserService.menus());

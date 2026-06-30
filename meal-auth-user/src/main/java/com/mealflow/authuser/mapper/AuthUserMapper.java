@@ -23,6 +23,16 @@ public interface AuthUserMapper {
   @Select("SELECT COALESCE(MAX(id), 10000) FROM merchant_employee")
   long maxEmployeeId();
 
+  @Select("""
+      SELECT COUNT(*)
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE UPPER(TABLE_NAME) = UPPER('user_address') AND UPPER(COLUMN_NAME) = UPPER(#{columnName})
+      """)
+  int countAddressColumn(String columnName);
+
+  @Update("ALTER TABLE user_address ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT FALSE")
+  int addAddressDefaultColumn();
+
   @Select("SELECT id, phone, nickname, status FROM user_account WHERE id = #{id}")
   @Results(id = "userMap", value = {
       @Result(column = "id", property = "id"),
@@ -52,22 +62,23 @@ public interface AuthUserMapper {
       @Param("status") String status, @Param("now") LocalDateTime now);
 
   @Select("""
-      SELECT id, user_id, contact_name, contact_phone, detail
+      SELECT id, user_id, contact_name, contact_phone, detail, is_default
       FROM user_address
       WHERE user_id = #{userId}
-      ORDER BY id
+      ORDER BY is_default DESC, id
       """)
   @Results(id = "addressMap", value = {
       @Result(column = "id", property = "id"),
       @Result(column = "user_id", property = "userId"),
       @Result(column = "contact_name", property = "contactName"),
       @Result(column = "contact_phone", property = "contactPhone"),
-      @Result(column = "detail", property = "detail")
+      @Result(column = "detail", property = "detail"),
+      @Result(column = "is_default", property = "defaultAddress")
   })
   List<UserAddressRow> findAddresses(long userId);
 
   @Select("""
-      SELECT id, user_id, contact_name, contact_phone, detail
+      SELECT id, user_id, contact_name, contact_phone, detail, is_default
       FROM user_address
       WHERE id = #{id}
       """)
@@ -75,8 +86,8 @@ public interface AuthUserMapper {
   UserAddressRow findAddress(long id);
 
   @Insert("""
-      INSERT INTO user_address (id, user_id, contact_name, contact_phone, detail, create_time, update_time)
-      VALUES (#{id}, #{userId}, #{contactName}, #{contactPhone}, #{detail}, #{now}, #{now})
+      INSERT INTO user_address (id, user_id, contact_name, contact_phone, detail, is_default, create_time, update_time)
+      VALUES (#{id}, #{userId}, #{contactName}, #{contactPhone}, #{detail}, FALSE, #{now}, #{now})
       """)
   int insertAddress(@Param("id") long id, @Param("userId") long userId,
       @Param("contactName") String contactName, @Param("contactPhone") String contactPhone,
@@ -92,6 +103,20 @@ public interface AuthUserMapper {
 
   @Delete("DELETE FROM user_address WHERE id = #{id}")
   int deleteAddress(long id);
+
+  @Update("""
+      UPDATE user_address
+      SET is_default = FALSE, update_time = #{now}
+      WHERE user_id = #{userId}
+      """)
+  int clearDefaultAddress(@Param("userId") long userId, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE user_address
+      SET is_default = TRUE, update_time = #{now}
+      WHERE id = #{id} AND user_id = #{userId}
+      """)
+  int setDefaultAddress(@Param("id") long id, @Param("userId") long userId, @Param("now") LocalDateTime now);
 
   @Select("""
       SELECT id, merchant_id, user_id, role_code, status

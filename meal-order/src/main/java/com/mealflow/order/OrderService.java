@@ -12,9 +12,11 @@ import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
 import com.mealflow.infra.event.EventKey;
 import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
+import com.mealflow.order.api.AdminOrderQuery;
 import com.mealflow.order.api.LocalEventView;
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
+import com.mealflow.order.api.OrderStatisticsView;
 import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
@@ -28,6 +30,7 @@ import com.mealflow.order.mapper.LocalEventMapper;
 import com.mealflow.order.mapper.LocalEventRow;
 import com.mealflow.order.mapper.OrderMapper;
 import com.mealflow.order.mapper.OrderRow;
+import com.mealflow.order.mapper.StatusCountRow;
 import com.mealflow.order.outbox.OutboxEventPublisher;
 import jakarta.annotation.PostConstruct;
 import java.time.Duration;
@@ -238,6 +241,27 @@ public class OrderService {
 
   public List<OrderView> list() {
     return orderMapper.findAll().stream().map(this::mapOrder).map(this::view).toList();
+  }
+
+  public List<OrderView> adminOrders(AdminOrderQuery query) {
+    return orderMapper.findAdminOrders(query.merchantId(), query.userId(), query.status(), query.beginTime(),
+        query.endTime()).stream().map(this::mapOrder).map(this::view).toList();
+  }
+
+  public OrderStatisticsView adminStatistics(AdminOrderQuery query) {
+    Map<String, Long> counts = orderMapper.countByStatus(query.merchantId(), query.beginTime(), query.endTime())
+        .stream()
+        .collect(java.util.stream.Collectors.toMap(StatusCountRow::getStatus, StatusCountRow::getCount));
+    long total = counts.values().stream().mapToLong(Long::longValue).sum();
+    long waitingAccept = counts.getOrDefault(OrderStatus.WAIT_MERCHANT_ACCEPT.name(), 0L);
+    long accepted = counts.getOrDefault(OrderStatus.MERCHANT_ACCEPTED.name(), 0L)
+        + counts.getOrDefault(OrderStatus.COOKING.name(), 0L)
+        + counts.getOrDefault(OrderStatus.WAIT_RIDER_PICKUP.name(), 0L);
+    long delivering = counts.getOrDefault(OrderStatus.DELIVERING.name(), 0L);
+    long completed = counts.getOrDefault(OrderStatus.COMPLETED.name(), 0L);
+    long cancelled = counts.getOrDefault(OrderStatus.CANCELLED.name(), 0L);
+    int turnoverCent = orderMapper.sumCompletedAmount(query.merchantId(), query.beginTime(), query.endTime());
+    return new OrderStatisticsView(total, waitingAccept, accepted, delivering, completed, cancelled, turnoverCent);
   }
 
   public List<LocalEventView> events() {

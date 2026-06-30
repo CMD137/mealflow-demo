@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
+import com.mealflow.order.api.AdminOrderQuery;
+import com.mealflow.order.api.OrderStatisticsView;
 import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
@@ -86,6 +88,12 @@ class OrderPersistenceTest {
     orderService.markPaid(response.orderId());
 
     assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
+    assertThat(orderService.adminOrders(new AdminOrderQuery(10L, 101L, "WAIT_MERCHANT_ACCEPT", null, null)))
+        .extracting("orderId")
+        .contains(response.orderId());
+    OrderStatisticsView statistics = orderService.adminStatistics(new AdminOrderQuery(10L, null, null, null, null));
+    assertThat(statistics.totalCount()).isGreaterThanOrEqualTo(1);
+    assertThat(statistics.waitingAcceptCount()).isGreaterThanOrEqualTo(1);
     assertThat(orderService.events())
         .extracting("eventType")
         .containsExactly("OrderCreated", "OrderPaid");

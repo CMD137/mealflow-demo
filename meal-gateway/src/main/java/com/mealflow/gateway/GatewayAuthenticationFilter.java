@@ -144,6 +144,9 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     if (path.startsWith("/catalog/admin/")) {
       return "CATALOG_MANAGE";
     }
+    if (path.startsWith("/vouchers/admin/") || path.equals("/vouchers/admin")) {
+      return "MERCHANT_MANAGE";
+    }
     if (path.startsWith("/merchant/") || path.startsWith("/merchants/")) {
       return "MERCHANT_MANAGE";
     }

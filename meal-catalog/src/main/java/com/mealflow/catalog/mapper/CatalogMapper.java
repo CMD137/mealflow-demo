@@ -16,19 +16,162 @@ public interface CatalogMapper {
   @Select("SELECT COALESCE(MAX(id), 10000) FROM stock_reservation")
   long maxReservationId();
 
-  @Select("SELECT id, merchant_id, name, price_cent, stock FROM sku WHERE merchant_id = #{merchantId} ORDER BY id")
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM sku")
+  long maxSkuId();
+
+  @Select("SELECT COALESCE(MAX(id), 10000) FROM category")
+  long maxCategoryId();
+
+  @Select("""
+      SELECT COUNT(*)
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE UPPER(TABLE_NAME) = UPPER('sku') AND UPPER(COLUMN_NAME) = UPPER(#{columnName})
+      """)
+  int countSkuColumn(String columnName);
+
+  @Update("ALTER TABLE sku ADD COLUMN category_id BIGINT NULL")
+  int addSkuCategoryIdColumn();
+
+  @Update("ALTER TABLE sku ADD COLUMN description VARCHAR(255) NOT NULL DEFAULT ''")
+  int addSkuDescriptionColumn();
+
+  @Update("ALTER TABLE sku ADD COLUMN image_url VARCHAR(255) NOT NULL DEFAULT ''")
+  int addSkuImageUrlColumn();
+
+  @Update("ALTER TABLE sku ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'ON_SHELF'")
+  int addSkuStatusColumn();
+
+  @Update("ALTER TABLE sku ADD COLUMN create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
+  int addSkuCreateTimeColumn();
+
+  @Update("ALTER TABLE sku ADD COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
+  int addSkuUpdateTimeColumn();
+
+  @Select("""
+      SELECT s.id, s.merchant_id, s.category_id, c.name AS category_name, s.name, s.description,
+             s.image_url, s.price_cent, s.stock, s.status
+      FROM sku s
+      LEFT JOIN category c ON c.id = s.category_id
+      WHERE s.merchant_id = #{merchantId} AND s.status = 'ON_SHELF'
+      ORDER BY COALESCE(c.sort_order, 999999), s.id
+      """)
   @Results(id = "skuMap", value = {
       @Result(column = "id", property = "id"),
       @Result(column = "merchant_id", property = "merchantId"),
+      @Result(column = "category_id", property = "categoryId"),
+      @Result(column = "category_name", property = "categoryName"),
       @Result(column = "name", property = "name"),
+      @Result(column = "description", property = "description"),
+      @Result(column = "image_url", property = "imageUrl"),
       @Result(column = "price_cent", property = "priceCent"),
-      @Result(column = "stock", property = "stock")
+      @Result(column = "stock", property = "stock"),
+      @Result(column = "status", property = "status")
   })
   List<SkuRow> findSkusByMerchant(long merchantId);
 
-  @Select("SELECT id, merchant_id, name, price_cent, stock FROM sku WHERE id = #{id}")
+  @Select("""
+      SELECT s.id, s.merchant_id, s.category_id, c.name AS category_name, s.name, s.description,
+             s.image_url, s.price_cent, s.stock, s.status
+      FROM sku s
+      LEFT JOIN category c ON c.id = s.category_id
+      WHERE s.merchant_id = #{merchantId}
+      ORDER BY COALESCE(c.sort_order, 999999), s.id
+      """)
+  @ResultMap("skuMap")
+  List<SkuRow> findAdminSkusByMerchant(long merchantId);
+
+  @Select("""
+      SELECT s.id, s.merchant_id, s.category_id, c.name AS category_name, s.name, s.description,
+             s.image_url, s.price_cent, s.stock, s.status
+      FROM sku s
+      LEFT JOIN category c ON c.id = s.category_id
+      WHERE s.id = #{id}
+      """)
   @ResultMap("skuMap")
   SkuRow findSku(long id);
+
+  @Insert("""
+      INSERT INTO sku(
+        id, merchant_id, category_id, name, description, image_url, price_cent, stock, status, create_time, update_time
+      ) VALUES (
+        #{id}, #{merchantId}, #{categoryId}, #{name}, #{description}, #{imageUrl}, #{priceCent}, #{stock},
+        #{status}, #{now}, #{now}
+      )
+      """)
+  int insertSku(@Param("id") long id, @Param("merchantId") long merchantId, @Param("categoryId") Long categoryId,
+      @Param("name") String name, @Param("description") String description, @Param("imageUrl") String imageUrl,
+      @Param("priceCent") int priceCent, @Param("stock") int stock, @Param("status") String status,
+      @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE sku
+      SET category_id = #{categoryId}, name = #{name}, description = #{description}, image_url = #{imageUrl},
+          price_cent = #{priceCent}, stock = #{stock}, status = #{status}, update_time = #{now}
+      WHERE id = #{id} AND merchant_id = #{merchantId}
+      """)
+  int updateSku(@Param("id") long id, @Param("merchantId") long merchantId, @Param("categoryId") Long categoryId,
+      @Param("name") String name, @Param("description") String description, @Param("imageUrl") String imageUrl,
+      @Param("priceCent") int priceCent, @Param("stock") int stock, @Param("status") String status,
+      @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE sku
+      SET status = #{status}, update_time = #{now}
+      WHERE id = #{id} AND merchant_id = #{merchantId}
+      """)
+  int updateSkuStatus(@Param("id") long id, @Param("merchantId") long merchantId, @Param("status") String status,
+      @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE sku
+      SET stock = #{stock}, update_time = #{now}
+      WHERE id = #{id} AND merchant_id = #{merchantId}
+      """)
+  int updateSkuStock(@Param("id") long id, @Param("merchantId") long merchantId, @Param("stock") int stock,
+      @Param("now") LocalDateTime now);
+
+  @Select("""
+      SELECT id, merchant_id, name, sort_order, status
+      FROM category
+      WHERE merchant_id = #{merchantId}
+      ORDER BY sort_order, id
+      """)
+  @Results(id = "categoryMap", value = {
+      @Result(column = "id", property = "id"),
+      @Result(column = "merchant_id", property = "merchantId"),
+      @Result(column = "name", property = "name"),
+      @Result(column = "sort_order", property = "sortOrder"),
+      @Result(column = "status", property = "status")
+  })
+  List<CategoryRow> findCategories(long merchantId);
+
+  @Select("""
+      SELECT id, merchant_id, name, sort_order, status
+      FROM category
+      WHERE merchant_id = #{merchantId} AND status = 'ACTIVE'
+      ORDER BY sort_order, id
+      """)
+  @ResultMap("categoryMap")
+  List<CategoryRow> findActiveCategories(long merchantId);
+
+  @Select("SELECT id, merchant_id, name, sort_order, status FROM category WHERE id = #{id}")
+  @ResultMap("categoryMap")
+  CategoryRow findCategory(long id);
+
+  @Insert("""
+      INSERT INTO category (id, merchant_id, name, sort_order, status, create_time, update_time)
+      VALUES (#{id}, #{merchantId}, #{name}, #{sortOrder}, #{status}, #{now}, #{now})
+      """)
+  int insertCategory(@Param("id") long id, @Param("merchantId") long merchantId, @Param("name") String name,
+      @Param("sortOrder") int sortOrder, @Param("status") String status, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE category
+      SET name = #{name}, sort_order = #{sortOrder}, status = #{status}, update_time = #{now}
+      WHERE id = #{id} AND merchant_id = #{merchantId}
+      """)
+  int updateCategory(@Param("id") long id, @Param("merchantId") long merchantId, @Param("name") String name,
+      @Param("sortOrder") int sortOrder, @Param("status") String status, @Param("now") LocalDateTime now);
 
   @Update("""
       UPDATE sku

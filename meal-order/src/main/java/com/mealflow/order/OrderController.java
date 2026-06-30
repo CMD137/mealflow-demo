@@ -1,20 +1,25 @@
 package com.mealflow.order;
 
 import com.mealflow.common.api.Result;
+import com.mealflow.order.api.AdminOrderQuery;
 import com.mealflow.order.api.CancelOrderRequest;
 import com.mealflow.order.api.LocalEventView;
+import com.mealflow.order.api.OrderStatisticsView;
 import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
 import jakarta.validation.Valid;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -83,6 +88,24 @@ public class OrderController {
   @GetMapping
   public Result<List<OrderView>> list() {
     return Result.ok(orderService.list());
+  }
+
+  @GetMapping("/admin")
+  public Result<List<OrderView>> adminOrders(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @RequestParam(required = false) Long userId,
+      @RequestParam(required = false) String status,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beginTime,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
+    return Result.ok(orderService.adminOrders(new AdminOrderQuery(merchantId, userId, status, beginTime, endTime)));
+  }
+
+  @GetMapping("/admin/statistics")
+  public Result<OrderStatisticsView> adminStatistics(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beginTime,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
+    return Result.ok(orderService.adminStatistics(new AdminOrderQuery(merchantId, null, null, beginTime, endTime)));
   }
 
   @GetMapping("/internal/events")

@@ -1,4 +1,5 @@
 package com.mealflow.catalog.api;
 
-public record SkuView(long skuId, long merchantId, String name, int priceCent, int stock) {
+public record SkuView(long skuId, long merchantId, Long categoryId, String categoryName, String name,
+    String description, String imageUrl, int priceCent, int stock, String status) {
 }

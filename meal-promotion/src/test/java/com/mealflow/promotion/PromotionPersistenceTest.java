@@ -1,10 +1,14 @@
 package com.mealflow.promotion;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.mealflow.common.exception.BizException;
 import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
+import com.mealflow.promotion.api.VoucherAdminRequest;
 import com.mealflow.promotion.api.VoucherLockResponse;
+import com.mealflow.promotion.api.VoucherView;
 import com.mealflow.promotion.mapper.PromotionMapper;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
@@ -57,6 +61,23 @@ class PromotionPersistenceTest {
     assertThat(promotionService.wallet(202L))
         .filteredOn(voucher -> voucher.voucherId() == 1000L)
         .hasSize(1);
+  }
+
+  @Test
+  void managesMarketingVouchersForBackOffice() {
+    VoucherView created = promotionService.createVoucher(
+        new VoucherAdminRequest("New Member Coupon", "SECKILL", 300, 10, "ACTIVE"));
+
+    assertThat(created.voucherId()).isGreaterThan(1000L);
+    assertThat(created.status()).isEqualTo("ACTIVE");
+    assertThat(promotionService.vouchers()).extracting("name").contains("New Member Coupon");
+
+    VoucherView disabled = promotionService.updateVoucher(created.voucherId(),
+        new VoucherAdminRequest("New Member Coupon", "SECKILL", 300, 10, "DISABLED"));
+    assertThat(disabled.status()).isEqualTo("DISABLED");
+    assertThatThrownBy(() -> promotionService.seckill(205L, created.voucherId(), "promotion-disabled-voucher"))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("voucher is not active");
   }
 
   @Test

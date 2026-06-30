@@ -44,6 +44,7 @@ public class AuthUserService {
 
   @PostConstruct
   void initializeIdGenerator() {
+    ensureAddressDefaultColumn();
     idGenerator.ensureAtLeast("userAccount", authUserMapper.maxUserId());
     idGenerator.ensureAtLeast("userAddress", authUserMapper.maxAddressId());
     idGenerator.ensureAtLeast("merchantEmployee", authUserMapper.maxEmployeeId());
@@ -121,6 +122,15 @@ public class AuthUserService {
   public void deleteAddress(long userId, long addressId) {
     UserAddressRow address = requireAddress(userId, addressId);
     authUserMapper.deleteAddress(address.getId());
+  }
+
+  @Transactional
+  public AddressView setDefaultAddress(long userId, long addressId) {
+    UserAddressRow address = requireAddress(userId, addressId);
+    LocalDateTime now = LocalDateTime.now();
+    authUserMapper.clearDefaultAddress(userId, now);
+    authUserMapper.setDefaultAddress(address.getId(), userId, now);
+    return addressView(authUserMapper.findAddress(address.getId()));
   }
 
   public List<MenuView> menus() {
@@ -206,7 +216,7 @@ public class AuthUserService {
 
   private AddressView addressView(UserAddressRow address) {
     return new AddressView(address.getId(), address.getUserId(), address.getContactName(),
-        address.getContactPhone(), address.getDetail());
+        address.getContactPhone(), address.getDetail(), address.isDefaultAddress());
   }
 
   private TokenPrincipalView principalFor(UserAccountRow user) {
@@ -253,5 +263,11 @@ public class AuthUserService {
       throw new BizException(ErrorCode.NOT_FOUND, "employee not found");
     }
     return employee;
+  }
+
+  private void ensureAddressDefaultColumn() {
+    if (authUserMapper.countAddressColumn("is_default") == 0) {
+      authUserMapper.addAddressDefaultColumn();
+    }
   }
 }

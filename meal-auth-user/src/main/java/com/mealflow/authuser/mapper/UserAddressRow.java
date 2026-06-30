@@ -6,6 +6,7 @@ public class UserAddressRow {
   private String contactName;
   private String contactPhone;
   private String detail;
+  private boolean defaultAddress;
 
   public long getId() {
     return id;
@@ -45,5 +46,13 @@ public class UserAddressRow {
 
   public void setDetail(String detail) {
     this.detail = detail;
+  }
+
+  public boolean isDefaultAddress() {
+    return defaultAddress;
+  }
+
+  public void setDefaultAddress(boolean defaultAddress) {
+    this.defaultAddress = defaultAddress;
   }
 }

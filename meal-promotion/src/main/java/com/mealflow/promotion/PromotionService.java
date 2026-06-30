@@ -9,10 +9,12 @@ import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
 import com.mealflow.promotion.api.UserVoucherView;
+import com.mealflow.promotion.api.VoucherAdminRequest;
 import com.mealflow.promotion.api.VoucherClaimView;
 import com.mealflow.promotion.api.VoucherClaimRetryView;
 import com.mealflow.promotion.api.VoucherLockResponse;
 import com.mealflow.promotion.api.VoucherLockView;
+import com.mealflow.promotion.api.VoucherView;
 import com.mealflow.promotion.mapper.PromotionMapper;
 import com.mealflow.promotion.mapper.VoucherClaimRetryRow;
 import com.mealflow.promotion.mapper.UserVoucherRow;
@@ -46,7 +48,9 @@ public class PromotionService {
 
   @PostConstruct
   void initializeIdGenerator() {
+    ensureVoucherColumns();
     promotionMapper.createClaimRetryTable();
+    idGenerator.ensureAtLeast("voucher", promotionMapper.maxVoucherId());
     idGenerator.ensureAtLeast("userVoucher", promotionMapper.maxUserVoucherId());
     idGenerator.ensureAtLeast("voucherLock", promotionMapper.maxVoucherLockId());
     idGenerator.ensureAtLeast("voucherClaim", promotionMapper.maxVoucherClaimId());
@@ -57,6 +61,9 @@ public class PromotionService {
   public synchronized SeckillVoucherResponse seckill(long userId, long voucherId, String requestId) {
     return idempotentTemplate.execute("promotion:claim:" + userId + ":" + requestId, () -> {
       VoucherRow voucher = requireVoucher(voucherId);
+      if (!"ACTIVE".equals(voucher.getStatus())) {
+        throw new BizException(ErrorCode.VOUCHER_UNAVAILABLE, "voucher is not active");
+      }
       ClaimResult claimResult = seckillGuard.tryClaim(userId, voucherId, voucher.getStock());
       if (claimResult == ClaimResult.DUPLICATE) {
         long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.DUPLICATE);
@@ -140,6 +147,27 @@ public class PromotionService {
     return promotionMapper.findWallet(userId).stream()
         .map(voucher -> new UserVoucherView(voucher.getId(), voucher.getVoucherId(), voucher.getStatus()))
         .toList();
+  }
+
+  public List<VoucherView> vouchers() {
+    return promotionMapper.findVouchers().stream().map(this::voucherView).toList();
+  }
+
+  @Transactional
+  public synchronized VoucherView createVoucher(VoucherAdminRequest request) {
+    long id = idGenerator.next("voucher");
+    LocalDateTime now = LocalDateTime.now();
+    promotionMapper.insertVoucher(id, request.name(), voucherType(request.type()), request.discountCent(),
+        request.stock(), voucherStatus(request.status()), now);
+    return voucherView(promotionMapper.findVoucher(id));
+  }
+
+  @Transactional
+  public synchronized VoucherView updateVoucher(long voucherId, VoucherAdminRequest request) {
+    requireVoucher(voucherId);
+    promotionMapper.updateVoucher(voucherId, request.name(), voucherType(request.type()), request.discountCent(),
+        request.stock(), voucherStatus(request.status()), LocalDateTime.now());
+    return voucherView(promotionMapper.findVoucher(voucherId));
   }
 
   public List<VoucherClaimView> claims() {
@@ -271,6 +299,11 @@ public class PromotionService {
     return new VoucherClaimView(claim.getId(), claim.getUserId(), claim.getVoucherId(), claim.getStatus());
   }
 
+  private VoucherView voucherView(VoucherRow voucher) {
+    return new VoucherView(voucher.getId(), voucher.getName(), voucher.getType(), voucher.getDiscountCent(),
+        voucher.getStock(), voucher.getStatus());
+  }
+
   private VoucherClaimRetryView claimRetryView(VoucherClaimRetryRow retry) {
     return new VoucherClaimRetryView(retry.getId(), retry.getUserId(), retry.getVoucherId(), retry.getStatus(),
         retry.getRetryCount(), retry.getMaxRetries(), retry.getLastError(), retry.getNextRetryTime());
@@ -284,6 +317,47 @@ public class PromotionService {
   private String trimError(RuntimeException ex) {
     String message = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
     return message.length() <= 512 ? message : message.substring(0, 512);
+  }
+
+  private String voucherType(String type) {
+    if (!List.of("NORMAL", "SECKILL").contains(type)) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "voucher type must be NORMAL or SECKILL");
+    }
+    return type;
+  }
+
+  private String voucherStatus(String status) {
+    if (status == null || status.isBlank()) {
+      return "ACTIVE";
+    }
+    if (!List.of("ACTIVE", "DISABLED").contains(status)) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "voucher status must be ACTIVE or DISABLED");
+    }
+    return status;
+  }
+
+  private void ensureVoucherColumns() {
+    if (promotionMapper.countVoucherColumn("name") == 0) {
+      promotionMapper.addVoucherNameColumn();
+    }
+    if (promotionMapper.countVoucherColumn("type") == 0) {
+      promotionMapper.addVoucherTypeColumn();
+    }
+    if (promotionMapper.countVoucherColumn("status") == 0) {
+      promotionMapper.addVoucherStatusColumn();
+    }
+    if (promotionMapper.countVoucherColumn("start_time") == 0) {
+      promotionMapper.addVoucherStartTimeColumn();
+    }
+    if (promotionMapper.countVoucherColumn("end_time") == 0) {
+      promotionMapper.addVoucherEndTimeColumn();
+    }
+    if (promotionMapper.countVoucherColumn("create_time") == 0) {
+      promotionMapper.addVoucherCreateTimeColumn();
+    }
+    if (promotionMapper.countVoucherColumn("update_time") == 0) {
+      promotionMapper.addVoucherUpdateTimeColumn();
+    }
   }
 
   enum UserVoucherStatus {

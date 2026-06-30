@@ -5,17 +5,20 @@ import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
 import com.mealflow.promotion.api.UserVoucherView;
+import com.mealflow.promotion.api.VoucherAdminRequest;
 import com.mealflow.promotion.api.VoucherClaimView;
 import com.mealflow.promotion.api.VoucherClaimRetryView;
 import com.mealflow.promotion.api.VoucherLockResponse;
 import com.mealflow.promotion.api.VoucherLockView;
 import com.mealflow.promotion.api.VoucherTransitionRequest;
+import com.mealflow.promotion.api.VoucherView;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +46,22 @@ public class PromotionController {
   @GetMapping("/wallet")
   public Result<List<UserVoucherView>> wallet(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
     return Result.ok(promotionService.wallet(userId == null ? defaultUserId : userId));
+  }
+
+  @GetMapping("/admin")
+  public Result<List<VoucherView>> vouchers() {
+    return Result.ok(promotionService.vouchers());
+  }
+
+  @PostMapping("/admin")
+  public Result<VoucherView> createVoucher(@Valid @RequestBody VoucherAdminRequest request) {
+    return Result.ok(promotionService.createVoucher(request));
+  }
+
+  @PutMapping("/admin/{voucherId}")
+  public Result<VoucherView> updateVoucher(@PathVariable long voucherId,
+      @Valid @RequestBody VoucherAdminRequest request) {
+    return Result.ok(promotionService.updateVoucher(voucherId, request));
   }
 
   @PostMapping("/internal/lock")

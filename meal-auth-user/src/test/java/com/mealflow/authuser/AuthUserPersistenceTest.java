@@ -47,6 +47,7 @@ class AuthUserPersistenceTest {
         new AddressRequest("Alice", "13800009999", "Building 1"));
 
     assertThat(created.addressId()).isGreaterThan(1000L);
+    assertThat(created.defaultAddress()).isFalse();
     assertThat(authUserService.addresses(100L))
         .anySatisfy(address -> {
           assertThat(address.addressId()).isEqualTo(created.addressId());
@@ -59,6 +60,14 @@ class AuthUserPersistenceTest {
     assertThat(updated.contactName()).isEqualTo("Bob");
     assertThat(updated.phone()).isEqualTo("13800008888");
     assertThat(updated.detail()).isEqualTo("Building 2");
+
+    AddressView defaultAddress = authUserService.setDefaultAddress(100L, created.addressId());
+    assertThat(defaultAddress.defaultAddress()).isTrue();
+    assertThat(authUserService.addresses(100L))
+        .filteredOn(AddressView::defaultAddress)
+        .singleElement()
+        .extracting(AddressView::addressId)
+        .isEqualTo(created.addressId());
 
     authUserService.deleteAddress(100L, created.addressId());
 
