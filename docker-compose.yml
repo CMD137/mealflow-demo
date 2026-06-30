@@ -120,8 +120,18 @@ services:
       CATALOG_DB_USERNAME: root
       CATALOG_DB_PASSWORD: mealflow
       CATALOG_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      MEALFLOW_STORAGE_PROVIDER: ${MEALFLOW_STORAGE_PROVIDER:-local}
+      MEALFLOW_STORAGE_LOCAL_DIR: /app/uploads/catalog
+      MEALFLOW_STORAGE_PUBLIC_BASE_URL: ${MEALFLOW_STORAGE_PUBLIC_BASE_URL:-}
+      MEALFLOW_UPLOAD_MAX_SIZE_BYTES: ${MEALFLOW_UPLOAD_MAX_SIZE_BYTES:-5242880}
+      ALIYUN_OSS_ENDPOINT: ${ALIYUN_OSS_ENDPOINT:-}
+      ALIYUN_OSS_BUCKET: ${ALIYUN_OSS_BUCKET:-}
+      ALIYUN_OSS_ACCESS_KEY_ID: ${ALIYUN_OSS_ACCESS_KEY_ID:-}
+      ALIYUN_OSS_ACCESS_KEY_SECRET: ${ALIYUN_OSS_ACCESS_KEY_SECRET:-}
+      ALIYUN_OSS_OBJECT_PREFIX: ${ALIYUN_OSS_OBJECT_PREFIX:-catalog}
     volumes:
       - ./meal-catalog/target/meal-catalog-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+      - ./uploads/catalog:/app/uploads/catalog
     command: ["java", "-jar", "/app/app.jar"]
     ports:
       - "8103:8103"

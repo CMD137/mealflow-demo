@@ -2,6 +2,7 @@ package com.mealflow.catalog;
 
 import com.mealflow.catalog.api.CategoryRequest;
 import com.mealflow.catalog.api.CategoryView;
+import com.mealflow.catalog.api.ImageUploadView;
 import com.mealflow.catalog.api.OrderItemSnapshot;
 import com.mealflow.catalog.api.OrderSkuItem;
 import com.mealflow.catalog.api.ReserveStockRequest;
@@ -12,10 +13,14 @@ import com.mealflow.catalog.api.SkuStockRequest;
 import com.mealflow.catalog.api.SkuView;
 import com.mealflow.catalog.api.StockReservationView;
 import com.mealflow.catalog.api.StockTransitionRequest;
+import com.mealflow.catalog.storage.CatalogImageService;
 import com.mealflow.common.api.Result;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,17 +28,22 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/catalog")
 public class CatalogController {
   private final CatalogService catalogService;
+  private final CatalogImageService catalogImageService;
   private final long defaultMerchantId;
 
   public CatalogController(CatalogService catalogService,
+      CatalogImageService catalogImageService,
       @Value("${mealflow.demo.default-merchant-id:10}") long defaultMerchantId) {
     this.catalogService = catalogService;
+    this.catalogImageService = catalogImageService;
     this.defaultMerchantId = defaultMerchantId;
   }
 
@@ -45,6 +55,13 @@ public class CatalogController {
   @GetMapping("/merchants/{merchantId}/categories")
   public Result<List<CategoryView>> listCategories(@PathVariable long merchantId) {
     return Result.ok(catalogService.listCategories(merchantId));
+  }
+
+  @GetMapping("/images/{objectKey}")
+  public ResponseEntity<Resource> image(@PathVariable String objectKey) {
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(catalogImageService.contentType(objectKey)))
+        .body(catalogImageService.load(objectKey));
   }
 
   @GetMapping("/admin/categories")
@@ -73,6 +90,13 @@ public class CatalogController {
   public Result<List<SkuView>> adminSkus(
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
     return Result.ok(catalogService.adminSkus(merchantId == null ? defaultMerchantId : merchantId));
+  }
+
+  @PostMapping(value = "/admin/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public Result<ImageUploadView> uploadImage(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @RequestParam("file") MultipartFile file) {
+    return Result.ok(catalogImageService.upload(merchantId == null ? defaultMerchantId : merchantId, file));
   }
 
   @PostMapping("/admin/skus")

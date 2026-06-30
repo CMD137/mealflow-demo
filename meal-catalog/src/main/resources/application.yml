@@ -1,6 +1,10 @@
 spring:
   application:
     name: meal-catalog
+  servlet:
+    multipart:
+      max-file-size: ${UPLOAD_MAX_FILE_SIZE:5MB}
+      max-request-size: ${UPLOAD_MAX_REQUEST_SIZE:6MB}
   datasource:
     url: ${CATALOG_DB_URL:jdbc:h2:mem:meal_catalog;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1}
     username: ${CATALOG_DB_USERNAME:sa}
@@ -24,3 +28,14 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+mealflow:
+  storage:
+    provider: ${MEALFLOW_STORAGE_PROVIDER:local}
+    local-dir: ${MEALFLOW_STORAGE_LOCAL_DIR:uploads/catalog}
+    public-base-url: ${MEALFLOW_STORAGE_PUBLIC_BASE_URL:}
+    endpoint: ${ALIYUN_OSS_ENDPOINT:}
+    bucket: ${ALIYUN_OSS_BUCKET:}
+    access-key-id: ${ALIYUN_OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIYUN_OSS_ACCESS_KEY_SECRET:}
+    object-prefix: ${ALIYUN_OSS_OBJECT_PREFIX:catalog}
+    max-size-bytes: ${MEALFLOW_UPLOAD_MAX_SIZE_BYTES:5242880}
