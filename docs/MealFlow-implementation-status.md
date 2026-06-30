@@ -35,7 +35,7 @@
 - `meal-app` 已从默认 Maven reactor 移出，仅保留在 `legacy-demo` profile 下作为本地内存版演示模块，避免与当前微服务主线混淆。
 - 最近一次后端主线全量验证通过：`mvn -q test`、`mvn -q -DskipTests package`、`docker compose config`、`docker compose up -d --build`、`scripts/e2e-smoke.ps1`。
 - 本轮新增管理端能力已验证通过：`mvn -q -pl meal-auth-user -am test`、`mvn -q -pl meal-catalog -am test`、`mvn -q -pl meal-order -am test`、`mvn -q -pl meal-promotion -am test`、`mvn -q test`、`mvn -q -DskipTests package`。
-- Docker 复验进展：已修复旧 MySQL 表结构下 `data.sql` 先于启动迁移执行导致的 catalog/auth-user/promotion 初始化兼容问题；`catalog`、`auth-user`、`promotion`、`gateway`、`payment`、`fulfillment` 的 ping 和相关模块测试已通过。完整 `scripts/e2e-smoke.ps1` 当前卡在 `meal-queue` 管理接口，已用干净依赖重新打包 `meal-queue`，待 Docker 提权恢复后重建 `meal-queue` 容器并复跑 smoke。
+- Docker 复验已通过：已修复旧 MySQL 表结构下 `data.sql` 先于启动迁移执行导致的 catalog/auth-user/promotion 初始化兼容问题；`meal-queue`、`gateway`、`payment`、`fulfillment` 已用干净 Maven 依赖重建容器，完整 `scripts/e2e-smoke.ps1` 已覆盖 gateway ping、商品浏览、登录、秒杀领券、产能限流、下单排队、支付事件消费、履约出餐和排队 ticket 转单。
 
 ## 剩余增强方向
 
