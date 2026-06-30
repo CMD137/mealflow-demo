@@ -7,3 +7,7 @@ target/
 .env.*
 !.env.example
 uploads/
+node_modules/
+dist/
+meal-web/node_modules/
+meal-web/dist/
