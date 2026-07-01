@@ -12,3 +12,5 @@ node_modules/
 dist/
 meal-web/node_modules/
 meal-web/dist/
+meal-user-web/node_modules/
+meal-user-web/dist/

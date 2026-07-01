@@ -1,0 +1,279 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #dfe5ec;
+  color: #1f2937;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.phone-shell {
+  position: relative;
+  min-height: 100vh;
+  max-width: 430px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #f6f7fb;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid #edf0f5;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.app-header p {
+  margin: 5px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.app-main {
+  min-height: calc(100vh - 74px);
+  padding: 14px 14px 24px;
+}
+
+.app-main.with-nav {
+  padding-bottom: 86px;
+}
+
+.bottom-nav {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: grid;
+  max-width: 430px;
+  margin: 0 auto;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+}
+
+.bottom-nav-item {
+  display: grid;
+  min-height: 48px;
+  place-items: center;
+  color: #8a94a6;
+  font-size: 12px;
+}
+
+.bottom-nav-item span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  font-size: 15px;
+}
+
+.bottom-nav-item.router-link-active {
+  color: #2563eb;
+}
+
+.bottom-nav-item strong {
+  font-weight: 600;
+}
+
+.card {
+  border: 1px solid #edf0f5;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 18px 2px 10px;
+}
+
+.section-title h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.section-title a,
+.link {
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.primary-button,
+.ghost-button,
+.danger-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 700;
+}
+
+.primary-button {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.primary-button:disabled {
+  background: #bac7df;
+}
+
+.ghost-button {
+  border: 1px solid #d8dee9;
+  background: #ffffff;
+  color: #334155;
+}
+
+.danger-button {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.field label {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 11px 12px;
+  color: #1f2937;
+  outline: none;
+}
+
+.field textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.price {
+  color: #111827;
+  font-weight: 800;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: #eef2ff;
+  color: #3154c6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-pill.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.status-pill.warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.status-pill.danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.empty {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #dbe2ea;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.qty-stepper button {
+  width: 32px;
+  height: 30px;
+  background: #f1f5f9;
+  color: #2563eb;
+  font-weight: 800;
+}
+
+.qty-stepper button:disabled {
+  color: #b6c0cf;
+}
+
+.qty-stepper span {
+  min-width: 34px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 50;
+  width: min(340px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #ffffff;
+  padding: 11px 14px;
+  text-align: center;
+  font-size: 14px;
+}
