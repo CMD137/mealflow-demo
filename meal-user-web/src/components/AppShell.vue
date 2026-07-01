@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import BottomNav from './BottomNav.vue';
 
-defineProps<{
+withDefaults(defineProps<{
   title?: string;
   subtitle?: string;
   showNav?: boolean;
-}>();
+}>(), {
+  showNav: true
+});
 </script>
 
 <template>

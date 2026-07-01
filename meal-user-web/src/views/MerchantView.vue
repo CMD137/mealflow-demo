@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import AppShell from '@/components/AppShell.vue';
 import QuantityStepper from '@/components/QuantityStepper.vue';
 import { categoriesApi, skusApi } from '@/api/catalog';
-import { merchantApi } from '@/api/merchant';
+import { merchantsApi } from '@/api/merchant';
 import { useCartStore } from '@/stores/cart';
 import { availableSkus } from '@/utils/catalog';
 import { formatMoney } from '@/utils/format';
@@ -31,7 +31,7 @@ async function load() {
   loading.value = true;
   try {
     const [merchantData, categoryData, skuData] = await Promise.all([
-      merchantApi(merchantId),
+      merchantsApi().then((items) => items.find((item) => item.merchantId === merchantId) || null),
       categoriesApi(merchantId),
       skusApi(merchantId),
       cart.load()
