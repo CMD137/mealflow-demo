@@ -9,8 +9,8 @@ const auth = useAuthStore();
 const loading = ref(false);
 const error = ref('');
 const form = reactive({
-  phone: '13800000000',
-  code: 'demo'
+  phone: '13800000001',
+  code: '123456'
 });
 
 async function submit() {
@@ -47,7 +47,7 @@ async function submit() {
       <button class="primary-button login-button" :disabled="loading">
         {{ loading ? '登录中...' : '登录' }}
       </button>
-      <p class="hint">默认演示账号：13800000000，验证码任意。</p>
+      <p class="hint">默认演示账号：13800000001，验证码任意。</p>
       <p v-if="error" class="error">{{ error }}</p>
     </form>
   </div>

@@ -23,9 +23,9 @@ http.interceptors.response.use(
       if (!payload.success) {
         return Promise.reject(new Error(payload.message || payload.code || '请求失败'));
       }
-      response.data = payload.data;
+      return payload.data;
     }
-    return response;
+    return response.data;
   },
   (error) => {
     if (error?.response?.status === 401) {
