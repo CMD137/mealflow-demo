@@ -35,7 +35,7 @@ async function load() {
     cart.skuMap = await buildSkuMapByCart(cart.items);
     const [voucherData, walletData] = await Promise.all([vouchersApi(), walletApi()]);
     vouchers.value = voucherData;
-    wallet.value = walletData.filter((item) => item.status === 'UNUSED');
+    wallet.value = walletData.filter((item) => item.status === 'AVAILABLE');
   } finally {
     loading.value = false;
   }

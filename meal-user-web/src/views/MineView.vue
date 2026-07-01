@@ -26,6 +26,7 @@ function logout() {
       <RouterLink to="/cart">购物车<span>›</span></RouterLink>
       <RouterLink to="/orders">我的订单<span>›</span></RouterLink>
       <RouterLink to="/vouchers">优惠券<span>›</span></RouterLink>
+      <RouterLink to="/sign">每日签到<span>›</span></RouterLink>
       <RouterLink to="/messages">通知消息<span>›</span></RouterLink>
     </div>
 

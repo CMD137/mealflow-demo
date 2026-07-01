@@ -31,7 +31,10 @@ onMounted(load);
 <template>
   <AppShell title="今天吃什么" :subtitle="`你好，${auth.nickname}`">
     <template #header-extra>
-      <RouterLink to="/messages" class="message-badge">{{ messages.length }}</RouterLink>
+      <div class="header-actions">
+        <RouterLink to="/sign" class="sign-link">签到</RouterLink>
+        <RouterLink to="/messages" class="message-badge">{{ messages.length }}</RouterLink>
+      </div>
     </template>
 
     <section class="search-card">
@@ -74,6 +77,24 @@ onMounted(load);
   border-radius: 999px;
   background: #e0ecff;
   color: #2563eb;
+  font-weight: 800;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sign-link {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  padding: 0 10px;
+  font-size: 13px;
   font-weight: 800;
 }
 

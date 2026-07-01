@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import AppShell from '@/components/AppShell.vue';
 import { claimVoucherApi, vouchersApi, walletApi } from '@/api/promotion';
 import { formatMoney } from '@/utils/format';
 import type { UserVoucherView, VoucherView } from '@/types/api';
 
 const loading = ref(false);
+const claimingId = ref<number | null>(null);
 const vouchers = ref<VoucherView[]>([]);
 const wallet = ref<UserVoucherView[]>([]);
+const message = ref('');
+
+const availableWallet = computed(() => wallet.value.filter((item) => item.status === 'AVAILABLE'));
 
 async function load() {
   loading.value = true;
@@ -21,42 +25,131 @@ async function load() {
 }
 
 async function claim(voucher: VoucherView) {
-  const result = await claimVoucherApi(voucher.voucherId);
-  window.alert(result.message || '领取请求已提交');
-  await load();
+  claimingId.value = voucher.voucherId;
+  message.value = '';
+  try {
+    const result = await claimVoucherApi(voucher.voucherId);
+    if (result.status === 'CLAIMED') {
+      message.value = `抢券成功，已放入券包`;
+    } else if (result.status === 'DUPLICATE') {
+      message.value = `你已经抢过这张券了`;
+    } else {
+      message.value = `来晚了，券已抢完`;
+    }
+    await load();
+  } finally {
+    claimingId.value = null;
+  }
 }
 
 function ownedCount(voucherId: number) {
   return wallet.value.filter((item) => item.voucherId === voucherId).length;
 }
 
+function voucherMeta(voucherId: number) {
+  return vouchers.value.find((voucher) => voucher.voucherId === voucherId);
+}
+
 onMounted(load);
 </script>
 
 <template>
-  <AppShell title="优惠券" subtitle="领取并在结算时使用">
-    <section v-for="voucher in vouchers" :key="voucher.voucherId" class="voucher-card card">
+  <AppShell title="抢券中心" subtitle="限量券先到先得，结算时自动可选">
+    <section class="campaign card">
       <div>
-        <h2>{{ voucher.name }}</h2>
-        <p>{{ voucher.type }} · 库存 {{ voucher.stock }} · 已有 {{ ownedCount(voucher.voucherId) }} 张</p>
+        <span>今日活动</span>
+        <strong>{{ vouchers.length }} 张券可抢</strong>
       </div>
-      <strong>{{ formatMoney(voucher.discountCent) }}</strong>
-      <button class="primary-button" :disabled="voucher.status !== 'ACTIVE' || voucher.stock <= 0" @click="claim(voucher)">
-        领取
+      <RouterLink to="/checkout" class="ghost-button">去结算</RouterLink>
+    </section>
+
+    <p v-if="message" class="notice">{{ message }}</p>
+
+    <div class="section-title">
+      <h2>限时抢券</h2>
+      <button class="link refresh" @click="load">刷新</button>
+    </div>
+
+    <section v-for="voucher in vouchers" :key="voucher.voucherId" class="voucher-card card">
+      <div class="voucher-main">
+        <div>
+          <h2>{{ voucher.name }}</h2>
+          <p>{{ voucher.type === 'SECKILL' ? '秒杀券' : '普通券' }} · 库存 {{ voucher.stock }} · 已有 {{ ownedCount(voucher.voucherId) }} 张</p>
+        </div>
+        <strong>{{ formatMoney(voucher.discountCent) }}</strong>
+      </div>
+      <button
+        class="primary-button"
+        :disabled="claimingId === voucher.voucherId || voucher.status !== 'ACTIVE' || voucher.stock <= 0"
+        @click="claim(voucher)"
+      >
+        {{ claimingId === voucher.voucherId ? '抢券中...' : voucher.stock <= 0 ? '已抢完' : '立即抢券' }}
       </button>
     </section>
-    <div v-if="!loading && !vouchers.length" class="empty">暂无优惠券</div>
+
+    <div v-if="!loading && !vouchers.length" class="empty">暂无可抢优惠券</div>
+
+    <div class="section-title wallet-title">
+      <h2>我的券包</h2>
+      <span>{{ availableWallet.length }} 张可用</span>
+    </div>
+
+    <section v-for="item in wallet" :key="item.userVoucherId" class="wallet-card card">
+      <div>
+        <strong>{{ voucherMeta(item.voucherId)?.name || `优惠券 ${item.voucherId}` }}</strong>
+        <p>券号 {{ item.userVoucherId }} · {{ item.status }}</p>
+      </div>
+      <span>{{ formatMoney(voucherMeta(item.voucherId)?.discountCent || 0) }}</span>
+    </section>
   </AppShell>
 </template>
 
 <style scoped>
-.voucher-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
+.campaign {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: #111827;
+  color: #ffffff;
+}
+
+.campaign span {
+  display: block;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.campaign strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 20px;
+}
+
+.notice {
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #047857;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.refresh {
+  background: transparent;
+}
+
+.voucher-card,
+.wallet-card {
   margin-bottom: 10px;
   padding: 15px;
+}
+
+.voucher-main,
+.wallet-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .voucher-card h2 {
@@ -64,18 +157,27 @@ onMounted(load);
   font-size: 16px;
 }
 
-.voucher-card p {
+.voucher-card p,
+.wallet-card p,
+.wallet-title span {
   margin: 0;
   color: #64748b;
   font-size: 13px;
 }
 
-.voucher-card strong {
+.voucher-main > strong,
+.wallet-card > span {
   color: #dc2626;
   font-size: 21px;
+  font-weight: 900;
 }
 
 .voucher-card button {
-  grid-column: 1 / -1;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.wallet-title {
+  margin-top: 22px;
 }
 </style>

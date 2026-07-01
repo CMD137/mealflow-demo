@@ -9,6 +9,7 @@ import com.mealflow.authuser.api.LoginResponse;
 import com.mealflow.authuser.api.MenuView;
 import com.mealflow.authuser.api.RoleRequest;
 import com.mealflow.authuser.api.RoleView;
+import com.mealflow.authuser.api.SignInView;
 import com.mealflow.authuser.api.TokenPrincipalView;
 import com.mealflow.authuser.api.UserView;
 import com.mealflow.authuser.mapper.AuthUserMapper;
@@ -24,7 +25,9 @@ import com.mealflow.common.exception.BizException;
 import com.mealflow.infra.id.IdGenerator;
 import jakarta.annotation.PostConstruct;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -45,9 +48,11 @@ public class AuthUserService {
   @PostConstruct
   void initializeIdGenerator() {
     ensureAddressDefaultColumn();
+    authUserMapper.createUserSignTable();
     idGenerator.ensureAtLeast("userAccount", authUserMapper.maxUserId());
     idGenerator.ensureAtLeast("userAddress", authUserMapper.maxAddressId());
     idGenerator.ensureAtLeast("merchantEmployee", authUserMapper.maxEmployeeId());
+    idGenerator.ensureAtLeast("userSign", authUserMapper.maxUserSignId());
   }
 
   @Transactional
@@ -99,6 +104,23 @@ public class AuthUserService {
   public List<AddressView> addresses(long userId) {
     get(userId);
     return authUserMapper.findAddresses(userId).stream().map(this::addressView).toList();
+  }
+
+  public SignInView signInfo(long userId) {
+    get(userId);
+    return signView(userId, LocalDate.now(), 0);
+  }
+
+  @Transactional
+  public synchronized SignInView signIn(long userId) {
+    get(userId);
+    LocalDate today = LocalDate.now();
+    if (authUserMapper.countUserSign(userId, today) == 0) {
+      int rewardPoints = rewardPoints(userId, today);
+      authUserMapper.insertUserSign(idGenerator.next("userSign"), userId, today, rewardPoints, LocalDateTime.now());
+      return signView(userId, today, rewardPoints);
+    }
+    return signView(userId, today, 0);
   }
 
   @Transactional
@@ -217,6 +239,36 @@ public class AuthUserService {
   private AddressView addressView(UserAddressRow address) {
     return new AddressView(address.getId(), address.getUserId(), address.getContactName(),
         address.getContactPhone(), address.getDetail(), address.isDefaultAddress());
+  }
+
+  private SignInView signView(long userId, LocalDate today, int todayRewardPoints) {
+    YearMonth month = YearMonth.from(today);
+    List<String> monthSignDates = authUserMapper.findMonthSignDates(userId, month.atDay(1), month.atEndOfMonth())
+        .stream()
+        .map(LocalDate::toString)
+        .toList();
+    return new SignInView(
+        authUserMapper.countUserSign(userId, today) > 0,
+        continuousSignDays(userId, today),
+        authUserMapper.countUserSigns(userId),
+        authUserMapper.sumUserSignPoints(userId),
+        todayRewardPoints,
+        monthSignDates);
+  }
+
+  private int continuousSignDays(long userId, LocalDate today) {
+    int days = 0;
+    LocalDate cursor = today;
+    while (authUserMapper.countUserSign(userId, cursor) > 0) {
+      days++;
+      cursor = cursor.minusDays(1);
+    }
+    return days;
+  }
+
+  private int rewardPoints(long userId, LocalDate today) {
+    int nextContinuousDays = continuousSignDays(userId, today.minusDays(1)) + 1;
+    return 5 + Math.min(nextContinuousDays, 7);
   }
 
   private TokenPrincipalView principalFor(UserAccountRow user) {

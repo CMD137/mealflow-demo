@@ -80,9 +80,18 @@ export interface UserVoucherView {
 }
 
 export interface SeckillVoucherResponse {
-  accepted: boolean;
+  claimId?: number | null;
+  status: 'CLAIMED' | 'DUPLICATE' | 'SOLD_OUT';
   userVoucherId?: number | null;
-  message: string;
+}
+
+export interface SignInView {
+  signedToday: boolean;
+  continuousDays: number;
+  totalDays: number;
+  totalPoints: number;
+  todayRewardPoints: number;
+  monthSignDates: string[];
 }
 
 export interface OrderSkuItem {

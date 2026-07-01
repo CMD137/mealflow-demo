@@ -13,6 +13,7 @@ const router = createRouter({
     { path: '/orders', component: () => import('@/views/OrdersView.vue') },
     { path: '/orders/:orderId', component: () => import('@/views/OrderDetailView.vue') },
     { path: '/vouchers', component: () => import('@/views/VouchersView.vue') },
+    { path: '/sign', component: () => import('@/views/SignView.vue') },
     { path: '/messages', component: () => import('@/views/MessagesView.vue') },
     { path: '/mine', component: () => import('@/views/MineView.vue') }
   ]

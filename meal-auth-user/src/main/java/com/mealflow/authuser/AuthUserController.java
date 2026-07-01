@@ -11,6 +11,7 @@ import com.mealflow.authuser.api.LoginResponse;
 import com.mealflow.authuser.api.MenuView;
 import com.mealflow.authuser.api.RoleRequest;
 import com.mealflow.authuser.api.RoleView;
+import com.mealflow.authuser.api.SignInView;
 import com.mealflow.authuser.api.TokenPrincipalView;
 import com.mealflow.authuser.api.TokenValidationRequest;
 import com.mealflow.authuser.api.UserView;
@@ -64,6 +65,16 @@ public class AuthUserController {
   @GetMapping("/users/addresses")
   public Result<List<AddressView>> addresses(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
     return Result.ok(authUserService.addresses(userId == null ? defaultUserId : userId));
+  }
+
+  @GetMapping("/users/sign")
+  public Result<SignInView> signInfo(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    return Result.ok(authUserService.signInfo(userId == null ? defaultUserId : userId));
+  }
+
+  @PostMapping("/users/sign")
+  public Result<SignInView> signIn(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    return Result.ok(authUserService.signIn(userId == null ? defaultUserId : userId));
   }
 
   @PostMapping("/users/addresses")

@@ -2,7 +2,7 @@ import { http } from './http';
 import type { SeckillVoucherResponse, UserVoucherView, VoucherView } from '@/types/api';
 
 export function vouchersApi() {
-  return http.get<unknown, VoucherView[]>('/vouchers/admin');
+  return http.get<unknown, VoucherView[]>('/vouchers');
 }
 
 export function walletApi() {

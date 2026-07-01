@@ -48,6 +48,11 @@ public class PromotionController {
     return Result.ok(promotionService.wallet(userId == null ? defaultUserId : userId));
   }
 
+  @GetMapping
+  public Result<List<VoucherView>> availableVouchers() {
+    return Result.ok(promotionService.vouchers());
+  }
+
   @GetMapping("/admin")
   public Result<List<VoucherView>> vouchers() {
     return Result.ok(promotionService.vouchers());
