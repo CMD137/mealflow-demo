@@ -1,6 +1,7 @@
 param(
   [switch]$Stop,
   [switch]$NoInstall,
+  [switch]$KeepViteCache,
   [int]$AdminPort = 5173,
   [int]$UserPort = 5174
 )
@@ -85,6 +86,26 @@ function Ensure-Dependencies($app) {
   npm.cmd --prefix $appDir install
 }
 
+function Reset-ViteCache($app) {
+  if ($KeepViteCache) {
+    return
+  }
+
+  $appDir = Join-Path $root $app.Directory
+  $cacheDir = Join-Path $appDir "node_modules\.vite"
+  if (!(Test-Path $cacheDir)) {
+    return
+  }
+
+  $resolvedRoot = [System.IO.Path]::GetFullPath($root)
+  $resolvedCacheDir = [System.IO.Path]::GetFullPath($cacheDir)
+  if (!$resolvedCacheDir.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to remove Vite cache outside workspace: $resolvedCacheDir"
+  }
+
+  Remove-Item -LiteralPath $resolvedCacheDir -Recurse -Force
+}
+
 function Start-Frontend($app) {
   $pidFile = Get-PidFile $app
   if (Test-Path $pidFile) {
@@ -102,11 +123,12 @@ function Start-Frontend($app) {
   }
 
   Ensure-Dependencies $app
+  Reset-ViteCache $app
 
   $appDir = Join-Path $root $app.Directory
   $outLog = Join-Path $logDir "$($app.Name).out.log"
   $errLog = Join-Path $logDir "$($app.Name).err.log"
-  $command = "cd /d `"$appDir`" && npm.cmd run dev -- --host 0.0.0.0 --port $($app.Port) > `"$outLog`" 2> `"$errLog`""
+  $command = "cd /d `"$appDir`" && npm.cmd run dev -- --host 0.0.0.0 --port $($app.Port) --force > `"$outLog`" 2> `"$errLog`""
   $process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $command) -WorkingDirectory $root -WindowStyle Hidden -PassThru
   Set-Content -Path $pidFile -Value $process.Id
 
