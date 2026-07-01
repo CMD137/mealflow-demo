@@ -28,8 +28,10 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,22 +39,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthUserService {
   private static final String CUSTOMER_ROLE = "CUSTOMER";
   private static final Duration TOKEN_TTL = Duration.ofDays(7);
+  private static final String SIGN_KEY_PREFIX = "sign:user:";
+  private static final String SIGN_POINTS_SUFFIX = ":points";
+  private static final String SIGN_DAYS_SUFFIX = ":days";
 
   private final IdGenerator idGenerator = new IdGenerator();
   private final AuthUserMapper authUserMapper;
+  private final StringRedisTemplate redisTemplate;
 
-  public AuthUserService(AuthUserMapper authUserMapper) {
+  public AuthUserService(AuthUserMapper authUserMapper, StringRedisTemplate redisTemplate) {
     this.authUserMapper = authUserMapper;
+    this.redisTemplate = redisTemplate;
   }
 
   @PostConstruct
   void initializeIdGenerator() {
     ensureAddressDefaultColumn();
-    authUserMapper.createUserSignTable();
     idGenerator.ensureAtLeast("userAccount", authUserMapper.maxUserId());
     idGenerator.ensureAtLeast("userAddress", authUserMapper.maxAddressId());
     idGenerator.ensureAtLeast("merchantEmployee", authUserMapper.maxEmployeeId());
-    idGenerator.ensureAtLeast("userSign", authUserMapper.maxUserSignId());
   }
 
   @Transactional
@@ -115,9 +120,12 @@ public class AuthUserService {
   public synchronized SignInView signIn(long userId) {
     get(userId);
     LocalDate today = LocalDate.now();
-    if (authUserMapper.countUserSign(userId, today) == 0) {
-      int rewardPoints = rewardPoints(userId, today);
-      authUserMapper.insertUserSign(idGenerator.next("userSign"), userId, today, rewardPoints, LocalDateTime.now());
+    int rewardPoints = rewardPoints(userId, today);
+    Boolean alreadySigned = redisTemplate.opsForValue().setBit(signKey(userId, YearMonth.from(today)),
+        today.getDayOfMonth() - 1L, true);
+    if (!Boolean.TRUE.equals(alreadySigned)) {
+      redisTemplate.opsForValue().increment(pointsKey(userId), rewardPoints);
+      redisTemplate.opsForValue().increment(daysKey(userId));
       return signView(userId, today, rewardPoints);
     }
     return signView(userId, today, 0);
@@ -243,15 +251,12 @@ public class AuthUserService {
 
   private SignInView signView(long userId, LocalDate today, int todayRewardPoints) {
     YearMonth month = YearMonth.from(today);
-    List<String> monthSignDates = authUserMapper.findMonthSignDates(userId, month.atDay(1), month.atEndOfMonth())
-        .stream()
-        .map(LocalDate::toString)
-        .toList();
+    List<String> monthSignDates = monthSignDates(userId, month);
     return new SignInView(
-        authUserMapper.countUserSign(userId, today) > 0,
+        signed(userId, today),
         continuousSignDays(userId, today),
-        authUserMapper.countUserSigns(userId),
-        authUserMapper.sumUserSignPoints(userId),
+        totalDays(userId, monthSignDates.size()),
+        totalPoints(userId),
         todayRewardPoints,
         monthSignDates);
   }
@@ -259,7 +264,7 @@ public class AuthUserService {
   private int continuousSignDays(long userId, LocalDate today) {
     int days = 0;
     LocalDate cursor = today;
-    while (authUserMapper.countUserSign(userId, cursor) > 0) {
+    while (signed(userId, cursor)) {
       days++;
       cursor = cursor.minusDays(1);
     }
@@ -269,6 +274,57 @@ public class AuthUserService {
   private int rewardPoints(long userId, LocalDate today) {
     int nextContinuousDays = continuousSignDays(userId, today.minusDays(1)) + 1;
     return 5 + Math.min(nextContinuousDays, 7);
+  }
+
+  private boolean signed(long userId, LocalDate date) {
+    Boolean value = redisTemplate.opsForValue().getBit(signKey(userId, YearMonth.from(date)),
+        date.getDayOfMonth() - 1L);
+    return Boolean.TRUE.equals(value);
+  }
+
+  private List<String> monthSignDates(long userId, YearMonth month) {
+    List<String> dates = new ArrayList<>();
+    String key = signKey(userId, month);
+    for (int day = 1; day <= month.lengthOfMonth(); day++) {
+      Boolean signed = redisTemplate.opsForValue().getBit(key, day - 1L);
+      if (Boolean.TRUE.equals(signed)) {
+        dates.add(month.atDay(day).toString());
+      }
+    }
+    return dates;
+  }
+
+  private int totalPoints(long userId) {
+    String value = redisTemplate.opsForValue().get(pointsKey(userId));
+    return parseRedisCounter(value, 0);
+  }
+
+  private int totalDays(long userId, int fallback) {
+    String value = redisTemplate.opsForValue().get(daysKey(userId));
+    return parseRedisCounter(value, fallback);
+  }
+
+  private int parseRedisCounter(String value, int fallback) {
+    if (value == null || value.isBlank()) {
+      return fallback;
+    }
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException ex) {
+      return fallback;
+    }
+  }
+
+  private String signKey(long userId, YearMonth month) {
+    return SIGN_KEY_PREFIX + userId + ":" + month;
+  }
+
+  private String pointsKey(long userId) {
+    return SIGN_KEY_PREFIX + userId + SIGN_POINTS_SUFFIX;
+  }
+
+  private String daysKey(long userId) {
+    return SIGN_KEY_PREFIX + userId + SIGN_DAYS_SUFFIX;
   }
 
   private TokenPrincipalView principalFor(UserAccountRow user) {

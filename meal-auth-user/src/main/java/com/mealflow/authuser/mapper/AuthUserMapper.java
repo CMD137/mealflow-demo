@@ -1,7 +1,6 @@
 package com.mealflow.authuser.mapper;
 
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 import java.util.List;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
@@ -23,22 +22,6 @@ public interface AuthUserMapper {
 
   @Select("SELECT COALESCE(MAX(id), 10000) FROM merchant_employee")
   long maxEmployeeId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM user_sign")
-  long maxUserSignId();
-
-  @Update("""
-      CREATE TABLE IF NOT EXISTS user_sign (
-        id BIGINT PRIMARY KEY,
-        user_id BIGINT NOT NULL,
-        sign_date DATE NOT NULL,
-        reward_points INT NOT NULL,
-        create_time DATETIME NOT NULL,
-        UNIQUE KEY uk_user_sign_date(user_id, sign_date),
-        KEY idx_user_sign_user_date(user_id, sign_date)
-      )
-      """)
-  int createUserSignTable();
 
   @Select("""
       SELECT COUNT(*)
@@ -127,31 +110,6 @@ public interface AuthUserMapper {
 
   @Delete("DELETE FROM user_address WHERE id = #{id}")
   int deleteAddress(long id);
-
-  @Select("SELECT COUNT(*) FROM user_sign WHERE user_id = #{userId} AND sign_date = #{signDate}")
-  int countUserSign(@Param("userId") long userId, @Param("signDate") LocalDate signDate);
-
-  @Select("SELECT COUNT(*) FROM user_sign WHERE user_id = #{userId}")
-  int countUserSigns(long userId);
-
-  @Select("SELECT COALESCE(SUM(reward_points), 0) FROM user_sign WHERE user_id = #{userId}")
-  int sumUserSignPoints(long userId);
-
-  @Select("""
-      SELECT sign_date
-      FROM user_sign
-      WHERE user_id = #{userId} AND sign_date BETWEEN #{startDate} AND #{endDate}
-      ORDER BY sign_date
-      """)
-  List<LocalDate> findMonthSignDates(@Param("userId") long userId, @Param("startDate") LocalDate startDate,
-      @Param("endDate") LocalDate endDate);
-
-  @Insert("""
-      INSERT INTO user_sign (id, user_id, sign_date, reward_points, create_time)
-      VALUES (#{id}, #{userId}, #{signDate}, #{rewardPoints}, #{now})
-      """)
-  int insertUserSign(@Param("id") long id, @Param("userId") long userId, @Param("signDate") LocalDate signDate,
-      @Param("rewardPoints") int rewardPoints, @Param("now") LocalDateTime now);
 
   @Update("""
       UPDATE user_address
