@@ -3,3 +3,9 @@ target/
 *.log
 .idea/
 *.iml
+node_modules/
+dist/
+uploads/
+.env
+.env.*
+!**/.env.example
