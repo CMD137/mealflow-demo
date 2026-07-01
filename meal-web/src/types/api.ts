@@ -71,7 +71,8 @@ export interface MerchantView {
   merchantId: number;
   name: string;
   businessStatus: string;
-  capacityLimit: number;
+  baseCapacity: number;
+  manualFactor: number;
 }
 
 export interface OrderView {
@@ -79,27 +80,58 @@ export interface OrderView {
   merchantId: number;
   userId: number;
   status: string;
-  totalAmountCent: number;
-  payableAmountCent: number;
-  payOrderId?: number | null;
+  amountCent: number;
+  payOrderId: number;
   queueTicketId?: number | null;
-  createTime?: string;
-  updateTime?: string;
+  capacityTokenId: number;
+  items: Array<Record<string, unknown>>;
+}
+
+export interface OrderSkuItem {
+  skuId: number;
+  quantity: number;
+}
+
+export interface SubmitOrderRequest {
+  requestId: string;
+  merchantId: number;
+  addressId?: number | null;
+  cartItemIds?: number[] | null;
+  items: OrderSkuItem[];
+  userVoucherId?: number | null;
+  remark?: string;
+}
+
+export interface SubmitOrderResponse {
+  mode: 'ORDER_CREATED' | 'QUEUED';
+  orderId?: number | null;
+  payOrderId?: number | null;
+  status?: string | null;
+  ticketId?: number | null;
+  ticketNo?: string | null;
+  aheadCount: number;
+  estimatedWaitSeconds: number;
+  expireTime?: string | null;
 }
 
 export interface OrderStatisticsView {
-  merchantId: number;
   totalCount: number;
-  statusCounts: Record<string, number>;
+  waitingAcceptCount: number;
+  acceptedCount: number;
+  deliveringCount: number;
+  completedCount: number;
+  cancelledCount: number;
+  turnoverCent: number;
 }
 
 export interface QueueTicketView {
   ticketId: number;
-  merchantId: number;
-  userId: number;
+  ticketNo: string;
   status: string;
-  rank?: number;
-  createTime?: string;
+  aheadCount: number;
+  estimatedWaitSeconds: number;
+  expireTime?: string;
+  canCancel: boolean;
 }
 
 export interface CapacityTokenView {
@@ -113,12 +145,63 @@ export interface CapacityTokenView {
 
 export interface VoucherView {
   voucherId: number;
-  merchantId: number;
   name: string;
   type: string;
-  discountAmountCent: number;
+  discountCent: number;
   stock: number;
   status: string;
+}
+
+export interface PaymentView {
+  payOrderId: number;
+  orderId: number;
+  amountCent: number;
+  status: string;
+}
+
+export interface MessageView {
+  messageId: number;
+  userId: number;
+  bizType: string;
+  content: string;
+  createTime?: string;
+}
+
+export interface DeliveryView {
+  deliveryId: number;
+  messageId: number;
+  userId: number;
+  channel: string;
+  target: string;
+  status: string;
+  content: string;
+  createTime?: string;
+}
+
+export interface ConsumerRecordView {
+  id: number;
+  eventKey: string;
+  consumerGroup: string;
+  eventType: string;
+  status: string;
+  lastError?: string;
+  createTime?: string;
+  updateTime?: string;
+}
+
+export interface LocalEventView {
+  id: number;
+  eventKey: string;
+  eventType: string;
+  eventVersion: number;
+  aggregateType: string;
+  aggregateId: number;
+  payloadJson: string;
+  status: string;
+  retryCount: number;
+  lastError?: string;
+  createTime?: string;
+  updateTime?: string;
 }
 
 export interface RoleView {

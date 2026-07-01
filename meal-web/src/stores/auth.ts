@@ -22,7 +22,7 @@ export const useAuthStore = defineStore('auth', {
     permissions: (state) => state.loginInfo?.permissions || [],
     nickname: (state) => state.user?.nickname || state.loginInfo?.nickname || '未登录',
     roleCode: (state) => state.loginInfo?.roleCode || '-',
-    merchantId: (state) => state.loginInfo?.merchantId || 10
+    merchantId: (state) => state.loginInfo?.merchantId ?? undefined
   },
   actions: {
     async login(payload: LoginRequest) {

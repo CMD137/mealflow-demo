@@ -6,7 +6,7 @@ export function vouchersApi() {
 }
 
 export function saveVoucherApi(
-  payload: { name: string; type: string; discountAmountCent: number; stock: number; status: string },
+  payload: { name: string; type: string; discountCent: number; stock: number; status: string },
   voucherId?: number
 ) {
   if (voucherId) {

@@ -45,7 +45,7 @@ export const appMenus: AppMenuItem[] = [
   },
   { path: '/orders', title: '订单管理', icon: Tickets, permission: 'ORDER_WRITE' },
   { path: '/fulfillment', title: '履约工作台', icon: Management, permission: 'FULFILLMENT_OPERATE' },
-  { path: '/queue', title: '排队与产能', icon: Monitor, permission: 'MERCHANT_MANAGE' },
+  { path: '/queue', title: '排队与产能', icon: Monitor, permission: 'INTERNAL_OPERATE' },
   {
     path: '/promotion',
     title: '优惠券',

@@ -32,7 +32,8 @@ onMounted(load);
       <el-table v-loading="loading" :data="rows" row-key="merchantId">
         <el-table-column prop="merchantId" label="商家 ID" width="120" />
         <el-table-column prop="name" label="商家名称" min-width="200" />
-        <el-table-column prop="capacityLimit" label="产能上限" width="120" />
+        <el-table-column prop="baseCapacity" label="基础产能" width="120" />
+        <el-table-column prop="manualFactor" label="人工系数" width="120" />
         <el-table-column label="营业状态" width="140">
           <template #default="{ row }"><el-tag :type="statusType(row.businessStatus)">{{ row.businessStatus }}</el-tag></template>
         </el-table-column>

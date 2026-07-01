@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { OrderStatisticsView, OrderView } from '@/types/api';
+import type { OrderStatisticsView, OrderView, SubmitOrderRequest, SubmitOrderResponse } from '@/types/api';
 
 export function adminOrdersApi(params: { merchantId?: number; userId?: number; status?: string }) {
   return http.get<unknown, OrderView[]>('/orders/admin', { params });
@@ -14,5 +14,9 @@ export function orderDetailApi(orderId: number) {
 }
 
 export function cancelOrderApi(orderId: number, reason: string) {
-  return http.post<unknown, OrderView>(`/orders/${orderId}/cancel`, { reason });
+  return http.post<unknown, void>(`/orders/${orderId}/cancel`, { reason });
+}
+
+export function submitOrderApi(payload: SubmitOrderRequest) {
+  return http.post<unknown, SubmitOrderResponse>('/orders/submit', payload);
 }

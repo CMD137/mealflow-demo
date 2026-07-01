@@ -24,6 +24,7 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
   private static final String ROLE_HEADER = "X-Role";
   private static final String MERCHANT_ID_HEADER = "X-Merchant-Id";
   private static final String PERMISSIONS_HEADER = "X-Permissions";
+  private static final List<String> ALLOWED_ORIGINS = List.of("http://localhost:5173", "http://127.0.0.1:5173");
 
   private final WebClient webClient;
   private final boolean enabled;
@@ -41,6 +42,11 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
   @Override
   public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
     ServerHttpRequest request = exchange.getRequest();
+    applyCorsHeaders(exchange, request);
+    if (HttpMethod.OPTIONS.equals(request.getMethod())) {
+      exchange.getResponse().setStatusCode(HttpStatus.OK);
+      return exchange.getResponse().setComplete();
+    }
     if (!enabled || isPublicRequest(request)) {
       return chain.filter(stripIdentityHeaders(exchange));
     }
@@ -68,6 +74,26 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
   @Override
   public int getOrder() {
     return -100;
+  }
+
+  private void applyCorsHeaders(ServerWebExchange exchange, ServerHttpRequest request) {
+    String origin = request.getHeaders().getOrigin();
+    if (origin == null || !ALLOWED_ORIGINS.contains(origin)) {
+      return;
+    }
+    HttpHeaders headers = exchange.getResponse().getHeaders();
+    headers.setAccessControlAllowOrigin(origin);
+    headers.setAccessControlAllowMethods(List.of(
+        HttpMethod.GET,
+        HttpMethod.POST,
+        HttpMethod.PUT,
+        HttpMethod.PATCH,
+        HttpMethod.DELETE,
+        HttpMethod.OPTIONS));
+    headers.setAccessControlAllowHeaders(List.of("*"));
+    headers.add(HttpHeaders.VARY, HttpHeaders.ORIGIN);
+    headers.add(HttpHeaders.VARY, HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD);
+    headers.add(HttpHeaders.VARY, HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS);
   }
 
   private boolean isPublicRequest(ServerHttpRequest request) {

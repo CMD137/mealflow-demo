@@ -5,7 +5,7 @@ import type { Result } from '@/types/api';
 const TOKEN_KEY = 'mealflow.token';
 
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   timeout: 10000
 });
 

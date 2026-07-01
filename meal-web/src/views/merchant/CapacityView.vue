@@ -9,17 +9,23 @@ const auth = useAuthStore();
 const loading = ref(false);
 const form = reactive({
   merchantId: auth.merchantId,
-  capacityLimit: 1,
+  baseCapacity: 1,
+  manualFactor: 1,
   queueLimit: 20,
   businessStatus: 'OPEN'
 });
 
 async function save() {
+  const merchantId = form.merchantId;
+  if (!merchantId) {
+    ElMessage.warning('当前登录账号未绑定商家，无法保存产能配置');
+    return;
+  }
   loading.value = true;
   try {
-    await updateCapacityApi(form.merchantId, form.capacityLimit);
-    await updateBusinessStatusApi(form.merchantId, form.businessStatus);
-    await setQueueLimitApi(form.merchantId, form.queueLimit);
+    await updateCapacityApi(merchantId, form.baseCapacity, form.manualFactor);
+    await updateBusinessStatusApi(merchantId, form.businessStatus);
+    await setQueueLimitApi(merchantId, form.queueLimit);
     ElMessage.success('产能配置已保存');
   } finally {
     loading.value = false;
@@ -38,7 +44,8 @@ async function save() {
     <div class="content-panel">
       <el-form :model="form" label-width="120px" style="max-width: 520px">
         <el-form-item label="商家 ID"><el-input-number v-model="form.merchantId" :min="1" /></el-form-item>
-        <el-form-item label="产能上限"><el-input-number v-model="form.capacityLimit" :min="1" /></el-form-item>
+        <el-form-item label="基础产能"><el-input-number v-model="form.baseCapacity" :min="1" /></el-form-item>
+        <el-form-item label="人工系数"><el-input-number v-model="form.manualFactor" :min="0.1" :step="0.1" /></el-form-item>
         <el-form-item label="排队上限"><el-input-number v-model="form.queueLimit" :min="0" /></el-form-item>
         <el-form-item label="营业状态">
           <el-select v-model="form.businessStatus">

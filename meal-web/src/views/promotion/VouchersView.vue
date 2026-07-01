@@ -8,7 +8,7 @@ import { formatMoney, statusType } from '@/utils/format';
 const loading = ref(false);
 const dialogVisible = ref(false);
 const rows = ref<VoucherView[]>([]);
-const form = reactive({ voucherId: 0, name: '', type: 'AMOUNT_OFF', discountAmountCent: 100, stock: 0, status: 'ACTIVE' });
+const form = reactive({ voucherId: 0, name: '', type: 'AMOUNT_OFF', discountCent: 100, stock: 0, status: 'ACTIVE' });
 
 async function load() {
   loading.value = true;
@@ -20,7 +20,7 @@ async function load() {
 }
 
 function openCreate() {
-  Object.assign(form, { voucherId: 0, name: '', type: 'AMOUNT_OFF', discountAmountCent: 100, stock: 0, status: 'ACTIVE' });
+  Object.assign(form, { voucherId: 0, name: '', type: 'AMOUNT_OFF', discountCent: 100, stock: 0, status: 'ACTIVE' });
   dialogVisible.value = true;
 }
 
@@ -34,7 +34,7 @@ async function save() {
     {
       name: form.name,
       type: form.type,
-      discountAmountCent: form.discountAmountCent,
+      discountCent: form.discountCent,
       stock: form.stock,
       status: form.status
     },
@@ -64,7 +64,7 @@ onMounted(load);
         <el-table-column prop="name" label="券名称" min-width="180" />
         <el-table-column prop="type" label="类型" width="140" />
         <el-table-column label="优惠" width="130">
-          <template #default="{ row }"><span class="money">{{ formatMoney(row.discountAmountCent) }}</span></template>
+          <template #default="{ row }"><span class="money">{{ formatMoney(row.discountCent) }}</span></template>
         </el-table-column>
         <el-table-column prop="stock" label="库存" width="100" />
         <el-table-column label="状态" width="130">
@@ -80,7 +80,7 @@ onMounted(load);
       <el-form :model="form" label-width="110px">
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="类型"><el-input v-model="form.type" /></el-form-item>
-        <el-form-item label="优惠金额(分)"><el-input-number v-model="form.discountAmountCent" :min="1" /></el-form-item>
+        <el-form-item label="优惠金额(分)"><el-input-number v-model="form.discountCent" :min="1" /></el-form-item>
         <el-form-item label="库存"><el-input-number v-model="form.stock" :min="0" /></el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status">

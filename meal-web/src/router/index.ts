@@ -11,14 +11,15 @@ const router = createRouter({
       path: '/',
       component: AdminLayout,
       children: [
-        { path: 'dashboard', component: () => import('@/views/dashboard/DashboardView.vue'), meta: { title: '工作台' } },
+        { path: 'dashboard', component: () => import('@/views/dashboard/DashboardView.vue'), meta: { title: '工作台', permission: 'MERCHANT_MANAGE' } },
+        { path: 'forbidden', component: () => import('@/views/system/ForbiddenView.vue'), meta: { title: '无权限' } },
         { path: 'merchant/profile', component: () => import('@/views/merchant/MerchantProfileView.vue'), meta: { title: '商家资料', permission: 'MERCHANT_MANAGE' } },
         { path: 'merchant/capacity', component: () => import('@/views/merchant/CapacityView.vue'), meta: { title: '产能配置', permission: 'MERCHANT_MANAGE' } },
         { path: 'catalog/categories', component: () => import('@/views/catalog/CategoriesView.vue'), meta: { title: '商品类目', permission: 'CATALOG_MANAGE' } },
         { path: 'catalog/skus', component: () => import('@/views/catalog/SkusView.vue'), meta: { title: '商品管理', permission: 'CATALOG_MANAGE' } },
         { path: 'orders', component: () => import('@/views/orders/OrdersView.vue'), meta: { title: '订单管理', permission: 'ORDER_WRITE' } },
         { path: 'fulfillment', component: () => import('@/views/fulfillment/FulfillmentView.vue'), meta: { title: '履约工作台', permission: 'FULFILLMENT_OPERATE' } },
-        { path: 'queue', component: () => import('@/views/queue/QueueView.vue'), meta: { title: '排队与产能', permission: 'MERCHANT_MANAGE' } },
+        { path: 'queue', component: () => import('@/views/queue/QueueView.vue'), meta: { title: '排队与产能', permission: 'INTERNAL_OPERATE' } },
         { path: 'promotion/vouchers', component: () => import('@/views/promotion/VouchersView.vue'), meta: { title: '优惠券管理', permission: 'MERCHANT_MANAGE' } },
         { path: 'promotion/wallet', component: () => import('@/views/promotion/WalletView.vue'), meta: { title: '用户券包', permission: 'VOUCHER_USE' } },
         { path: 'employees', component: () => import('@/views/access/EmployeesView.vue'), meta: { title: '员工管理', permission: 'MERCHANT_MANAGE' } },
@@ -43,7 +44,7 @@ router.beforeEach(async (to) => {
   }
   const permission = to.meta.permission as string | undefined;
   if (permission && !auth.hasPermission(permission)) {
-    return '/dashboard';
+    return '/forbidden';
   }
   return true;
 });

@@ -329,7 +329,7 @@ services:
       NOTIFY_DB_PASSWORD: mealflow
       NOTIFY_DB_DRIVER: com.mysql.cj.jdbc.Driver
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
-      NOTIFY_EVENT_CONSUMER_ENABLED: "true"
+      NOTIFY_EVENT_CONSUMER_ENABLED: "false"
       NOTIFY_EVENT_CONSUMER_GROUP: mealflow-notify-domain-consumer
       NOTIFY_EVENT_TOPICS: mealflow-order-events
       NOTIFY_EVENT_MAX_RECONSUME_TIMES: 5

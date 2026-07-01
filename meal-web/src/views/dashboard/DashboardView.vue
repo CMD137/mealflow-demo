@@ -1,26 +1,43 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import { orderStatisticsApi } from '@/api/orders';
 import { queueMetricsApi } from '@/api/queue';
 import { useAuthStore } from '@/stores/auth';
+import { formatMoney } from '@/utils/format';
 
 const auth = useAuthStore();
 const loading = ref(false);
 const stats = reactive({
   totalOrders: 0,
-  statusCounts: {} as Record<string, number>,
+  waitingAcceptCount: 0,
+  acceptedCount: 0,
+  deliveringCount: 0,
+  completedCount: 0,
+  cancelledCount: 0,
+  turnoverCent: 0,
   queue: {} as Record<string, unknown>
 });
 
 async function load() {
+  const merchantId = auth.merchantId;
+  if (!merchantId) {
+    ElMessage.warning('当前登录账号未绑定商家，无法加载工作台');
+    return;
+  }
   loading.value = true;
   try {
     const [orderStats, queueStats] = await Promise.all([
-      orderStatisticsApi({ merchantId: auth.merchantId }),
-      queueMetricsApi(auth.merchantId)
+      orderStatisticsApi({ merchantId }),
+      queueMetricsApi(merchantId)
     ]);
     stats.totalOrders = orderStats.totalCount;
-    stats.statusCounts = orderStats.statusCounts || {};
+    stats.waitingAcceptCount = orderStats.waitingAcceptCount;
+    stats.acceptedCount = orderStats.acceptedCount;
+    stats.deliveringCount = orderStats.deliveringCount;
+    stats.completedCount = orderStats.completedCount;
+    stats.cancelledCount = orderStats.cancelledCount;
+    stats.turnoverCent = orderStats.turnoverCent;
     stats.queue = queueStats || {};
   } finally {
     loading.value = false;
@@ -45,10 +62,12 @@ onMounted(load);
         <span>订单总数</span>
         <strong>{{ stats.totalOrders }}</strong>
       </div>
-      <div class="metric" v-for="(count, status) in stats.statusCounts" :key="status">
-        <span>{{ status }}</span>
-        <strong>{{ count }}</strong>
-      </div>
+      <div class="metric"><span>待接单</span><strong>{{ stats.waitingAcceptCount }}</strong></div>
+      <div class="metric"><span>制作中</span><strong>{{ stats.acceptedCount }}</strong></div>
+      <div class="metric"><span>配送中</span><strong>{{ stats.deliveringCount }}</strong></div>
+      <div class="metric"><span>已完成</span><strong>{{ stats.completedCount }}</strong></div>
+      <div class="metric"><span>已取消</span><strong>{{ stats.cancelledCount }}</strong></div>
+      <div class="metric"><span>营业额</span><strong>{{ formatMoney(stats.turnoverCent) }}</strong></div>
     </div>
 
     <div class="content-panel">

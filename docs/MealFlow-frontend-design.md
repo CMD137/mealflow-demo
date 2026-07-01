@@ -33,10 +33,12 @@ http://localhost:8080
 开发环境变量：
 
 ```properties
-VITE_API_BASE_URL=http://localhost:8080
+VITE_API_BASE_URL=/api
 ```
 
-请求统一走 `VITE_API_BASE_URL`。除登录、公开商品浏览和图片访问外，其余请求应携带 `Authorization: Bearer {token}`。
+请求统一走 `VITE_API_BASE_URL`。本地开发由 Vite 代理 `/api` 到 `http://localhost:8080`，除登录、公开商品浏览和图片访问外，其余请求应携带 `Authorization: Bearer {token}`。
+
+凡是调用 `/internal/` 路径的页面或操作，前端必须按 `INTERNAL_OPERATE` 控制可见性或加载逻辑，避免普通业务权限用户进入页面后被网关拒绝。
 
 ## 布局规范
 
@@ -113,7 +115,7 @@ App
 7. 优惠券管理
 8. 员工/角色权限
 
-通知中心和事件运维可作为第二批页面，但菜单结构应预留。
+通知中心和事件运维应作为独立菜单提供表格化查看与恢复/派发操作，不混入日常业务页面。
 
 ## 后端接口映射
 
@@ -191,6 +193,8 @@ SUBMITTED -> PENDING_PAYMENT -> PAID -> ACCEPTED -> READY -> PICKED_UP -> DELIVE
 ```
 
 若后端返回排队结果，页面应显示 ticket ID，并允许跳转到排队页查看状态。
+
+订单管理页还应提供演示订单创建入口：从当前商家 SKU 中选择商品和数量，提交 `/orders/submit`；若返回 `ORDER_CREATED`，在订单列表中展示订单并允许对 `payOrderId` 发起模拟支付；若返回 `QUEUED`，展示 ticket 编号和预计等待信息。
 
 ### 排队
 

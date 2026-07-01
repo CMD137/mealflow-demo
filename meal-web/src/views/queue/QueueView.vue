@@ -34,13 +34,16 @@ onMounted(load);
       <h3>排队 ticket</h3>
       <el-table v-loading="loading" :data="tickets" row-key="ticketId">
         <el-table-column prop="ticketId" label="ticket" width="120" />
-        <el-table-column prop="merchantId" label="商家" width="100" />
-        <el-table-column prop="userId" label="用户" width="100" />
+        <el-table-column prop="ticketNo" label="编号" width="180" />
         <el-table-column label="状态" width="140">
           <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="rank" label="排位" width="100" />
-        <el-table-column prop="createTime" label="创建时间" min-width="180" />
+        <el-table-column prop="aheadCount" label="前方等待" width="110" />
+        <el-table-column prop="estimatedWaitSeconds" label="预计等待(秒)" width="140" />
+        <el-table-column prop="expireTime" label="过期时间" min-width="180" />
+        <el-table-column label="可取消" width="100">
+          <template #default="{ row }">{{ row.canCancel ? '是' : '否' }}</template>
+        </el-table-column>
       </el-table>
     </div>
 
@@ -54,7 +57,7 @@ onMounted(load);
         <el-table-column label="状态" width="140">
           <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" min-width="180" />
+        <el-table-column prop="releaseReason" label="释放原因" min-width="180" />
       </el-table>
     </div>
   </section>

@@ -12,9 +12,15 @@ const loading = ref(false);
 const rows = ref<OrderView[]>([]);
 
 async function load() {
+  const merchantId = auth.merchantId;
+  if (!merchantId) {
+    rows.value = [];
+    ElMessage.warning('当前登录账号未绑定商家，无法加载履约订单');
+    return;
+  }
   loading.value = true;
   try {
-    rows.value = await adminOrdersApi({ merchantId: auth.merchantId });
+    rows.value = await adminOrdersApi({ merchantId });
   } finally {
     loading.value = false;
   }
@@ -48,11 +54,13 @@ onMounted(load);
         <el-table-column label="状态" width="140">
           <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
         </el-table-column>
-        <el-table-column label="应付金额" width="130">
-          <template #default="{ row }"><span class="money">{{ formatMoney(row.payableAmountCent) }}</span></template>
+        <el-table-column label="订单金额" width="130">
+          <template #default="{ row }"><span class="money">{{ formatMoney(row.amountCent) }}</span></template>
         </el-table-column>
         <el-table-column prop="queueTicketId" label="排队 ticket" width="140" />
-        <el-table-column prop="updateTime" label="更新时间" min-width="180" />
+        <el-table-column label="商品项" min-width="120">
+          <template #default="{ row }">{{ row.items?.length || 0 }} 项</template>
+        </el-table-column>
         <el-table-column label="可用操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" :disabled="row.status !== 'PAID'" @click="operate(row, 'accept')">接单</el-button>

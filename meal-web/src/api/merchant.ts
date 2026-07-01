@@ -9,8 +9,8 @@ export function merchantApi(merchantId: number) {
   return http.get<unknown, MerchantView>(`/merchants/${merchantId}`);
 }
 
-export function updateCapacityApi(merchantId: number, capacityLimit: number) {
-  return http.post<unknown, MerchantView>(`/merchants/${merchantId}/capacity`, { capacityLimit });
+export function updateCapacityApi(merchantId: number, baseCapacity: number, manualFactor: number) {
+  return http.post<unknown, MerchantView>(`/merchants/${merchantId}/capacity`, { baseCapacity, manualFactor });
 }
 
 export function updateBusinessStatusApi(merchantId: number, businessStatus: string) {
