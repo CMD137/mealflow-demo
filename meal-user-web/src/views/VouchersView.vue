@@ -74,7 +74,7 @@ onMounted(load);
       <div class="voucher-main">
         <div>
           <h2>{{ voucher.name }}</h2>
-          <p>{{ voucher.type === 'SECKILL' ? '秒杀券' : '普通券' }} · 库存 {{ voucher.stock }} · 已有 {{ ownedCount(voucher.voucherId) }} 张</p>
+          <p>秒杀券 · 库存 {{ voucher.stock }} · 已有 {{ ownedCount(voucher.voucherId) }} 张</p>
         </div>
         <strong>{{ formatMoney(voucher.discountCent) }}</strong>
       </div>

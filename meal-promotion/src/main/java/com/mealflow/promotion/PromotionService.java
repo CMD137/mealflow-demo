@@ -159,6 +159,7 @@ public class PromotionService {
     LocalDateTime now = LocalDateTime.now();
     promotionMapper.insertVoucher(id, request.name(), voucherType(request.type()), request.discountCent(),
         request.stock(), voucherStatus(request.status()), now);
+    seckillGuard.syncStock(id, request.stock());
     return voucherView(promotionMapper.findVoucher(id));
   }
 
@@ -167,6 +168,7 @@ public class PromotionService {
     requireVoucher(voucherId);
     promotionMapper.updateVoucher(voucherId, request.name(), voucherType(request.type()), request.discountCent(),
         request.stock(), voucherStatus(request.status()), LocalDateTime.now());
+    seckillGuard.syncStock(voucherId, request.stock());
     return voucherView(promotionMapper.findVoucher(voucherId));
   }
 
@@ -301,7 +303,7 @@ public class PromotionService {
 
   private VoucherView voucherView(VoucherRow voucher) {
     return new VoucherView(voucher.getId(), voucher.getName(), voucher.getType(), voucher.getDiscountCent(),
-        voucher.getStock(), voucher.getStatus());
+        seckillGuard.remainingStock(voucher.getId(), voucher.getStock()), voucher.getStatus());
   }
 
   private VoucherClaimRetryView claimRetryView(VoucherClaimRetryRow retry) {

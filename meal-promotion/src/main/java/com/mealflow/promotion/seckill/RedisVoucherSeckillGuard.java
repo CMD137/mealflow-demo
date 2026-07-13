@@ -62,6 +62,24 @@ public class RedisVoucherSeckillGuard implements VoucherSeckillGuard {
   }
 
   @Override
+  public int remainingStock(long voucherId, int databaseStock) {
+    String stock = redisTemplate.opsForValue().get(stockKey(voucherId));
+    if (stock == null || stock.isBlank()) {
+      return Math.max(databaseStock, 0);
+    }
+    try {
+      return Math.max(Integer.parseInt(stock), 0);
+    } catch (NumberFormatException ex) {
+      return Math.max(databaseStock, 0);
+    }
+  }
+
+  @Override
+  public void syncStock(long voucherId, int stock) {
+    redisTemplate.opsForValue().set(stockKey(voucherId), String.valueOf(Math.max(stock, 0)));
+  }
+
+  @Override
   public Set<Long> claimedUsers(long voucherId) {
     Set<String> members = redisTemplate.opsForSet().members(userSetKey(voucherId));
     if (members == null || members.isEmpty()) {

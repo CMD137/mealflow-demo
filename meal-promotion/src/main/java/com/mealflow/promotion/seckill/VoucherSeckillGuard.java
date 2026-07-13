@@ -7,6 +7,13 @@ public interface VoucherSeckillGuard {
 
   void compensate(long userId, long voucherId);
 
+  default int remainingStock(long voucherId, int databaseStock) {
+    return databaseStock;
+  }
+
+  default void syncStock(long voucherId, int stock) {
+  }
+
   default Set<Long> claimedUsers(long voucherId) {
     return Set.of();
   }
