@@ -12,6 +12,7 @@ const wallet = ref<UserVoucherView[]>([]);
 const message = ref('');
 
 const availableWallet = computed(() => wallet.value.filter((item) => item.status === 'AVAILABLE'));
+const claimableCount = computed(() => vouchers.value.filter((voucher) => canClaim(voucher)).length);
 
 async function load() {
   loading.value = true;
@@ -50,6 +51,23 @@ function voucherMeta(voucherId: number) {
   return vouchers.value.find((voucher) => voucher.voucherId === voucherId);
 }
 
+function canClaim(voucher: VoucherView) {
+  return voucher.status === 'ACTIVE' && voucher.stock > 0;
+}
+
+function claimButtonText(voucher: VoucherView) {
+  if (claimingId.value === voucher.voucherId) {
+    return '抢券中...';
+  }
+  if (voucher.status !== 'ACTIVE') {
+    return '已暂停';
+  }
+  if (voucher.stock <= 0) {
+    return '已抢完';
+  }
+  return '立即抢券';
+}
+
 onMounted(load);
 </script>
 
@@ -58,7 +76,7 @@ onMounted(load);
     <section class="campaign card">
       <div>
         <span>今日活动</span>
-        <strong>{{ vouchers.length }} 张券可抢</strong>
+        <strong>{{ claimableCount }} 张券可抢</strong>
       </div>
       <RouterLink to="/checkout" class="ghost-button">去结算</RouterLink>
     </section>
@@ -80,10 +98,10 @@ onMounted(load);
       </div>
       <button
         class="primary-button"
-        :disabled="claimingId === voucher.voucherId || voucher.status !== 'ACTIVE' || voucher.stock <= 0"
+        :disabled="claimingId === voucher.voucherId || !canClaim(voucher)"
         @click="claim(voucher)"
       >
-        {{ claimingId === voucher.voucherId ? '抢券中...' : voucher.stock <= 0 ? '已抢完' : '立即抢券' }}
+        {{ claimButtonText(voucher) }}
       </button>
     </section>
 

@@ -50,7 +50,7 @@ public class PromotionController {
 
   @GetMapping
   public Result<List<VoucherView>> availableVouchers() {
-    return Result.ok(promotionService.vouchers());
+    return Result.ok(promotionService.activeVouchers());
   }
 
   @GetMapping("/admin")

@@ -153,6 +153,12 @@ public class PromotionService {
     return promotionMapper.findVouchers().stream().map(this::voucherView).toList();
   }
 
+  public List<VoucherView> activeVouchers() {
+    return vouchers().stream()
+        .filter(voucher -> "ACTIVE".equals(voucher.status()))
+        .toList();
+  }
+
   @Transactional
   public synchronized VoucherView createVoucher(VoucherAdminRequest request) {
     long id = idGenerator.next("voucher");
