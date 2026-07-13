@@ -14,6 +14,7 @@
 - Docker Compose 运行环境。
 - 前端一键重启脚本。
 - 端到端 smoke 验收脚本。
+- 按功能拆分的操作链路联调手册：`docs/MealFlow-operation-flows.md`。
 
 仍建议作为增强继续推进的内容：
 

@@ -127,6 +127,7 @@ powershell.exe -ExecutionPolicy Bypass -File scripts/e2e-smoke.ps1 -BaseUrl http
 - [docs/MealFlow-implementation-status.md](docs/MealFlow-implementation-status.md)：后端实现状态。
 - [docs/MealFlow-frontend-integration-status.md](docs/MealFlow-frontend-integration-status.md)：前端集成状态。
 - [docs/MealFlow-delivery-checklist.md](docs/MealFlow-delivery-checklist.md)：最终交付验收清单。
+- [docs/MealFlow-operation-flows.md](docs/MealFlow-operation-flows.md)：按功能拆分的完整操作链路联调手册。
 - [docs/MealFlow-storage-config.md](docs/MealFlow-storage-config.md)：上传与存储配置。
 - [docs/MealFlow-api-events.md](docs/MealFlow-api-events.md)：API 和事件契约。
 
