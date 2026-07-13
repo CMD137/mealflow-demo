@@ -50,15 +50,15 @@ onMounted(load);
 
       <div class="timeline">
         <span :class="{ active: order.status !== 'CANCELLED' }">提交</span>
-        <span :class="{ active: ['PAID', 'WAIT_MERCHANT_ACCEPT', 'ACCEPTED', 'READY', 'WAIT_RIDER_PICKUP', 'COMPLETED'].includes(order.status) }">支付</span>
-        <span :class="{ active: ['ACCEPTED', 'READY', 'WAIT_RIDER_PICKUP', 'COMPLETED'].includes(order.status) }">制作</span>
-        <span :class="{ active: ['READY', 'WAIT_RIDER_PICKUP', 'COMPLETED'].includes(order.status) }">取餐</span>
+        <span :class="{ active: ['WAIT_MERCHANT_ACCEPT', 'MERCHANT_ACCEPTED', 'COOKING', 'WAIT_RIDER_PICKUP', 'DELIVERING', 'COMPLETED'].includes(order.status) }">支付</span>
+        <span :class="{ active: ['MERCHANT_ACCEPTED', 'COOKING', 'WAIT_RIDER_PICKUP', 'DELIVERING', 'COMPLETED'].includes(order.status) }">制作</span>
+        <span :class="{ active: ['WAIT_RIDER_PICKUP', 'DELIVERING', 'COMPLETED'].includes(order.status) }">取餐</span>
         <span :class="{ active: ['COMPLETED', 'DELIVERED'].includes(order.status) }">完成</span>
       </div>
 
       <div class="items">
         <div v-for="item in order.items" :key="item.skuId" class="line">
-          <span>{{ item.name }} × {{ item.quantity }}</span>
+          <span>{{ item.skuName }} × {{ item.quantity }}</span>
           <strong>{{ formatMoney(item.priceCent * item.quantity) }}</strong>
         </div>
       </div>

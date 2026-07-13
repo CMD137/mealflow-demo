@@ -15,12 +15,10 @@ export function orderStatusText(status?: string | null) {
     PENDING_PAYMENT: '待支付',
     PAID: '已支付',
     WAIT_MERCHANT_ACCEPT: '待接单',
-    ACCEPTED: '制作中',
-    READY: '待取餐',
+    MERCHANT_ACCEPTED: '已接单',
+    COOKING: '制作中',
     WAIT_RIDER_PICKUP: '待取餐',
-    PICKED_UP: '配送中',
     DELIVERING: '配送中',
-    DELIVERED: '已送达',
     COMPLETED: '已完成',
     CANCELLED: '已取消'
   };

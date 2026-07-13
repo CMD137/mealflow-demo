@@ -47,7 +47,7 @@ onMounted(load);
         <strong>订单 {{ order.orderId }}</strong>
         <span class="status-pill" :class="statusClass(order.status)">{{ orderStatusText(order.status) }}</span>
       </div>
-      <p>{{ order.items.map((item) => `${item.name}×${item.quantity}`).join('、') || '商品明细' }}</p>
+      <p>{{ order.items.map((item) => `${item.skuName}×${item.quantity}`).join('、') || '商品明细' }}</p>
       <div class="order-foot">
         <span>商家 {{ order.merchantId }}</span>
         <strong>{{ formatMoney(order.amountCent) }}</strong>

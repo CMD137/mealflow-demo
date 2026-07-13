@@ -123,7 +123,7 @@ export interface SubmitOrderResponse {
 
 export interface OrderItemSnapshot {
   skuId: number;
-  name: string;
+  skuName: string;
   priceCent: number;
   quantity: number;
 }

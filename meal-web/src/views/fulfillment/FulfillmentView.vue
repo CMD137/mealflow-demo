@@ -63,10 +63,10 @@ onMounted(load);
         </el-table-column>
         <el-table-column label="可用操作" width="280" fixed="right">
           <template #default="{ row }">
-            <el-button text type="primary" :disabled="row.status !== 'PAID'" @click="operate(row, 'accept')">接单</el-button>
-            <el-button text type="primary" :disabled="row.status !== 'ACCEPTED'" @click="operate(row, 'ready')">出餐</el-button>
-            <el-button text type="primary" :disabled="row.status !== 'READY'" @click="operate(row, 'picked')">取餐</el-button>
-            <el-button text type="success" :disabled="row.status !== 'PICKED_UP'" @click="operate(row, 'delivered')">送达</el-button>
+            <el-button text type="primary" :disabled="row.status !== 'WAIT_MERCHANT_ACCEPT'" @click="operate(row, 'accept')">接单</el-button>
+            <el-button text type="primary" :disabled="row.status !== 'MERCHANT_ACCEPTED' && row.status !== 'COOKING'" @click="operate(row, 'ready')">出餐</el-button>
+            <el-button text type="primary" :disabled="row.status !== 'WAIT_RIDER_PICKUP'" @click="operate(row, 'picked')">取餐</el-button>
+            <el-button text type="success" :disabled="row.status !== 'DELIVERING'" @click="operate(row, 'delivered')">送达</el-button>
           </template>
         </el-table-column>
       </el-table>

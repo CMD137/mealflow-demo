@@ -9,10 +9,10 @@ export function statusType(status?: string) {
   if (!status) {
     return 'info';
   }
-  if (['ACTIVE', 'ON_SHELF', 'PAID', 'ACCEPTED', 'READY', 'DELIVERED', 'NORMAL'].includes(status)) {
+  if (['ACTIVE', 'ON_SHELF', 'MERCHANT_ACCEPTED', 'COOKING', 'WAIT_RIDER_PICKUP', 'COMPLETED', 'SECKILL'].includes(status)) {
     return 'success';
   }
-  if (['WAITING', 'QUEUED', 'PENDING_PAYMENT', 'PROCESSING'].includes(status)) {
+  if (['WAITING', 'QUEUED', 'PENDING_PAYMENT', 'WAIT_MERCHANT_ACCEPT', 'DELIVERING', 'PROCESSING'].includes(status)) {
     return 'warning';
   }
   if (['OFF_SHELF', 'CANCELLED', 'DISABLED', 'FAILED', 'CLOSED'].includes(status)) {

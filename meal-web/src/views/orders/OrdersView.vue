@@ -26,6 +26,9 @@ const orderForm = reactive({
 const availableSkus = computed(() => skus.value.filter((sku) => sku.status === 'ON_SHELF'));
 
 async function load() {
+  if (!filters.merchantId && auth.merchantId) {
+    filters.merchantId = auth.merchantId;
+  }
   loading.value = true;
   try {
     const [orderData, skuData] = await Promise.all([
@@ -133,10 +136,12 @@ onMounted(load);
         <el-input-number v-model="filters.userId" :min="1" controls-position="right" placeholder="用户 ID" />
         <el-select v-model="filters.status" clearable placeholder="订单状态" style="width: 180px">
           <el-option label="待支付" value="PENDING_PAYMENT" />
-          <el-option label="已支付" value="PAID" />
-          <el-option label="已接单" value="ACCEPTED" />
-          <el-option label="已出餐" value="READY" />
-          <el-option label="已送达" value="DELIVERED" />
+          <el-option label="待接单" value="WAIT_MERCHANT_ACCEPT" />
+          <el-option label="已接单" value="MERCHANT_ACCEPTED" />
+          <el-option label="制作中" value="COOKING" />
+          <el-option label="待取餐" value="WAIT_RIDER_PICKUP" />
+          <el-option label="配送中" value="DELIVERING" />
+          <el-option label="已完成" value="COMPLETED" />
           <el-option label="已取消" value="CANCELLED" />
         </el-select>
       </div>
@@ -180,8 +185,10 @@ onMounted(load);
         <el-descriptions-item label="产能 token">{{ selected.capacityTokenId || '-' }}</el-descriptions-item>
       </el-descriptions>
       <el-table v-if="selected?.items?.length" :data="selected.items" style="margin-top: 16px">
-        <el-table-column label="订单项">
-          <template #default="{ row }"><pre>{{ row }}</pre></template>
+        <el-table-column prop="skuName" label="商品" min-width="180" />
+        <el-table-column prop="quantity" label="数量" width="80" />
+        <el-table-column label="单价" width="120">
+          <template #default="{ row }">{{ formatMoney(row.priceCent) }}</template>
         </el-table-column>
       </el-table>
     </el-drawer>

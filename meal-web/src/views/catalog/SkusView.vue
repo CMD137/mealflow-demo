@@ -128,7 +128,10 @@ onMounted(load);
         </el-table-column>
         <el-table-column label="库存" width="150">
           <template #default="{ row }">
-            <el-input-number :model-value="row.stock" :min="0" size="small" @change="(value: number | undefined) => changeStock(row, Number(value || 0))" />
+            <div class="stock-cell">
+              <span>{{ Number(row.stock ?? 0) }}</span>
+              <el-input-number :model-value="Number(row.stock ?? 0)" :min="0" size="small" @change="(value: number | undefined) => changeStock(row, Number(value || 0))" />
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="120">
@@ -185,5 +188,12 @@ onMounted(load);
   grid-template-columns: 1fr auto;
   gap: 8px;
   width: 100%;
+}
+
+.stock-cell {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  align-items: center;
+  gap: 8px;
 }
 </style>

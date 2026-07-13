@@ -84,7 +84,14 @@ export interface OrderView {
   payOrderId: number;
   queueTicketId?: number | null;
   capacityTokenId: number;
-  items: Array<Record<string, unknown>>;
+  items: OrderItemSnapshot[];
+}
+
+export interface OrderItemSnapshot {
+  skuId: number;
+  skuName: string;
+  priceCent: number;
+  quantity: number;
 }
 
 export interface OrderSkuItem {
