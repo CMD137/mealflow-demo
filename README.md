@@ -1,84 +1,148 @@
 # MealFlow
 
-MealFlow 是一个面向午晚高峰履约的外卖交易平台。当前仓库正在从 legacy 单进程 MVP 演进为真实微服务工程：`meal-gateway` 和各业务服务已经拆成独立 Spring Boot 模块，旧的 `meal-app` 保留为本地闭环演示。
+MealFlow 是一个面向外卖点餐、午晚高峰排队和商家履约的微服务项目。当前仓库已经包含后端微服务、管理后台和用户端 H5，不再只是 legacy demo。
 
-## 已实现能力
+## 当前状态
 
-- Maven 多模块：`meal-common`、`meal-infra`、`meal-gateway`、各业务服务、`meal-app`
-- 独立服务骨架：auth-user、merchant、catalog、cart、order、queue、promotion、payment、fulfillment、notify
-- Gateway 静态路由：`/orders/**`、`/queue/**`、`/vouchers/**` 等前缀转发到独立服务
-- 独立微服务主链路：order 通过 HTTP 编排 catalog、promotion、queue、payment，fulfillment 出餐释放 queue 产能
-- 用户、商户、购物车、通知服务已提供最小可用业务接口
-- 统一响应、业务异常、traceId、状态码枚举
-- requestId 幂等模板、Outbox 事件记录、消费幂等模板
-- 商品库存预占、确认、释放
-- 优惠券秒杀领取、券包、锁定、确认、释放
-- `QueueTicket` 业务排队和 `capacity_token` 产能令牌
-- 订单提交、重复提交幂等、排队转订单
-- 模拟支付成功后推进订单并确认库存和券
-- 商户接单、出餐、取餐、送达
-- 出餐完成释放产能，并自动放行等待中的 ticket
+- 后端微服务主线已完成核心闭环。
+- 管理后台已实现，目录为 `meal-web`，默认端口 `5173`。
+- 用户端移动 H5 已实现，目录为 `meal-user-web`，默认端口 `5174`。
+- Docker Compose 已覆盖 MySQL、Redis、RocketMQ、Nacos、Prometheus、Grafana、网关和所有业务服务。
+- 最新验收记录见 [docs/MealFlow-delivery-checklist.md](docs/MealFlow-delivery-checklist.md)。
 
-## 快速启动
+## 已覆盖业务
 
-```powershell
-mvn -q test
-mvn -q -pl meal-app -am -DskipTests package
-java -jar meal-app\target\meal-app-0.1.0-SNAPSHOT.jar
-```
+- 用户登录、地址、通知消息。
+- 商家浏览、商品分类、SKU 浏览、库存和上下架。
+- 购物车增删改查、选中状态和清空。
+- 优惠券秒杀领取、券包、锁定、核销和释放。
+- 下单、幂等提交、排队票据、产能令牌。
+- 模拟支付、支付事件消费、订单状态推进。
+- 商家接单、出餐、取餐、送达。
+- 出餐释放产能后自动将等待中的 ticket 转为正式订单。
+- 后台员工、角色、权限菜单。
+- Outbox、consumer record、事件重放、通知投递记录。
+- Prometheus 指标和 Grafana 基础面板。
 
-启动微服务骨架：
+## 后端启动
 
-```powershell
-.\scripts\start-microservices.ps1
-```
-
-使用 Docker Compose 启动基础设施和微服务前，先构建 jar：
+Docker 已启动时，先确认服务状态：
 
 ```powershell
-mvn -q -DskipTests package
-docker compose up -d
+docker compose ps
 ```
 
-如果本机 Maven settings 指向不可写目录，可使用仓库内临时 settings：
+如需重新构建并启动：
 
 ```powershell
-mvn -s .mvn-settings.xml -q test
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+mvn '-Dmaven.repo.local=.m2repo' -q -DskipTests package
+docker compose up -d --build
 ```
 
-启动后验证：
+后端网关：
+
+```text
+http://localhost:8080
+```
+
+基础检查：
 
 ```text
 GET http://localhost:8080/ping
 GET http://localhost:8080/orders/ping
-GET http://localhost:8090/demo/state
+GET http://localhost:8080/catalog/ping
 ```
 
-## 演示主线
+## 前端启动
 
-1. `POST /orders/submit` 创建第一个订单，占用商户产能。
-2. 再提交订单，在产能满载时返回 `QUEUED` 和 `ticketId`。
-3. `POST /payments/{payOrderId}/mock-pay` 模拟支付成功。
-4. `POST /fulfillment/orders/{orderId}/accept` 商户接单，此时不释放产能。
-5. `POST /fulfillment/orders/{orderId}/meal-ready` 出餐完成，释放产能。
-6. 系统自动将等待中的 ticket 推进到 `ORDER_CREATED`，并创建正式订单。
+推荐使用仓库根目录的一键脚本。它会强制重启管理后台和用户端，清理 Vite 缓存并重新优化依赖：
 
-完整请求示例见 [scripts/demo.http](scripts/demo.http)。
+```powershell
+.\start-frontend.cmd
+```
 
-## 设计说明
+访问地址：
 
-当前分两层推进：
+```text
+管理后台：http://localhost:5173/
+用户端 H5：http://localhost:5174/
+```
 
-- `meal-app` 是 legacy 单进程闭环演示，端口 `8090`。
-- `meal-gateway` 和 `meal-*` 业务模块是真实微服务骨架，gateway 端口 `8080`，业务服务端口 `8101` 到 `8110`。
+停止前端：
 
-legacy demo 代码按服务边界分包：
+```powershell
+.\start-frontend.cmd -Stop
+```
 
-- `catalog` 只管理商品库存和预占
-- `promotion` 只管理券、券包和券锁
-- `queue` 只管理排队票据和产能令牌
-- `order` 负责编排下单和订单状态机
-- `payment` 管支付单和支付成功事件
-- `fulfillment` 管商户和配送履约动作
+## 演示账号
 
-后续会把这些包中的业务实现迁移到对应独立服务，接口契约继续对齐 `docs/MealFlow-api-events.md`。当前完成情况和剩余清单见 [docs/MealFlow-implementation-status.md](docs/MealFlow-implementation-status.md)。
+管理后台：
+
+```text
+手机号：13800000000
+验证码：demo 或任意值
+```
+
+用户端：
+
+```text
+手机号：13800000001
+验证码：任意值
+```
+
+## 验收命令
+
+后端编译：
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+mvn '-Dmaven.repo.local=.m2repo' -q -DskipTests compile
+```
+
+管理后台构建：
+
+```powershell
+npm.cmd --prefix meal-web run build
+```
+
+用户端构建：
+
+```powershell
+npm.cmd --prefix meal-user-web run build
+```
+
+后端端到端 smoke：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File scripts/e2e-smoke.ps1 -BaseUrl http://localhost:8080
+```
+
+该脚本覆盖：服务 ping、登录、秒杀券、产能限流、第一单成单、第二单排队、模拟支付、支付事件消费、商家接单出餐、排队 ticket 转订单。
+
+## 重要文档
+
+- [docs/MealFlow-implementation-status.md](docs/MealFlow-implementation-status.md)：后端实现状态。
+- [docs/MealFlow-frontend-integration-status.md](docs/MealFlow-frontend-integration-status.md)：前端集成状态。
+- [docs/MealFlow-delivery-checklist.md](docs/MealFlow-delivery-checklist.md)：最终交付验收清单。
+- [docs/MealFlow-storage-config.md](docs/MealFlow-storage-config.md)：上传与存储配置。
+- [docs/MealFlow-api-events.md](docs/MealFlow-api-events.md)：API 和事件契约。
+
+## 环境和密钥
+
+- `.env.example` 和 `**/.env.example` 可以提交到 Git。
+- `.env`、`.env.*`、`.env.local` 不应提交。
+- OSS AccessKey、Secret 等真实密钥只放在本地环境变量或 `.env.local`。
+- 上传目录 `uploads/` 已被 Git 忽略。
+
+## 后续可选增强
+
+当前项目主体已经可运行、可演示、可验收。后续更适合作为增强项继续推进：
+
+- Playwright 浏览器自动化 e2e。
+- 用户端地址簿编辑、订单取消、再来一单、支付状态轮询。
+- 管理后台大表分页、筛选条件持久化和更细粒度表单校验。
+- 更完整的移动端截图验收和演示录屏。
+- 更细的 Grafana 面板和故障注入断言。

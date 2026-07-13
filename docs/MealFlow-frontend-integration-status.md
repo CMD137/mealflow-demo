@@ -8,6 +8,8 @@
 - 用户端移动 H5 已实现，目录为 `meal-user-web`。
 - 两个前端已在 `codex/full-frontend-integration` 分支完成集成。
 - 后端主链路、后台端构建、用户端构建均已完成验收。
+- 2026-07-13 已复验：后端编译、两个前端构建、Docker 运行态和 `scripts/e2e-smoke.ps1` 均通过。
+- 前端白屏问题已完成专项修复：包括路由准备后挂载、公开页守卫顺序、Vite 依赖预构建、Vue Router devtools 崩溃规避、未知路由兜底和前端强制重启脚本。
 
 ## 后台管理端
 
@@ -91,6 +93,12 @@ powershell.exe -ExecutionPolicy Bypass -File scripts/e2e-smoke.ps1 -BaseUrl http
 - 支付事件消费
 - 商户接单与出餐
 - 产能释放后排队 ticket 转订单
+
+最近一次通过输出：
+
+```text
+smoke test passed: firstOrder=10037, queuedTicket=10025, convertedOrder=10038
+```
 
 ## 后续可选增强
 

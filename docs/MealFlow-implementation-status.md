@@ -39,11 +39,13 @@
 
 ## 剩余增强方向
 
-- 正式前端尚未实现；后端已提供用户端、商家端和运维端所需的基础 API，后续应补用户点餐端、商家工作台和管理/运维端页面。
+- 正式前端已实现：后台管理端位于 `meal-web`，用户端移动 H5 位于 `meal-user-web`。后续重点不再是从零补前端，而是做浏览器自动化 e2e、移动端截图验收、交互细节和生产级异常态增强。
 - Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order、domain event 到 notify 的真实 MQ 消费均已接入 consumer_record，持久化消费模板已支持 PROCESSING 超时抢占重试和基于保存 payload 的本地重放，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。
 - Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua、领取资格对账补偿、领取修复重试和死信记录已在 `meal-promotion` 接入。后续可继续扩展更多 Redis/MQ 故障注入断言。
 - Prometheus/Grafana、业务积压指标和基础压测/故障脚本已完成；后续可继续扩展更细的队列等待 P90/P99、秒杀失败原因分布和故障注入自动断言。
 
 ## 后续实施顺序
 
-1. 默认后端微服务主线已完成闭环；下一步应优先建设独立前端，替代 `meal-app` legacy demo，并把 e2e 从脚本验收扩展到浏览器验收。
+1. 默认后端微服务主线、管理后台和用户端 H5 已完成闭环；下一步应优先把 e2e 从脚本验收扩展到浏览器验收。
+2. 继续完善用户端地址簿编辑、订单取消、再来一单、支付状态轮询等体验增强。
+3. 继续完善管理后台大表分页、筛选条件持久化、更细粒度表单校验和运维可视化。
