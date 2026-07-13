@@ -2,11 +2,11 @@ import { http } from './http';
 import type { ConsumerRecordView, DeliveryView, MessageView } from '@/types/api';
 
 export function notifyMessagesApi() {
-  return http.get<unknown, MessageView[]>('/notify/messages');
+  return http.get<unknown, MessageView[]>('/notify/internal/messages');
 }
 
 export function notifyDeliveriesApi() {
-  return http.get<unknown, DeliveryView[]>('/notify/deliveries');
+  return http.get<unknown, DeliveryView[]>('/notify/internal/deliveries');
 }
 
 export function notifyConsumerRecordsApi() {

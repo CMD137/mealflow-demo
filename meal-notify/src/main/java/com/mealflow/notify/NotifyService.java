@@ -114,8 +114,16 @@ public class NotifyService {
     return notifyMapper.findByUser(userId).stream().map(this::view).toList();
   }
 
+  public List<MessageView> listAll() {
+    return notifyMapper.findAllMessages().stream().map(this::view).toList();
+  }
+
   public List<DeliveryView> deliveries(long userId) {
     return notifyMapper.findDeliveriesByUser(userId).stream().map(this::deliveryView).toList();
+  }
+
+  public List<DeliveryView> deliveriesAll() {
+    return notifyMapper.findAllDeliveries().stream().map(this::deliveryView).toList();
   }
 
   public List<ConsumerRecordView> consumerRecords() {

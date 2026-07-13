@@ -320,10 +320,13 @@ public class PromotionService {
   }
 
   private String voucherType(String type) {
-    if (!List.of("NORMAL", "SECKILL").contains(type)) {
-      throw new BizException(ErrorCode.BAD_REQUEST, "voucher type must be NORMAL or SECKILL");
+    if (type == null || type.isBlank()) {
+      return "SECKILL";
     }
-    return type;
+    if (!"SECKILL".equals(type)) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "voucher type must be SECKILL");
+    }
+    return "SECKILL";
   }
 
   private String voucherStatus(String status) {

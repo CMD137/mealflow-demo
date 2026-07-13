@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Result;
+import org.apache.ibatis.annotations.ResultMap;
 import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
 
@@ -66,6 +67,14 @@ public interface NotifyMapper {
   List<NotifyMessageRow> findByUser(long userId);
 
   @Select("""
+      SELECT id, user_id, biz_type, content, create_time
+      FROM notify_message
+      ORDER BY create_time DESC, id DESC
+      """)
+  @ResultMap("messageMap")
+  List<NotifyMessageRow> findAllMessages();
+
+  @Select("""
       SELECT id, message_id, user_id, channel, target, status, content, create_time
       FROM notify_delivery
       WHERE user_id = #{userId}
@@ -82,4 +91,12 @@ public interface NotifyMapper {
       @Result(column = "create_time", property = "createTime")
   })
   List<NotifyDeliveryRow> findDeliveriesByUser(long userId);
+
+  @Select("""
+      SELECT id, message_id, user_id, channel, target, status, content, create_time
+      FROM notify_delivery
+      ORDER BY create_time DESC, id DESC
+      """)
+  @ResultMap("deliveryMap")
+  List<NotifyDeliveryRow> findAllDeliveries();
 }

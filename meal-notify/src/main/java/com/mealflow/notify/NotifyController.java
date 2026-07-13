@@ -55,9 +55,19 @@ public class NotifyController {
     return Result.ok(notifyService.list(userId == null ? defaultUserId : userId));
   }
 
+  @GetMapping("/internal/messages")
+  public Result<List<MessageView>> listAll() {
+    return Result.ok(notifyService.listAll());
+  }
+
   @GetMapping("/deliveries")
   public Result<List<DeliveryView>> deliveries(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
     return Result.ok(notifyService.deliveries(userId == null ? defaultUserId : userId));
+  }
+
+  @GetMapping("/internal/deliveries")
+  public Result<List<DeliveryView>> deliveriesAll() {
+    return Result.ok(notifyService.deliveriesAll());
   }
 
   @GetMapping(value = "/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

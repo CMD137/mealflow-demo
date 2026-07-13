@@ -8,7 +8,7 @@ import { formatMoney, statusType } from '@/utils/format';
 const loading = ref(false);
 const dialogVisible = ref(false);
 const rows = ref<VoucherView[]>([]);
-const form = reactive({ voucherId: 0, name: '', type: 'AMOUNT_OFF', discountCent: 100, stock: 0, status: 'ACTIVE' });
+const form = reactive({ voucherId: 0, name: '', type: 'SECKILL', discountCent: 100, stock: 0, status: 'ACTIVE' });
 
 async function load() {
   loading.value = true;
@@ -20,7 +20,7 @@ async function load() {
 }
 
 function openCreate() {
-  Object.assign(form, { voucherId: 0, name: '', type: 'AMOUNT_OFF', discountCent: 100, stock: 0, status: 'ACTIVE' });
+  Object.assign(form, { voucherId: 0, name: '', type: 'SECKILL', discountCent: 100, stock: 0, status: 'ACTIVE' });
   dialogVisible.value = true;
 }
 
@@ -79,7 +79,7 @@ onMounted(load);
     <el-dialog v-model="dialogVisible" :title="form.voucherId ? '编辑优惠券' : '新增优惠券'" width="520px">
       <el-form :model="form" label-width="110px">
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-        <el-form-item label="类型"><el-input v-model="form.type" /></el-form-item>
+        <el-form-item label="类型"><el-tag type="success">秒杀券</el-tag></el-form-item>
         <el-form-item label="优惠金额(分)"><el-input-number v-model="form.discountCent" :min="1" /></el-form-item>
         <el-form-item label="库存"><el-input-number v-model="form.stock" :min="0" /></el-form-item>
         <el-form-item label="状态">
