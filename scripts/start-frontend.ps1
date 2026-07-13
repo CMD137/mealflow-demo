@@ -1,9 +1,5 @@
 param(
-  [switch]$Stop,
-  [switch]$NoInstall,
-  [switch]$KeepViteCache,
-  [int]$AdminPort = 5173,
-  [int]$UserPort = 5174
+  [switch]$Stop
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,13 +13,13 @@ $apps = @(
     Name = "admin"
     DisplayName = "MealFlow admin web"
     Directory = "meal-web"
-    Port = $AdminPort
+    Port = 5173
   },
   @{
     Name = "user"
     DisplayName = "MealFlow user H5"
     Directory = "meal-user-web"
-    Port = $UserPort
+    Port = 5174
   }
 )
 
@@ -36,22 +32,6 @@ function Test-ProcessRunning($processId) {
     return $false
   }
   return [bool](Get-Process -Id $processId -ErrorAction SilentlyContinue)
-}
-
-function Test-PortOpen($port) {
-  $client = New-Object System.Net.Sockets.TcpClient
-  try {
-    $connect = $client.BeginConnect("127.0.0.1", $port, $null, $null)
-    if (!$connect.AsyncWaitHandle.WaitOne(500, $false)) {
-      return $false
-    }
-    $client.EndConnect($connect)
-    return $true
-  } catch {
-    return $false
-  } finally {
-    $client.Close()
-  }
 }
 
 function Stop-Frontend($app) {
@@ -71,6 +51,21 @@ function Stop-Frontend($app) {
   Remove-Item $pidFile -Force
 }
 
+function Stop-PortListener($app) {
+  $listeners = Get-NetTCPConnection -LocalPort $app.Port -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty OwningProcess -Unique
+
+  foreach ($processId in $listeners) {
+    if ($processId -le 0) {
+      continue
+    }
+    if (Test-ProcessRunning $processId) {
+      taskkill.exe /PID $processId /T /F | Out-Null
+      Write-Host "Stopped process $processId on port $($app.Port) for $($app.DisplayName)."
+    }
+  }
+}
+
 function Ensure-Dependencies($app) {
   $appDir = Join-Path $root $app.Directory
   $nodeModules = Join-Path $appDir "node_modules"
@@ -78,19 +73,11 @@ function Ensure-Dependencies($app) {
     return
   }
 
-  if ($NoInstall) {
-    throw "Missing dependencies in $($app.Directory). Run npm.cmd --prefix $($app.Directory) install first."
-  }
-
   Write-Host "Installing dependencies for $($app.DisplayName)..."
   npm.cmd --prefix $appDir install
 }
 
 function Reset-ViteCache($app) {
-  if ($KeepViteCache) {
-    return
-  }
-
   $appDir = Join-Path $root $app.Directory
   $cacheDir = Join-Path $appDir "node_modules\.vite"
   if (!(Test-Path $cacheDir)) {
@@ -108,19 +95,9 @@ function Reset-ViteCache($app) {
 
 function Start-Frontend($app) {
   $pidFile = Get-PidFile $app
-  if (Test-Path $pidFile) {
-    $existingPid = (Get-Content $pidFile -Raw).Trim()
-    if (Test-ProcessRunning $existingPid) {
-      Write-Host "$($app.DisplayName) is already running at http://localhost:$($app.Port)/"
-      return
-    }
-    Remove-Item $pidFile -Force
-  }
 
-  if (Test-PortOpen $app.Port) {
-    Write-Host "Port $($app.Port) is already in use. $($app.DisplayName) may already be running at http://localhost:$($app.Port)/"
-    return
-  }
+  Stop-Frontend $app
+  Stop-PortListener $app
 
   Ensure-Dependencies $app
   Reset-ViteCache $app
@@ -142,6 +119,7 @@ New-Item -ItemType Directory -Force -Path $logDir, $pidDir | Out-Null
 if ($Stop) {
   foreach ($app in $apps) {
     Stop-Frontend $app
+    Stop-PortListener $app
   }
   exit 0
 }
@@ -152,7 +130,7 @@ foreach ($app in $apps) {
 
 Write-Host ""
 Write-Host "Frontend services are starting."
-Write-Host "Admin web: http://localhost:$AdminPort/"
-Write-Host "User H5:    http://localhost:$UserPort/"
+Write-Host "Admin web: http://localhost:5173/"
+Write-Host "User H5:    http://localhost:5174/"
 Write-Host "Stop them with: .\start-frontend.cmd -Stop"
 Write-Host "Or: powershell.exe -ExecutionPolicy Bypass -File .\scripts\start-frontend.ps1 -Stop"

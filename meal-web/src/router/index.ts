@@ -7,6 +7,7 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/dashboard' },
     { path: '/login', component: () => import('@/views/login/LoginView.vue'), meta: { public: true } },
+    { path: '/login/:pathMatch(.*)*', redirect: '/login', meta: { public: true } },
     {
       path: '/',
       component: AdminLayout,
@@ -27,20 +28,27 @@ const router = createRouter({
         { path: 'notify/messages', component: () => import('@/views/notify/NotifyView.vue'), meta: { title: '通知中心', permission: 'NOTIFY_READ' } },
         { path: 'ops/events', component: () => import('@/views/ops/EventsView.vue'), meta: { title: '事件运维', permission: 'INTERNAL_OPERATE' } }
       ]
-    }
+    },
+    { path: '/:pathMatch(.*)*', redirect: '/dashboard' }
   ]
 });
 
 router.beforeEach(async (to) => {
-  const auth = useAuthStore();
   if (to.meta.public) {
     return true;
   }
+
+  const auth = useAuthStore();
   if (!auth.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } };
   }
   if (!auth.user) {
-    await auth.loadProfile();
+    try {
+      await auth.loadProfile();
+    } catch {
+      auth.logout();
+      return { path: '/login', query: { redirect: to.fullPath } };
+    }
   }
   const permission = to.meta.permission as string | undefined;
   if (permission && !auth.hasPermission(permission)) {

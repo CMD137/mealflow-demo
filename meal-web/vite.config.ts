@@ -4,6 +4,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [vue()],
+  optimizeDeps: {
+    include: ['element-plus', '@element-plus/icons-vue', 'dayjs']
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))

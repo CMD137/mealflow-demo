@@ -15,20 +15,27 @@ const router = createRouter({
     { path: '/vouchers', component: () => import('@/views/VouchersView.vue') },
     { path: '/sign', component: () => import('@/views/SignView.vue') },
     { path: '/messages', component: () => import('@/views/MessagesView.vue') },
-    { path: '/mine', component: () => import('@/views/MineView.vue') }
+    { path: '/mine', component: () => import('@/views/MineView.vue') },
+    { path: '/:pathMatch(.*)*', redirect: '/' }
   ]
 });
 
 router.beforeEach(async (to) => {
-  const auth = useAuthStore();
   if (to.meta.public) {
     return true;
   }
+
+  const auth = useAuthStore();
   if (!auth.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } };
   }
   if (!auth.user) {
-    await auth.loadProfile();
+    try {
+      await auth.loadProfile();
+    } catch {
+      auth.logout();
+      return { path: '/login', query: { redirect: to.fullPath } };
+    }
   }
   return true;
 });
