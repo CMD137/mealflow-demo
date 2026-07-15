@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { adminCategoriesApi, adminSkusApi, saveSkuApi, updateSkuStatusApi, updateSkuStockApi, uploadImageApi } from '@/api/catalog';
+import { assetUrl } from '@/api/http';
 import type { CategoryView, SkuView } from '@/types/api';
 import { formatMoney, statusType } from '@/utils/format';
 
@@ -117,7 +118,7 @@ onMounted(load);
         <el-table-column prop="skuId" label="ID" width="90" />
         <el-table-column label="图片" width="96">
           <template #default="{ row }">
-            <el-image v-if="row.imageUrl" :src="row.imageUrl" fit="cover" style="width: 52px; height: 52px; border-radius: 6px" />
+            <el-image v-if="row.imageUrl" :src="assetUrl(row.imageUrl)" fit="cover" style="width: 52px; height: 52px; border-radius: 6px" />
             <span v-else class="status-line">未上传</span>
           </template>
         </el-table-column>
