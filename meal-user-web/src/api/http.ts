@@ -2,9 +2,10 @@ import axios from 'axios';
 import type { Result } from '@/types/api';
 
 const TOKEN_KEY = 'mealflow.user.token';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: API_BASE_URL,
   timeout: 12000
 });
 
@@ -48,4 +49,20 @@ export function readToken() {
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export function assetUrl(url?: string | null) {
+  if (!url) {
+    return '';
+  }
+  if (/^(https?:)?\/\//.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url;
+  }
+  if (!url.startsWith('/')) {
+    return url;
+  }
+  if (API_BASE_URL.startsWith('http://') || API_BASE_URL.startsWith('https://')) {
+    return `${API_BASE_URL.replace(/\/$/, '')}${url}`;
+  }
+  return `${API_BASE_URL.replace(/\/$/, '')}${url}`;
 }

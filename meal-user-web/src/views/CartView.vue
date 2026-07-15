@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import AppShell from '@/components/AppShell.vue';
 import QuantityStepper from '@/components/QuantityStepper.vue';
+import { assetUrl } from '@/api/http';
 import { useCartStore } from '@/stores/cart';
 import { buildSkuMapByCart } from '@/utils/catalog';
 import { formatMoney } from '@/utils/format';
@@ -43,7 +44,14 @@ onMounted(load);
       <label class="check">
         <input type="checkbox" :checked="item.selected" @change="cart.select(item.cartItemId, !item.selected)" />
       </label>
-      <div class="thumb">{{ cart.skuMap[item.skuId]?.name?.slice(0, 1) || '餐' }}</div>
+      <div class="thumb">
+        <img
+          v-if="cart.skuMap[item.skuId]?.imageUrl"
+          :src="assetUrl(cart.skuMap[item.skuId]?.imageUrl)"
+          :alt="cart.skuMap[item.skuId]?.name || '商品'"
+        />
+        <span v-else>{{ cart.skuMap[item.skuId]?.name?.slice(0, 1) || '餐' }}</span>
+      </div>
       <div>
         <h3>{{ cart.skuMap[item.skuId]?.name || `商品 ${item.skuId}` }}</h3>
         <p>{{ cart.skuMap[item.skuId]?.categoryName || `商家 ${item.merchantId}` }}</p>
@@ -101,6 +109,13 @@ onMounted(load);
   color: #2563eb;
   font-size: 24px;
   font-weight: 900;
+  overflow: hidden;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .cart-item h3 {

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import AppShell from '@/components/AppShell.vue';
 import QuantityStepper from '@/components/QuantityStepper.vue';
 import { categoriesApi, skusApi } from '@/api/catalog';
+import { assetUrl } from '@/api/http';
 import { merchantsApi } from '@/api/merchant';
 import { useCartStore } from '@/stores/cart';
 import { availableSkus } from '@/utils/catalog';
@@ -97,7 +98,10 @@ onMounted(load);
     </div>
 
     <article v-for="sku in visibleSkus" :key="sku.skuId" class="sku-row card">
-      <div class="sku-image">{{ sku.name.slice(0, 1) }}</div>
+      <div class="sku-image">
+        <img v-if="sku.imageUrl" :src="assetUrl(sku.imageUrl)" :alt="sku.name" />
+        <span v-else>{{ sku.name.slice(0, 1) }}</span>
+      </div>
       <div class="sku-info">
         <h3>{{ sku.name }}</h3>
         <p>{{ sku.description || sku.categoryName || '现做餐品' }}</p>
@@ -186,6 +190,13 @@ onMounted(load);
   color: #2563eb;
   font-size: 28px;
   font-weight: 900;
+  overflow: hidden;
+}
+
+.sku-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .sku-info h3 {
