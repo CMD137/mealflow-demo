@@ -55,9 +55,9 @@ public interface CatalogMapper {
             ELSE category_id
           END,
           description = CASE
-            WHEN description = '' AND id = 1 THEN 'Beef rice bowl for lunch peak'
-            WHEN description = '' AND id = 2 THEN 'Grilled chicken rice bowl'
-            WHEN description = '' AND id = 3 THEN 'Cold lemon tea'
+            WHEN description = '' AND id = 1 THEN '午高峰招牌牛肉饭'
+            WHEN description = '' AND id = 2 THEN '香煎鸡腿盖饭'
+            WHEN description = '' AND id = 3 THEN '冰爽柠檬茶'
             ELSE description
           END,
           update_time = CURRENT_TIMESTAMP

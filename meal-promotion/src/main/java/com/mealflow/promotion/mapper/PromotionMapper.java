@@ -55,7 +55,7 @@ public interface PromotionMapper {
 
   @Update("""
       UPDATE voucher
-      SET name = CASE WHEN name = '' THEN 'Lunch Peak Seckill Coupon' ELSE name END,
+      SET name = CASE WHEN name = '' THEN '午高峰秒杀券' ELSE name END,
           type = CASE WHEN type = '' THEN 'SECKILL' ELSE type END,
           status = CASE WHEN status = '' THEN 'ACTIVE' ELSE status END,
           update_time = CURRENT_TIMESTAMP

@@ -55,7 +55,7 @@ class OrderPersistenceTest {
   @Test
   void createsAndUpdatesOrderInDatabase() {
     when(catalogClient.snapshots(eq(10L), anyList()))
-        .thenReturn(List.of(new OrderItemSnapshot(1L, "Test Rice", 1000, 2)));
+        .thenReturn(List.of(new OrderItemSnapshot(1L, "测试盖饭", 1000, 2)));
     when(catalogClient.reserve(any()))
         .thenReturn(new CatalogClient.ReserveStockResponse(List.of(8001L), "RESERVED"));
     when(promotionClient.lock(any()))
@@ -122,7 +122,7 @@ class OrderPersistenceTest {
   @Test
   void replaysTimedOutPaymentConsumerRecordFromStoredPayload() {
     when(catalogClient.snapshots(eq(10L), anyList()))
-        .thenReturn(List.of(new OrderItemSnapshot(1L, "Replay Rice", 1000, 1)));
+        .thenReturn(List.of(new OrderItemSnapshot(1L, "重放盖饭", 1000, 1)));
     when(catalogClient.reserve(any()))
         .thenReturn(new CatalogClient.ReserveStockResponse(List.of(8101L), "RESERVED"));
     when(promotionClient.lock(any()))

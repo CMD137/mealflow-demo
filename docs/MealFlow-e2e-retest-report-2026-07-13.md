@@ -15,7 +15,7 @@
 | 项目 | 结果 | 证据 |
 | --- | --- | --- |
 | 后台新增券 UI | 通过 | `/promotion/vouchers` 新增弹窗中“类型”显示固定标签“秒杀券”，不再是文本框 |
-| 新增秒杀券保存 | 通过 | 新增 `Exploratory Seckill 1783940454318` 成功，券 ID `10003`，类型 `SECKILL`，优惠 `￥1.23`，库存 `2` |
+| 新增秒杀券保存 | 通过 | 新增 `探索秒杀券 1783940454318` 成功，券 ID `10003`，类型 `SECKILL`，优惠 `￥1.23`，库存 `2` |
 | 非法类型 `NORMAL` | 通过 | 直接调用新增接口返回 HTTP 400：`BAD_REQUEST / voucher type must be SECKILL` |
 | 非法类型 `AMOUNT_OFF` | 通过 | 直接调用新增接口返回 HTTP 400：`BAD_REQUEST / voucher type must be SECKILL` |
 | 空名称 | 通过 | 返回 HTTP 400：`name must not be blank` |
@@ -36,7 +36,7 @@
 
 ## 4. 复测数据
 
-- 新增券名称：`Exploratory Seckill 1783940454318`
+- 新增券名称：`探索秒杀券 1783940454318`
 - 新增券 ID：`10003`
 - 初始库存：`2`
 - 成功领取用户券：`10016`、`10017`

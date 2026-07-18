@@ -47,17 +47,17 @@ class CatalogPersistenceTest {
   @Test
   void managesCategoriesAndSkusForMerchantBackOffice() {
     CategoryView category = catalogService.createCategory(10L,
-        new CategoryRequest("Noodles", 30, "ACTIVE"));
+        new CategoryRequest("面食", 30, "ACTIVE"));
     SkuView sku = catalogService.createSku(10L,
-        new SkuAdminRequest(category.categoryId(), "Tomato Beef Noodle", "Warm noodle bowl", "", 3200, 12,
+        new SkuAdminRequest(category.categoryId(), "番茄牛肉面", "热汤面", "", 3200, 12,
             "ON_SHELF"));
 
     assertThat(category.categoryId()).isGreaterThan(1000L);
     assertThat(sku.skuId()).isGreaterThan(1000L);
-    assertThat(sku.categoryName()).isEqualTo("Noodles");
-    assertThat(catalogService.adminCategories(10L)).extracting("name").contains("Noodles");
-    assertThat(catalogService.listCategories(10L)).extracting("name").contains("Noodles");
-    assertThat(catalogService.adminSkus(10L)).extracting("name").contains("Tomato Beef Noodle");
+    assertThat(sku.categoryName()).isEqualTo("面食");
+    assertThat(catalogService.adminCategories(10L)).extracting("name").contains("面食");
+    assertThat(catalogService.listCategories(10L)).extracting("name").contains("面食");
+    assertThat(catalogService.adminSkus(10L)).extracting("name").contains("番茄牛肉面");
     assertThat(catalogService.listByMerchant(10L)).extracting("skuId").contains(sku.skuId());
 
     SkuView stocked = catalogService.updateSkuStock(10L, sku.skuId(), 5);

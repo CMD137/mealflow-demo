@@ -66,14 +66,14 @@ class PromotionPersistenceTest {
   @Test
   void managesMarketingVouchersForBackOffice() {
     VoucherView created = promotionService.createVoucher(
-        new VoucherAdminRequest("New Member Coupon", "SECKILL", 300, 10, "ACTIVE"));
+        new VoucherAdminRequest("新客秒杀券", "SECKILL", 300, 10, "ACTIVE"));
 
     assertThat(created.voucherId()).isGreaterThan(1000L);
     assertThat(created.status()).isEqualTo("ACTIVE");
-    assertThat(promotionService.vouchers()).extracting("name").contains("New Member Coupon");
+    assertThat(promotionService.vouchers()).extracting("name").contains("新客秒杀券");
 
     VoucherView disabled = promotionService.updateVoucher(created.voucherId(),
-        new VoucherAdminRequest("New Member Coupon", "SECKILL", 300, 10, "DISABLED"));
+        new VoucherAdminRequest("新客秒杀券", "SECKILL", 300, 10, "DISABLED"));
     assertThat(disabled.status()).isEqualTo("DISABLED");
     assertThatThrownBy(() -> promotionService.seckill(205L, created.voucherId(), "promotion-disabled-voucher"))
         .isInstanceOf(BizException.class)
