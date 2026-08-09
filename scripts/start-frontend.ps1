@@ -105,7 +105,7 @@ function Start-Frontend($app) {
   $appDir = Join-Path $root $app.Directory
   $outLog = Join-Path $logDir "$($app.Name).out.log"
   $errLog = Join-Path $logDir "$($app.Name).err.log"
-  $command = "cd /d `"$appDir`" && npm.cmd run dev -- --host 0.0.0.0 --port $($app.Port) --force > `"$outLog`" 2> `"$errLog`""
+  $command = "cd /d `"$appDir`" && npm.cmd run dev -- --host 0.0.0.0 --port $($app.Port) > `"$outLog`" 2> `"$errLog`""
   $process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $command) -WorkingDirectory $root -WindowStyle Hidden -PassThru
   Set-Content -Path $pidFile -Value $process.Id
 
