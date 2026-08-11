@@ -20,6 +20,8 @@ import com.mealflow.authuser.mapper.MerchantEmployeeRow;
 import com.mealflow.authuser.mapper.MerchantRoleRow;
 import com.mealflow.authuser.mapper.UserAccountRow;
 import com.mealflow.authuser.mapper.UserAddressRow;
+import com.mealflow.authuser.otp.OtpPort;
+import com.mealflow.authuser.security.SessionTokenHasher;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.infra.id.IdGenerator;
@@ -30,7 +32,8 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.security.SecureRandom;
+import java.util.Base64;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,14 +45,20 @@ public class AuthUserService {
   private static final String SIGN_KEY_PREFIX = "sign:user:";
   private static final String SIGN_POINTS_SUFFIX = ":points";
   private static final String SIGN_DAYS_SUFFIX = ":days";
+  private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
 
   private final IdGenerator idGenerator = new IdGenerator();
   private final AuthUserMapper authUserMapper;
   private final StringRedisTemplate redisTemplate;
+  private final OtpPort otpPort;
+  private final SessionTokenHasher sessionTokenHasher;
 
-  public AuthUserService(AuthUserMapper authUserMapper, StringRedisTemplate redisTemplate) {
+  public AuthUserService(AuthUserMapper authUserMapper, StringRedisTemplate redisTemplate, OtpPort otpPort,
+      SessionTokenHasher sessionTokenHasher) {
     this.authUserMapper = authUserMapper;
     this.redisTemplate = redisTemplate;
+    this.otpPort = otpPort;
+    this.sessionTokenHasher = sessionTokenHasher;
   }
 
   @PostConstruct
@@ -62,6 +71,7 @@ public class AuthUserService {
 
   @Transactional
   public LoginResponse login(LoginRequest request) {
+    otpPort.verifyLoginCode(request.phone(), request.code());
     UserAccountRow user = authUserMapper.findUserByPhone(request.phone());
     if (user == null) {
       long id = idGenerator.next("userAccount");
@@ -69,18 +79,23 @@ public class AuthUserService {
       user = authUserMapper.findUser(id);
     }
     TokenPrincipalView principal = principalFor(user);
-    String token = "mf-" + UUID.randomUUID();
+    String token = newSessionToken();
     LocalDateTime now = LocalDateTime.now();
-    authUserMapper.insertToken(token, user.getId(), principal.roleCode(), principal.merchantId(), now.plus(TOKEN_TTL), now);
+    authUserMapper.insertToken(sessionTokenHasher.hash(token), user.getId(), principal.roleCode(), principal.merchantId(),
+        now.plus(TOKEN_TTL), now);
     return new LoginResponse(user.getId(), token, user.getNickname(), principal.roleCode(), principal.merchantId(),
         principal.permissions(), principal.menus());
+  }
+
+  public void requestLoginCode(String phone) {
+    otpPort.issueLoginCode(phone);
   }
 
   public TokenPrincipalView validateToken(String token) {
     if (token == null || token.isBlank()) {
       return null;
     }
-    AuthTokenRow row = authUserMapper.findToken(token);
+    AuthTokenRow row = authUserMapper.findToken(sessionTokenHasher.hash(token));
     if (row == null || row.isRevoked() || row.getExpireTime().isBefore(LocalDateTime.now())
         || "DISABLED".equals(row.getStatus())) {
       return null;
@@ -96,6 +111,12 @@ public class AuthUserService {
       merchantId = employee.getMerchantId();
     }
     return principalView(row.getUserId(), row.getPhone(), row.getNickname(), roleCode, merchantId);
+  }
+
+  private String newSessionToken() {
+    byte[] bytes = new byte[32];
+    TOKEN_RANDOM.nextBytes(bytes);
+    return "mf_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
 
   public UserView get(long userId) {

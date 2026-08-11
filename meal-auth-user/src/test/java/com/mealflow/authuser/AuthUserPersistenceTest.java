@@ -17,7 +17,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = "spring.cloud.nacos.discovery.enabled=false"
+    properties = {"spring.cloud.nacos.discovery.enabled=false", "mealflow.auth.otp.mode=memory",
+        "mealflow.auth.otp.test-code=123456"}
 )
 class AuthUserPersistenceTest {
   @Autowired
@@ -25,11 +26,13 @@ class AuthUserPersistenceTest {
 
   @Test
   void logsInExistingAndCreatesNewUserInDatabase() {
+    authUserService.requestLoginCode("13800000000");
     LoginResponse existing = authUserService.login(new LoginRequest("13800000000", "123456"));
+    authUserService.requestLoginCode("13900000000");
     LoginResponse created = authUserService.login(new LoginRequest("13900000000", "123456"));
 
     assertThat(existing.userId()).isEqualTo(100L);
-    assertThat(existing.token()).startsWith("mf-");
+    assertThat(existing.token()).startsWith("mf_");
     assertThat(existing.roleCode()).isEqualTo("MERCHANT_ADMIN");
     assertThat(existing.merchantId()).isEqualTo(10L);
     assertThat(existing.permissions()).contains("MERCHANT_MANAGE", "CATALOG_MANAGE", "INTERNAL_OPERATE");
@@ -92,6 +95,7 @@ class AuthUserPersistenceTest {
     assertThat(employee.roleCode()).isEqualTo("KITCHEN_MANAGER");
     assertThat(authUserService.employees(10L)).extracting("phone").contains("13800000066");
 
+    authUserService.requestLoginCode("13800000066");
     LoginResponse login = authUserService.login(new LoginRequest("13800000066", "123456"));
     assertThat(login.permissions()).contains("CATALOG_MANAGE", "FULFILLMENT_OPERATE");
     assertThat(login.menus()).extracting("menuCode").contains("catalog", "fulfillment");

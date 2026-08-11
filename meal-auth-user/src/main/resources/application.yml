@@ -28,3 +28,12 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+mealflow:
+  auth:
+    otp:
+      mode: ${AUTH_OTP_MODE:redis}
+      pepper: ${AUTH_OTP_PEPPER:mealflow-dev-otp-pepper}
+      log-code: ${AUTH_OTP_LOG_CODE:true}
+      test-code: ${AUTH_OTP_TEST_CODE:}
+    session:
+      pepper: ${AUTH_SESSION_PEPPER:mealflow-dev-session-pepper}

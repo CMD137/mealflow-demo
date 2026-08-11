@@ -24,7 +24,8 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
   private static final String ROLE_HEADER = "X-Role";
   private static final String MERCHANT_ID_HEADER = "X-Merchant-Id";
   private static final String PERMISSIONS_HEADER = "X-Permissions";
-  private static final List<String> ALLOWED_ORIGINS = List.of("http://localhost:5173", "http://127.0.0.1:5173");
+  private static final List<String> ALLOWED_ORIGINS = List.of("http://localhost:5173", "http://127.0.0.1:5173",
+      "http://localhost:5174", "http://127.0.0.1:5174");
 
   private final WebClient webClient;
   private final boolean enabled;
@@ -101,10 +102,16 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     HttpMethod method = request.getMethod();
     return path.equals("/ping")
         || path.equals("/auth/login")
+        || path.equals("/auth/codes")
         || path.equals("/auth/ping")
         || path.equals("/actuator/health")
         || (HttpMethod.GET.equals(method) && path.endsWith("/ping"))
-        || (HttpMethod.GET.equals(method) && path.startsWith("/catalog/"));
+        || (HttpMethod.GET.equals(method) && isPublicCatalogPath(path));
+  }
+
+  private boolean isPublicCatalogPath(String path) {
+    return path.matches("^/catalog/merchants/\\d+/(skus|categories)$")
+        || path.startsWith("/catalog/images/");
   }
 
   private String bearerToken(ServerHttpRequest request) {

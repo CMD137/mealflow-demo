@@ -1,0 +1,5 @@
+mealflow:
+  auth:
+    otp:
+      mode: redis
+      log-code: false
