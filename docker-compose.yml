@@ -5,9 +5,7 @@ services:
     environment:
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
-    ports:
-      - "8848:8848"
-      - "9848:9848"
+    networks: [private]
 
   mysql:
     image: mysql:8.0
@@ -15,8 +13,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: mealflow
       MYSQL_DATABASE: mealflow
-    ports:
-      - "${MYSQL_PORT:-13306}:3306"
+    networks: [private]
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s
@@ -42,15 +39,13 @@ services:
   redis:
     image: redis:7
     container_name: mealflow-redis
-    ports:
-      - "6379:6379"
+    networks: [private]
 
   rocketmq-namesrv:
     image: apache/rocketmq:5.2.0
     container_name: mealflow-rocketmq-namesrv
     command: sh mqnamesrv
-    ports:
-      - "9876:9876"
+    networks: [private]
 
   rocketmq-broker:
     image: apache/rocketmq:5.2.0
@@ -60,8 +55,7 @@ services:
     environment:
       NAMESRV_ADDR: rocketmq-namesrv:9876
     command: sh mqbroker -n rocketmq-namesrv:9876
-    ports:
-      - "10911:10911"
+    networks: [private]
 
   meal-auth-user:
     image: eclipse-temurin:17-jre
@@ -85,8 +79,7 @@ services:
     volumes:
       - ./meal-auth-user/target/meal-auth-user-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8101:8101"
+    networks: [private]
 
   meal-merchant:
     image: eclipse-temurin:17-jre
@@ -106,8 +99,7 @@ services:
     volumes:
       - ./meal-merchant/target/meal-merchant-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8102:8102"
+    networks: [private]
 
   meal-catalog:
     image: eclipse-temurin:17-jre
@@ -137,8 +129,7 @@ services:
       - ./meal-catalog/target/meal-catalog-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
       - ./uploads/catalog:/app/uploads/catalog
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8103:8103"
+    networks: [private]
 
   meal-cart:
     image: eclipse-temurin:17-jre
@@ -158,8 +149,7 @@ services:
     volumes:
       - ./meal-cart/target/meal-cart-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8104:8104"
+    networks: [private]
 
   meal-order:
     image: eclipse-temurin:17-jre
@@ -199,8 +189,7 @@ services:
     volumes:
       - ./meal-order/target/meal-order-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8105:8105"
+    networks: [private]
 
   meal-queue:
     image: eclipse-temurin:17-jre
@@ -227,8 +216,7 @@ services:
     volumes:
       - ./meal-queue/target/meal-queue-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8106:8106"
+    networks: [private]
 
   meal-promotion:
     image: eclipse-temurin:17-jre
@@ -254,8 +242,7 @@ services:
     volumes:
       - ./meal-promotion/target/meal-promotion-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8107:8107"
+    networks: [private]
 
   meal-payment:
     image: eclipse-temurin:17-jre
@@ -281,8 +268,7 @@ services:
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8108:8108"
+    networks: [private]
 
   meal-fulfillment:
     image: eclipse-temurin:17-jre
@@ -312,8 +298,7 @@ services:
     volumes:
       - ./meal-fulfillment/target/meal-fulfillment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8109:8109"
+    networks: [private]
 
   meal-notify:
     image: eclipse-temurin:17-jre
@@ -340,8 +325,7 @@ services:
     volumes:
       - ./meal-notify/target/meal-notify-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8110:8110"
+    networks: [private]
 
   meal-gateway:
     image: eclipse-temurin:17-jre
@@ -375,6 +359,7 @@ services:
     command: ["java", "-jar", "/app/app.jar"]
     ports:
       - "8080:8080"
+    networks: [edge, private]
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -396,8 +381,7 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-lifecycle
-    ports:
-      - "9090:9090"
+    networks: [private]
 
   grafana:
     image: grafana/grafana:11.2.0
@@ -411,5 +395,9 @@ services:
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    ports:
-      - "3000:3000"
+    networks: [private]
+
+networks:
+  edge:
+  private:
+    internal: true
