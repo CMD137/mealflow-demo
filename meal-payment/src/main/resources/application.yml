@@ -35,3 +35,5 @@ mealflow:
     scheduler-enabled: ${OUTBOX_SCHEDULER_ENABLED:true}
     initial-delay-ms: ${OUTBOX_INITIAL_DELAY_MS:5000}
     fixed-delay-ms: ${OUTBOX_FIXED_DELAY_MS:5000}
+    lease-seconds: ${OUTBOX_LEASE_SECONDS:60}
+    max-attempts: ${OUTBOX_MAX_ATTEMPTS:5}

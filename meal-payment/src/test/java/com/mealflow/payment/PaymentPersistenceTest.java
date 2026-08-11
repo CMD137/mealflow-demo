@@ -69,7 +69,7 @@ class PaymentPersistenceTest {
         .findFirst()
         .orElseThrow()
         .id();
-    localEventMapper.markSending(eventId, LocalDateTime.now().minusMinutes(2));
+    localEventMapper.markSending(eventId, LocalDateTime.now(), LocalDateTime.now().minusMinutes(1));
 
     int sent = paymentService.dispatchPendingEvents(10);
 

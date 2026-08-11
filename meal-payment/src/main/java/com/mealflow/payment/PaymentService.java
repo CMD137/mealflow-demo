@@ -30,7 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentService {
-  private static final Duration OUTBOX_SENDING_TIMEOUT = Duration.ofMinutes(1);
+  private final Duration outboxLease;
+  private final int outboxMaxAttempts;
 
   private final IdGenerator idGenerator = new IdGenerator();
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
@@ -43,7 +44,9 @@ public class PaymentService {
 
   public PaymentService(PaymentMapper paymentMapper, LocalEventMapper localEventMapper,
       OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper, List<PaymentProviderPort> paymentProviders,
-      @org.springframework.beans.factory.annotation.Value("${mealflow.payment.provider:mock-wechat}") String provider) {
+      @org.springframework.beans.factory.annotation.Value("${mealflow.payment.provider:mock-wechat}") String provider,
+      @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.lease-seconds:60}") long outboxLeaseSeconds,
+      @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.max-attempts:5}") int outboxMaxAttempts) {
     this.paymentMapper = paymentMapper;
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
@@ -51,6 +54,8 @@ public class PaymentService {
     this.paymentProviders = paymentProviders.stream().collect(java.util.stream.Collectors.toMap(PaymentProviderPort::code,
         Function.identity()));
     this.provider = provider;
+    this.outboxLease = Duration.ofSeconds(outboxLeaseSeconds);
+    this.outboxMaxAttempts = outboxMaxAttempts;
   }
 
   @PostConstruct
@@ -142,8 +147,9 @@ public class PaymentService {
   public int dispatchPendingEvents(int limit) {
     recoverStaleSendingEvents();
     int sent = 0;
-    for (LocalEventRow row : localEventMapper.findDispatchable(limit)) {
-      if (localEventMapper.markSending(row.getId(), LocalDateTime.now()) == 0) {
+    LocalDateTime now = LocalDateTime.now();
+    for (LocalEventRow row : localEventMapper.findDispatchable(now, limit)) {
+      if (localEventMapper.markSending(row.getId(), now, now.plus(outboxLease)) == 0) {
         continue;
       }
       try {
@@ -151,7 +157,8 @@ public class PaymentService {
         localEventMapper.markSent(row.getId(), LocalDateTime.now());
         sent++;
       } catch (RuntimeException ex) {
-        localEventMapper.markFailed(row.getId(), trimError(ex), LocalDateTime.now());
+        LocalDateTime failedAt = LocalDateTime.now();
+        localEventMapper.markFailed(row.getId(), trimError(ex), failedAt, retryAt(row.getRetryCount() + 1, failedAt), outboxMaxAttempts);
       }
     }
     return sent;
@@ -159,7 +166,7 @@ public class PaymentService {
 
   public int recoverStaleSendingEvents() {
     LocalDateTime now = LocalDateTime.now();
-    return localEventMapper.markStaleSendingFailedBefore(now.minus(OUTBOX_SENDING_TIMEOUT), now);
+    return localEventMapper.markExpiredLeases(now, now.minusSeconds(1), outboxMaxAttempts);
   }
 
   private PaymentView requirePayment(long payOrderId) {
@@ -217,5 +224,10 @@ public class PaymentService {
     } catch (NumberFormatException ex) {
       return false;
     }
+  }
+
+  private LocalDateTime retryAt(int attempt, LocalDateTime now) {
+    long seconds = Math.min(300, 1L << Math.min(8, Math.max(0, attempt)));
+    return now.plusSeconds(seconds);
   }
 }

@@ -23,9 +23,11 @@ CREATE TABLE IF NOT EXISTS payment_local_event (
   status VARCHAR(32) NOT NULL,
   retry_count INT NOT NULL DEFAULT 0,
   last_error VARCHAR(512) NULL,
+  next_retry_time TIMESTAMP NULL,
+  lease_until TIMESTAMP NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   UNIQUE KEY uk_payment_local_event_key (event_key),
-  INDEX idx_payment_local_event_status (status),
+  INDEX idx_payment_local_event_dispatch (status, next_retry_time),
   INDEX idx_payment_local_event_aggregate (aggregate_type, aggregate_id)
 );
