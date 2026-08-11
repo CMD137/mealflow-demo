@@ -199,6 +199,15 @@ public interface QueueMapper {
   @Select("SELECT limit_value FROM merchant_queue_limit WHERE merchant_id = #{merchantId}")
   Integer findMerchantLimit(long merchantId);
 
+  @Update("UPDATE merchant_queue_limit SET inflight_count = inflight_count + 1 WHERE merchant_id = #{merchantId} AND inflight_count < limit_value")
+  int tryAcquireCapacity(long merchantId);
+
+  @Insert("INSERT INTO merchant_queue_limit (merchant_id, limit_value, inflight_count, create_time, update_time) VALUES (#{merchantId}, 1, 0, #{now}, #{now}) ON DUPLICATE KEY UPDATE merchant_id = merchant_id")
+  int ensureMerchantLimit(@Param("merchantId") long merchantId, @Param("now") LocalDateTime now);
+
+  @Update("UPDATE merchant_queue_limit SET inflight_count = CASE WHEN inflight_count > 0 THEN inflight_count - 1 ELSE 0 END WHERE merchant_id = #{merchantId}")
+  int releaseCapacity(long merchantId);
+
   @Insert("""
       INSERT INTO merchant_queue_limit (merchant_id, limit_value, create_time, update_time)
       VALUES (#{merchantId}, #{limit}, #{now}, #{now})

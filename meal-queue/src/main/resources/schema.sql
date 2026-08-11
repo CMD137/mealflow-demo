@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS capacity_token (
 CREATE TABLE IF NOT EXISTS merchant_queue_limit (
   merchant_id BIGINT PRIMARY KEY,
   limit_value INT NOT NULL,
+  inflight_count INT NOT NULL DEFAULT 0,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL
 );

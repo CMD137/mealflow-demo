@@ -81,8 +81,9 @@ public class QueueService {
   @Transactional
   public QueueApplyResponse apply(QueueApplyRequest request) {
     return idempotentTemplate.execute("queue:apply:" + request.userId() + ":" + request.requestId(), () -> {
-      synchronized (this) {
-        if (heldCount(request.merchantId()) < limit(request.merchantId())) {
+      {
+        queueMapper.ensureMerchantLimit(request.merchantId(), LocalDateTime.now());
+        if (queueMapper.tryAcquireCapacity(request.merchantId()) == 1) {
           CapacityToken token = createToken(request.requestId(), request.merchantId(), null, request.expireTime());
           return QueueApplyResponse.ready(token.id);
         }
@@ -251,6 +252,7 @@ public class QueueService {
     if (updated == 0) {
       return false;
     }
+    queueMapper.releaseCapacity(merchantId);
     afterCommitOrNow(() -> capacityInflightCounter.decrement(merchantId));
     return true;
   }
