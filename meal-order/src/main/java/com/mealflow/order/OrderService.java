@@ -10,7 +10,6 @@ import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.OrderStatus;
 import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
 import com.mealflow.infra.event.EventKey;
-import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.order.api.AdminOrderQuery;
 import com.mealflow.order.api.LocalEventView;
 import com.mealflow.order.api.OrderItemSnapshot;
@@ -61,12 +60,12 @@ public class OrderService {
   private final OutboxEventPublisher outboxEventPublisher;
   private final ObjectMapper objectMapper;
   private final DatabaseIdGenerator idGenerator;
-  private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
+  private final OrderIdempotencyService idempotencyService;
 
   public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
       PaymentClient paymentClient, OrderMapper orderMapper, LocalEventMapper localEventMapper,
       ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper,
-      DatabaseIdGenerator idGenerator) {
+      DatabaseIdGenerator idGenerator, OrderIdempotencyService idempotencyService) {
     this.catalogClient = catalogClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
@@ -78,6 +77,7 @@ public class OrderService {
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
     this.idGenerator = idGenerator;
+    this.idempotencyService = idempotencyService;
   }
 
   @jakarta.annotation.PostConstruct
@@ -97,7 +97,7 @@ public class OrderService {
 
   @Transactional
   public SubmitOrderResponse submit(long userId, SubmitOrderRequest request) {
-    return idempotentTemplate.execute("order:submit:" + userId + ":" + request.requestId(), () -> {
+    return idempotencyService.execute(userId, request.requestId(), request, () -> {
       LocalDateTime expireTime = LocalDateTime.now().plusMinutes(15);
       List<OrderSkuItem> items = normalizeItems(request);
       List<OrderItemSnapshot> snapshots = catalogClient.snapshots(request.merchantId(), items);

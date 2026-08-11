@@ -5,6 +5,19 @@ CREATE TABLE IF NOT EXISTS business_sequence (
 
 INSERT INTO business_sequence (namespace, next_value) VALUES ('order', 10000)
 ON DUPLICATE KEY UPDATE next_value = next_value;
+
+CREATE TABLE IF NOT EXISTS idempotency_record (
+  subject VARCHAR(128) NOT NULL,
+  idempotency_key VARCHAR(128) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  lease_expire_time TIMESTAMP NULL,
+  response_json TEXT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  PRIMARY KEY (subject, idempotency_key),
+  INDEX idx_idempotency_expire (lease_expire_time)
+);
 INSERT INTO business_sequence (namespace, next_value) VALUES ('order_local_event', 10000)
 ON DUPLICATE KEY UPDATE next_value = next_value;
 
