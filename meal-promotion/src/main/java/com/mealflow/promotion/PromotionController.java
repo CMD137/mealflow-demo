@@ -1,6 +1,7 @@
 package com.mealflow.promotion;
 
 import com.mealflow.common.api.Result;
+import com.mealflow.common.security.RequestIdentity;
 import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
@@ -14,7 +15,6 @@ import com.mealflow.promotion.api.VoucherTransitionRequest;
 import com.mealflow.promotion.api.VoucherView;
 import jakarta.validation.Valid;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,24 +28,20 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/vouchers")
 public class PromotionController {
   private final PromotionService promotionService;
-  private final long defaultUserId;
-
-  public PromotionController(PromotionService promotionService,
-      @Value("${mealflow.demo.default-user-id:100}") long defaultUserId) {
+  public PromotionController(PromotionService promotionService) {
     this.promotionService = promotionService;
-    this.defaultUserId = defaultUserId;
   }
 
   @PostMapping("/{voucherId}/seckill")
   public Result<SeckillVoucherResponse> seckill(@PathVariable long voucherId,
       @RequestHeader(value = "X-User-Id", required = false) Long userId,
       @Valid @RequestBody SeckillVoucherRequest request) {
-    return Result.ok(promotionService.seckill(userId == null ? defaultUserId : userId, voucherId, request.requestId()));
+    return Result.ok(promotionService.seckill(RequestIdentity.requireUser(userId), voucherId, request.requestId()));
   }
 
   @GetMapping("/wallet")
   public Result<List<UserVoucherView>> wallet(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-    return Result.ok(promotionService.wallet(userId == null ? defaultUserId : userId));
+    return Result.ok(promotionService.wallet(RequestIdentity.requireUser(userId)));
   }
 
   @GetMapping

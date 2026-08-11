@@ -69,7 +69,7 @@ public class QueueClient {
   }
 
   public record QueueTicketSnapshot(List<Map<String, Object>> items, List<Long> reservationIds, Long voucherLockId,
-                                    int totalAmount, String remark) {
+                                    int totalAmount, String remark, long userId, long merchantId) {
   }
 
   public record QueueApplyRequest(String requestId, long userId, long merchantId, QueueTicketSnapshot snapshot,

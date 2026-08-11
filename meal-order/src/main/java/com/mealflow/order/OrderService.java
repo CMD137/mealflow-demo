@@ -115,7 +115,8 @@ public class OrderService {
               "skuName", item.skuName(),
               "priceCent", item.priceCent(),
               "quantity", item.quantity())).toList(),
-          reservation.reservationIds(), voucherLock.voucherLockId(), finalAmount, request.remark());
+          reservation.reservationIds(), voucherLock.voucherLockId(), finalAmount, request.remark(), userId,
+          request.merchantId());
       QueueClient.QueueApplyResponse queue = queueClient.apply(new QueueClient.QueueApplyRequest(
           "queue-apply:" + request.requestId(), userId, request.merchantId(), snapshot, expireTime, 0));
       if ("QUEUED".equals(queue.result())) {
@@ -134,7 +135,11 @@ public class OrderService {
       return existing.get();
     }
     QueueClient.QueueTicketSnapshot snapshot = queueClient.markProcessing(ticketId);
-    OrderRecord order = createOrder(0L, 10L, ticketId, capacityTokenId, snapshot);
+    if (snapshot.userId() <= 0 || snapshot.merchantId() <= 0) {
+      throw new IllegalStateException("queue ticket snapshot is missing its original principal");
+    }
+    // Ticket promotion must preserve the original customer and merchant; it is never a system-owned order.
+    OrderRecord order = createOrder(snapshot.userId(), snapshot.merchantId(), ticketId, capacityTokenId, snapshot);
     queueClient.orderCreated(ticketId, new QueueClient.BindOrderRequest("queue-order-created:" + ticketId + ":" + order.id,
         order.id));
     return order;

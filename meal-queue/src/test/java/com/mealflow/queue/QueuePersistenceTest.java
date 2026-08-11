@@ -28,7 +28,9 @@ class QueuePersistenceTest {
         List.of(9001L),
         null,
         2800,
-        "test"
+        "test",
+        1L,
+        10L
     );
     QueueApplyResponse first = queueService.apply(new QueueApplyRequest("queue-test-1", 1L, 10L, snapshot,
         LocalDateTime.now().plusMinutes(10), 0));
