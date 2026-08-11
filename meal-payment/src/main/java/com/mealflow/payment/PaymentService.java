@@ -17,11 +17,14 @@ import com.mealflow.payment.mapper.LocalEventRow;
 import com.mealflow.payment.mapper.PaymentMapper;
 import com.mealflow.payment.mapper.PaymentOrderRow;
 import com.mealflow.payment.outbox.OutboxEventPublisher;
+import com.mealflow.payment.provider.PaymentProviderPort;
+import com.mealflow.payment.api.PaymentCheckoutView;
 import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,13 +38,19 @@ public class PaymentService {
   private final LocalEventMapper localEventMapper;
   private final OutboxEventPublisher outboxEventPublisher;
   private final ObjectMapper objectMapper;
+  private final Map<String, PaymentProviderPort> paymentProviders;
+  private final String provider;
 
   public PaymentService(PaymentMapper paymentMapper, LocalEventMapper localEventMapper,
-      OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper) {
+      OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper, List<PaymentProviderPort> paymentProviders,
+      @org.springframework.beans.factory.annotation.Value("${mealflow.payment.provider:mock-wechat}") String provider) {
     this.paymentMapper = paymentMapper;
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
+    this.paymentProviders = paymentProviders.stream().collect(java.util.stream.Collectors.toMap(PaymentProviderPort::code,
+        Function.identity()));
+    this.provider = provider;
   }
 
   @PostConstruct
@@ -89,6 +98,37 @@ public class PaymentService {
 
   public PaymentView get(long payOrderId) {
     return requirePayment(payOrderId);
+  }
+
+  public PaymentCheckoutView checkout(long payOrderId) {
+    PaymentView payment = requirePayment(payOrderId);
+    if (PaymentStatus.valueOf(payment.status()) != PaymentStatus.UNPAID) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is not payable");
+    }
+    PaymentProviderPort adapter = paymentProviders.get(provider);
+    if (adapter == null) {
+      throw new IllegalStateException("unsupported payment provider: " + provider);
+    }
+    return new PaymentCheckoutView(payOrderId, provider, adapter.checkoutUrl(payOrderId, payment.amountCent()));
+  }
+
+  @Transactional
+  public boolean confirmAlipayCallback(Map<String, String> parameters) {
+    PaymentProviderPort adapter = paymentProviders.get("alipay-sandbox");
+    if (adapter == null || !adapter.verifyCallback(parameters)
+        || !("TRADE_SUCCESS".equals(parameters.get("trade_status")) || "TRADE_FINISHED".equals(parameters.get("trade_status")))) {
+      return false;
+    }
+    String merchantOrderNo = parameters.get("out_trade_no");
+    if (merchantOrderNo == null || !merchantOrderNo.matches("MF\\d+")) {
+      return false;
+    }
+    PaymentView payment = requirePayment(Long.parseLong(merchantOrderNo.substring(2)));
+    if (!amountMatches(payment.amountCent(), parameters.get("total_amount"))) {
+      return false;
+    }
+    mockPay(payment.payOrderId());
+    return true;
   }
 
   public List<PaymentView> list() {
@@ -169,5 +209,13 @@ public class PaymentService {
   private String trimError(RuntimeException ex) {
     String message = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
     return message.length() <= 512 ? message : message.substring(0, 512);
+  }
+
+  private boolean amountMatches(int amountCent, String callbackAmount) {
+    try {
+      return java.math.BigDecimal.valueOf(amountCent, 2).compareTo(new java.math.BigDecimal(callbackAmount)) == 0;
+    } catch (NumberFormatException ex) {
+      return false;
+    }
   }
 }

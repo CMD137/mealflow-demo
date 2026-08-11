@@ -8,6 +8,7 @@ import com.mealflow.payment.api.ClosePaymentRequest;
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.LocalEventView;
 import com.mealflow.payment.api.PaymentView;
+import com.mealflow.payment.api.PaymentCheckoutView;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/payments")
@@ -51,6 +54,21 @@ public class PaymentController {
       throw new BizException(ErrorCode.FORBIDDEN, "payment does not belong to current user");
     }
     return Result.ok(payment);
+  }
+
+  @PostMapping("/{payOrderId}/checkout")
+  public Result<PaymentCheckoutView> checkout(@PathVariable long payOrderId,
+      @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    PaymentView payment = paymentService.get(payOrderId);
+    if (payment.userId() != RequestIdentity.requireUser(userId)) {
+      throw new BizException(ErrorCode.FORBIDDEN, "payment does not belong to current user");
+    }
+    return Result.ok(paymentService.checkout(payOrderId));
+  }
+
+  @PostMapping("/alipay/callback")
+  public String alipayCallback(@RequestParam Map<String, String> parameters) {
+    return paymentService.confirmAlipayCallback(parameters) ? "success" : "failure";
   }
 
   @GetMapping("/internal/list")

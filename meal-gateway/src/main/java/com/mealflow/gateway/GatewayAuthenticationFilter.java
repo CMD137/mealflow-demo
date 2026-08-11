@@ -103,6 +103,7 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     return path.equals("/ping")
         || path.equals("/auth/login")
         || path.equals("/auth/codes")
+        || (HttpMethod.POST.equals(method) && path.equals("/payments/alipay/callback"))
         || path.equals("/auth/ping")
         || path.equals("/actuator/health")
         || (HttpMethod.GET.equals(method) && path.endsWith("/ping"))
