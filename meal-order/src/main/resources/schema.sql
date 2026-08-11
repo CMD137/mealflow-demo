@@ -1,3 +1,13 @@
+CREATE TABLE IF NOT EXISTS business_sequence (
+  namespace VARCHAR(64) PRIMARY KEY,
+  next_value BIGINT NOT NULL
+);
+
+INSERT INTO business_sequence (namespace, next_value) VALUES ('order', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('order_local_event', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+
 CREATE TABLE IF NOT EXISTS customer_order (
   id BIGINT PRIMARY KEY,
   user_id BIGINT NOT NULL,

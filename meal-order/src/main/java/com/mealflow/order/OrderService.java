@@ -10,7 +10,6 @@ import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.OrderStatus;
 import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
 import com.mealflow.infra.event.EventKey;
-import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.order.api.AdminOrderQuery;
 import com.mealflow.order.api.LocalEventView;
@@ -32,7 +31,6 @@ import com.mealflow.order.mapper.OrderMapper;
 import com.mealflow.order.mapper.OrderRow;
 import com.mealflow.order.mapper.StatusCountRow;
 import com.mealflow.order.outbox.OutboxEventPublisher;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -62,12 +60,13 @@ public class OrderService {
   private final PersistentConsumerRecordTemplate consumerRecordTemplate;
   private final OutboxEventPublisher outboxEventPublisher;
   private final ObjectMapper objectMapper;
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final DatabaseIdGenerator idGenerator;
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
 
   public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
       PaymentClient paymentClient, OrderMapper orderMapper, LocalEventMapper localEventMapper,
-      ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper) {
+      ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper,
+      DatabaseIdGenerator idGenerator) {
     this.catalogClient = catalogClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
@@ -78,13 +77,12 @@ public class OrderService {
     this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper);
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
+    this.idGenerator = idGenerator;
   }
 
-  @PostConstruct
-  void initializeIdGenerator() {
+  @jakarta.annotation.PostConstruct
+  void initializePersistence() {
     ensureConsumerRecordPayloadColumns();
-    idGenerator.ensureAtLeast("order", orderMapper.maxOrderId());
-    idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
     consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
   }
 
@@ -385,7 +383,7 @@ public class OrderService {
 
   private void appendOrderEvent(String eventType, OrderRecord order) {
     int version = 1;
-    localEventMapper.insert(idGenerator.next("localEvent"),
+    localEventMapper.insert(idGenerator.next("order_local_event"),
         EventKey.of("order", eventType, order.id, version),
         eventType,
         version,
