@@ -72,6 +72,11 @@ public class PromotionService {
       if (claimResult == ClaimResult.SOLD_OUT) {
         return new SeckillVoucherResponse(null, "SOLD_OUT", null);
       }
+      if (promotionMapper.decrementStock(voucherId) != 1) {
+        // Redis admits quickly, but the conditional database decrement is the inventory authority.
+        seckillGuard.compensate(userId, voucherId);
+        return new SeckillVoucherResponse(null, "SOLD_OUT", null);
+      }
       try {
         long userVoucherId = idGenerator.next("userVoucher");
         LocalDateTime now = LocalDateTime.now();
@@ -79,10 +84,12 @@ public class PromotionService {
         long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.CLAIMED);
         return new SeckillVoucherResponse(claimId, "CLAIMED", userVoucherId);
       } catch (DuplicateKeyException ex) {
+        promotionMapper.incrementStock(voucherId);
         seckillGuard.compensate(userId, voucherId);
         long claimId = insertClaim(userId, voucherId, VoucherClaimStatus.DUPLICATE);
         return new SeckillVoucherResponse(claimId, "DUPLICATE", null);
       } catch (RuntimeException ex) {
+        promotionMapper.incrementStock(voucherId);
         seckillGuard.compensate(userId, voucherId);
         throw ex;
       }
@@ -309,7 +316,7 @@ public class PromotionService {
 
   private VoucherView voucherView(VoucherRow voucher) {
     return new VoucherView(voucher.getId(), voucher.getName(), voucher.getType(), voucher.getDiscountCent(),
-        seckillGuard.remainingStock(voucher.getId(), voucher.getStock()), voucher.getStatus());
+        voucher.getStock(), voucher.getStatus());
   }
 
   private VoucherClaimRetryView claimRetryView(VoucherClaimRetryRow retry) {
