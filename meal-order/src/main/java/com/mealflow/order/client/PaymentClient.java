@@ -32,15 +32,15 @@ public class PaymentClient {
   }
 
   public void close(long payOrderId, ClosePaymentRequest request) {
-    restTemplate.postForObject(endpoints.payment() + "/payments/" + payOrderId + "/close", request, Result.class);
+    restTemplate.postForObject(endpoints.payment() + "/payments/internal/" + payOrderId + "/close", request, Result.class);
   }
 
-  public record CreatePaymentRequest(String requestId, long orderId, int amountCent) {
+  public record CreatePaymentRequest(String requestId, long orderId, long userId, int amountCent) {
   }
 
   public record ClosePaymentRequest(String requestId, String reason) {
   }
 
-  public record PaymentView(long payOrderId, long orderId, int amountCent, String status) {
+  public record PaymentView(long payOrderId, long orderId, long userId, int amountCent, String status) {
   }
 }

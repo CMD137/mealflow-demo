@@ -26,7 +26,7 @@ class PaymentPersistenceTest {
 
   @Test
   void createsAndPaysOrderInDatabase() {
-    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-1", 2001L, 3200));
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-1", 2001L, 101L, 3200));
 
     assertThat(created.status()).isEqualTo("UNPAID");
 
@@ -61,7 +61,7 @@ class PaymentPersistenceTest {
 
   @Test
   void recoversStaleSendingOutboxEvent() {
-    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-stale-sending", 2002L, 1800));
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-stale-sending", 2002L, 101L, 1800));
     paymentService.mockPay(created.payOrderId());
     String eventKey = "payment:PaymentPaid:" + created.payOrderId() + ":1";
     long eventId = paymentService.events().stream()

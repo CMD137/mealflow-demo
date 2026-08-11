@@ -248,6 +248,10 @@ public class OrderService {
     return orderMapper.findAll().stream().map(this::mapOrder).map(this::view).toList();
   }
 
+  public List<OrderView> listByUser(long userId) {
+    return orderMapper.findByUserId(userId).stream().map(this::mapOrder).map(this::view).toList();
+  }
+
   public List<OrderView> adminOrders(AdminOrderQuery query) {
     return orderMapper.findAdminOrders(query.merchantId(), query.userId(), query.status(), query.beginTime(),
         query.endTime()).stream().map(this::mapOrder).map(this::view).toList();
@@ -298,9 +302,9 @@ public class OrderService {
 
   private synchronized OrderRecord createOrder(long userId, long merchantId, Long ticketId, long capacityTokenId,
       QueueClient.QueueTicketSnapshot snapshot) {
-    long orderId = idGenerator.next("order");
-    PaymentClient.PaymentView payment = paymentClient.create(new PaymentClient.CreatePaymentRequest(
-        "payment-create:" + orderId, orderId, snapshot.totalAmount()));
+      long orderId = idGenerator.next("order");
+      PaymentClient.PaymentView payment = paymentClient.create(new PaymentClient.CreatePaymentRequest(
+        "payment-create:" + orderId, orderId, userId, snapshot.totalAmount()));
     List<OrderItemSnapshot> items = snapshot.items().stream().map(this::toOrderItemSnapshot).toList();
     OrderRecord order = new OrderRecord(orderId, userId, merchantId, OrderStatus.PENDING_PAYMENT, ticketId,
         capacityTokenId, payment.payOrderId(), snapshot.reservationIds(), snapshot.voucherLockId(), items,

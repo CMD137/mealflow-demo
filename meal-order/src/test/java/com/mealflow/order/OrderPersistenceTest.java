@@ -63,7 +63,7 @@ class OrderPersistenceTest {
     when(queueClient.apply(any()))
         .thenReturn(new QueueClient.QueueApplyResponse("READY", 6001L, null, null, 0, 0, null));
     when(paymentClient.create(any()))
-        .thenReturn(new PaymentClient.PaymentView(5001L, 10001L, 1700, "UNPAID"));
+        .thenReturn(new PaymentClient.PaymentView(5001L, 10001L, 101L, 1700, "UNPAID"));
 
     SubmitOrderResponse response = orderService.submit(101L,
         new SubmitOrderRequest("order-test-1", 10L, 20L, null,
@@ -130,7 +130,7 @@ class OrderPersistenceTest {
     when(queueClient.apply(any()))
         .thenReturn(new QueueClient.QueueApplyResponse("READY", 6101L, null, null, 0, 0, null));
     when(paymentClient.create(any()))
-        .thenReturn(new PaymentClient.PaymentView(5101L, 10101L, 1000, "UNPAID"));
+        .thenReturn(new PaymentClient.PaymentView(5101L, 10101L, 101L, 1000, "UNPAID"));
 
     SubmitOrderResponse response = orderService.submit(101L,
         new SubmitOrderRequest("order-replay-1", 10L, null, null,

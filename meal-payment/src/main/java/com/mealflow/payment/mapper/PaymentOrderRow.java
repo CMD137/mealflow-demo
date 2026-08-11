@@ -3,6 +3,7 @@ package com.mealflow.payment.mapper;
 public class PaymentOrderRow {
   private long id;
   private long orderId;
+  private long userId;
   private int amountCent;
   private String status;
 
@@ -16,6 +17,14 @@ public class PaymentOrderRow {
 
   public long getOrderId() {
     return orderId;
+  }
+
+  public long getUserId() {
+    return userId;
+  }
+
+  public void setUserId(long userId) {
+    this.userId = userId;
   }
 
   public void setOrderId(long orderId) {

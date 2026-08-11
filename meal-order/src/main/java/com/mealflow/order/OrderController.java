@@ -91,7 +91,7 @@ public class OrderController {
   @GetMapping
   public Result<List<OrderView>> list(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
     long currentUserId = RequestIdentity.requireUser(userId);
-    return Result.ok(orderService.list().stream().filter(order -> order.userId() == currentUserId).toList());
+    return Result.ok(orderService.listByUser(currentUserId));
   }
 
   @GetMapping("/admin")

@@ -69,6 +69,10 @@ public interface OrderMapper {
   @ResultMap("orderMap")
   List<OrderRow> findAll();
 
+  @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order WHERE user_id = #{userId} ORDER BY id DESC")
+  @ResultMap("orderMap")
+  List<OrderRow> findByUserId(long userId);
+
   @Select("""
       <script>
       SELECT

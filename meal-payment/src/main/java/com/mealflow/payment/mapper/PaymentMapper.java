@@ -17,10 +17,10 @@ public interface PaymentMapper {
   long maxPaymentOrderId();
 
   @Insert("""
-      INSERT INTO payment_order (id, order_id, amount_cent, status, create_time, update_time)
-      VALUES (#{id}, #{orderId}, #{amountCent}, #{status}, #{now}, #{now})
+      INSERT INTO payment_order (id, order_id, user_id, amount_cent, status, create_time, update_time)
+      VALUES (#{id}, #{orderId}, #{userId}, #{amountCent}, #{status}, #{now}, #{now})
       """)
-  int insert(@Param("id") long id, @Param("orderId") long orderId, @Param("amountCent") int amountCent,
+  int insert(@Param("id") long id, @Param("orderId") long orderId, @Param("userId") long userId, @Param("amountCent") int amountCent,
       @Param("status") String status, @Param("now") LocalDateTime now);
 
   @Update("""
@@ -32,20 +32,21 @@ public interface PaymentMapper {
       @Param("unpaid") String unpaid, @Param("paying") String paying, @Param("now") LocalDateTime now);
 
   @Select("""
-      SELECT id, order_id, amount_cent, status
+      SELECT id, order_id, user_id, amount_cent, status
       FROM payment_order
       WHERE id = #{id}
       """)
   @Results(id = "paymentOrderMap", value = {
       @Result(column = "id", property = "id"),
       @Result(column = "order_id", property = "orderId"),
+      @Result(column = "user_id", property = "userId"),
       @Result(column = "amount_cent", property = "amountCent"),
       @Result(column = "status", property = "status")
   })
   PaymentOrderRow findById(long id);
 
   @Select("""
-      SELECT id, order_id, amount_cent, status
+      SELECT id, order_id, user_id, amount_cent, status
       FROM payment_order
       ORDER BY id
       """)

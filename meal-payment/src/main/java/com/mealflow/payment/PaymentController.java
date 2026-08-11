@@ -1,6 +1,9 @@
 package com.mealflow.payment;
 
 import com.mealflow.common.api.Result;
+import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.exception.BizException;
+import com.mealflow.common.security.RequestIdentity;
 import com.mealflow.payment.api.ClosePaymentRequest;
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.LocalEventView;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 @RestController
 @RequestMapping("/payments")
@@ -28,20 +32,25 @@ public class PaymentController {
     return Result.ok(paymentService.create(request));
   }
 
-  @PostMapping("/{payOrderId}/mock-pay")
+  @PostMapping("/internal/{payOrderId}/mock-pay")
   public Result<PaymentView> mockPay(@PathVariable long payOrderId) {
     return Result.ok(paymentService.mockPay(payOrderId));
   }
 
-  @PostMapping("/{payOrderId}/close")
+  @PostMapping("/internal/{payOrderId}/close")
   public Result<Void> close(@PathVariable long payOrderId, @Valid @RequestBody ClosePaymentRequest request) {
     paymentService.close(payOrderId);
     return Result.ok();
   }
 
   @GetMapping("/{payOrderId}")
-  public Result<PaymentView> get(@PathVariable long payOrderId) {
-    return Result.ok(paymentService.get(payOrderId));
+  public Result<PaymentView> get(@PathVariable long payOrderId,
+      @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    PaymentView payment = paymentService.get(payOrderId);
+    if (payment.userId() != RequestIdentity.requireUser(userId)) {
+      throw new BizException(ErrorCode.FORBIDDEN, "payment does not belong to current user");
+    }
+    return Result.ok(payment);
   }
 
   @GetMapping("/internal/list")

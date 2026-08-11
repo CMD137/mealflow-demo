@@ -54,7 +54,7 @@ public class PaymentService {
   public PaymentView create(CreatePaymentRequest request) {
     return idempotentTemplate.execute("payment:create:" + request.requestId(), () -> {
       long id = idGenerator.next("paymentOrder");
-      paymentMapper.insert(id, request.orderId(), request.amountCent(), PaymentStatus.UNPAID.name(),
+      paymentMapper.insert(id, request.orderId(), request.userId(), request.amountCent(), PaymentStatus.UNPAID.name(),
           LocalDateTime.now());
       return requirePayment(id);
     });
@@ -131,7 +131,7 @@ public class PaymentService {
   }
 
   private PaymentView view(PaymentOrderRow payment) {
-    return new PaymentView(payment.getId(), payment.getOrderId(), payment.getAmountCent(), payment.getStatus());
+    return new PaymentView(payment.getId(), payment.getOrderId(), payment.getUserId(), payment.getAmountCent(), payment.getStatus());
   }
 
   private void appendPaymentPaidEvent(PaymentView payment) {
