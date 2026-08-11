@@ -12,6 +12,19 @@ CREATE TABLE IF NOT EXISTS payment_order (
   UNIQUE KEY uk_payment_order_order_id (order_id)
 );
 
+CREATE TABLE IF NOT EXISTS payment_idempotency_record (
+  subject VARCHAR(128) NOT NULL,
+  idempotency_key VARCHAR(128) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  lease_expire_time TIMESTAMP NULL,
+  response_json TEXT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  PRIMARY KEY (subject, idempotency_key),
+  INDEX idx_payment_idempotency_lease (lease_expire_time)
+);
+
 CREATE TABLE IF NOT EXISTS payment_local_event (
   id BIGINT PRIMARY KEY,
   event_key VARCHAR(256) NOT NULL,

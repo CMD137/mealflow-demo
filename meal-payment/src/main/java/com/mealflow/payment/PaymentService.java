@@ -8,7 +8,6 @@ import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.PaymentStatus;
 import com.mealflow.infra.event.EventKey;
 import com.mealflow.infra.id.IdGenerator;
-import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.LocalEventView;
 import com.mealflow.payment.api.PaymentView;
@@ -34,7 +33,7 @@ public class PaymentService {
   private final int outboxMaxAttempts;
 
   private final IdGenerator idGenerator = new IdGenerator();
-  private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
+  private final PaymentIdempotencyService idempotencyService;
   private final PaymentMapper paymentMapper;
   private final LocalEventMapper localEventMapper;
   private final OutboxEventPublisher outboxEventPublisher;
@@ -46,7 +45,8 @@ public class PaymentService {
       OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper, List<PaymentProviderPort> paymentProviders,
       @org.springframework.beans.factory.annotation.Value("${mealflow.payment.provider:mock-wechat}") String provider,
       @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.lease-seconds:60}") long outboxLeaseSeconds,
-      @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.max-attempts:5}") int outboxMaxAttempts) {
+      @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.max-attempts:5}") int outboxMaxAttempts,
+      PaymentIdempotencyService idempotencyService) {
     this.paymentMapper = paymentMapper;
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
@@ -56,6 +56,7 @@ public class PaymentService {
     this.provider = provider;
     this.outboxLease = Duration.ofSeconds(outboxLeaseSeconds);
     this.outboxMaxAttempts = outboxMaxAttempts;
+    this.idempotencyService = idempotencyService;
   }
 
   @PostConstruct
@@ -66,7 +67,7 @@ public class PaymentService {
 
   @Transactional
   public PaymentView create(CreatePaymentRequest request) {
-    return idempotentTemplate.execute("payment:create:" + request.requestId(), () -> {
+    return idempotencyService.execute(request, () -> {
       long id = idGenerator.next("paymentOrder");
       paymentMapper.insert(id, request.orderId(), request.userId(), request.amountCent(), PaymentStatus.UNPAID.name(),
           LocalDateTime.now());
