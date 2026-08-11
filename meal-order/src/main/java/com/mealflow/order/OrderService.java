@@ -187,14 +187,19 @@ public class OrderService {
     if (order.status != OrderStatus.PENDING_PAYMENT && order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be cancelled");
     }
-    updateStatus(orderId, OrderStatus.CANCELLED);
+    if (order.status == OrderStatus.PENDING_PAYMENT) {
+      paymentClient.close(order.payOrderId, new PaymentClient.ClosePaymentRequest("payment-close:" + orderId, reason));
+    } else {
+      // A paid order must refund before releasing reserved business resources.
+      paymentClient.refund(order.payOrderId);
+    }
     catalogClient.release(new CatalogClient.StockTransitionRequest("stock-release:" + orderId, order.reservationIds,
         orderId, reason));
     promotionClient.release(new PromotionClient.VoucherTransitionRequest("voucher-release:" + orderId,
         order.voucherLockId, orderId, reason));
-    paymentClient.close(order.payOrderId, new PaymentClient.ClosePaymentRequest("payment-close:" + orderId, reason));
     queueClient.release(order.capacityTokenId, new QueueClient.ReleaseCapacityRequest("capacity-release:" + orderId,
         "ORDER_CANCELLED"));
+    updateStatus(orderId, OrderStatus.CANCELLED);
     appendOrderEvent("OrderCancelled", order.withStatus(OrderStatus.CANCELLED));
   }
 

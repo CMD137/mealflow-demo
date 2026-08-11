@@ -46,6 +46,11 @@ public class PaymentController {
     return Result.ok();
   }
 
+  @PostMapping("/internal/{payOrderId}/refund")
+  public Result<PaymentView> refund(@PathVariable long payOrderId) {
+    return Result.ok(paymentService.refund(payOrderId));
+  }
+
   @GetMapping("/{payOrderId}")
   public Result<PaymentView> get(@PathVariable long payOrderId,
       @RequestHeader(value = "X-User-Id", required = false) Long userId) {

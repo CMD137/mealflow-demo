@@ -101,6 +101,20 @@ public class PaymentService {
         PaymentStatus.PAYING.name(), LocalDateTime.now());
   }
 
+  @Transactional
+  public PaymentView refund(long payOrderId) {
+    PaymentView payment = requirePayment(payOrderId);
+    PaymentStatus status = PaymentStatus.valueOf(payment.status());
+    if (status == PaymentStatus.REFUNDED) {
+      return payment;
+    }
+    if (status != PaymentStatus.PAID) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is not refundable");
+    }
+    paymentMapper.markRefunded(payOrderId, PaymentStatus.PAID.name(), PaymentStatus.REFUNDED.name(), LocalDateTime.now());
+    return requirePayment(payOrderId);
+  }
+
   public PaymentView get(long payOrderId) {
     return requirePayment(payOrderId);
   }

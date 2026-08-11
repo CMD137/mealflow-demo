@@ -35,6 +35,10 @@ public class PaymentClient {
     restTemplate.postForObject(endpoints.payment() + "/payments/internal/" + payOrderId + "/close", request, Result.class);
   }
 
+  public void refund(long payOrderId) {
+    restTemplate.postForObject(endpoints.payment() + "/payments/internal/" + payOrderId + "/refund", null, Result.class);
+  }
+
   public record CreatePaymentRequest(String requestId, long orderId, long userId, int amountCent) {
   }
 
