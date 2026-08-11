@@ -2,6 +2,11 @@ CREATE TABLE IF NOT EXISTS payment_order (
   id BIGINT PRIMARY KEY,
   order_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
+  provider VARCHAR(32) NOT NULL,
+  merchant_order_no VARCHAR(64) NOT NULL,
+  channel_transaction_no VARCHAR(128) NULL,
+  callback_digest CHAR(64) NULL,
+  callback_status VARCHAR(32) NULL,
   amount_cent INT NOT NULL,
   status VARCHAR(32) NOT NULL,
   create_time TIMESTAMP NOT NULL,
@@ -9,7 +14,8 @@ CREATE TABLE IF NOT EXISTS payment_order (
   INDEX idx_payment_order_order_id (order_id),
   INDEX idx_payment_order_status (status),
   INDEX idx_payment_order_user_id (user_id),
-  UNIQUE KEY uk_payment_order_order_id (order_id)
+  UNIQUE KEY uk_payment_order_order_id (order_id),
+  UNIQUE KEY uk_payment_order_merchant_order_no (merchant_order_no)
 );
 
 CREATE TABLE IF NOT EXISTS payment_idempotency_record (

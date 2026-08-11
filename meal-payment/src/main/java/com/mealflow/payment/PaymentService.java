@@ -69,7 +69,7 @@ public class PaymentService {
   public PaymentView create(CreatePaymentRequest request) {
     return idempotencyService.execute(request, () -> {
       long id = idGenerator.next("paymentOrder");
-      paymentMapper.insert(id, request.orderId(), request.userId(), request.amountCent(), PaymentStatus.UNPAID.name(),
+      paymentMapper.insert(id, request.orderId(), request.userId(), provider, merchantOrderNo(id), request.amountCent(), PaymentStatus.UNPAID.name(),
           LocalDateTime.now());
       return requirePayment(id);
     });
@@ -147,6 +147,8 @@ public class PaymentService {
     if (!amountMatches(payment.amountCent(), parameters.get("total_amount"))) {
       return false;
     }
+    paymentMapper.recordCallback(payment.payOrderId(), parameters.get("trade_no"), callbackDigest(parameters),
+        parameters.get("trade_status"), LocalDateTime.now());
     mockPay(payment.payOrderId());
     return true;
   }
@@ -238,6 +240,19 @@ public class PaymentService {
       return java.math.BigDecimal.valueOf(amountCent, 2).compareTo(new java.math.BigDecimal(callbackAmount)) == 0;
     } catch (NumberFormatException ex) {
       return false;
+    }
+  }
+
+  private String merchantOrderNo(long payOrderId) { return "MF" + payOrderId; }
+
+  private String callbackDigest(Map<String, String> parameters) {
+    try {
+      String canonical = parameters.entrySet().stream().sorted(Map.Entry.comparingByKey())
+          .map(entry -> entry.getKey() + "=" + entry.getValue()).collect(java.util.stream.Collectors.joining("&"));
+      return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+          .digest(canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    } catch (java.security.NoSuchAlgorithmException ex) {
+      throw new IllegalStateException(ex);
     }
   }
 

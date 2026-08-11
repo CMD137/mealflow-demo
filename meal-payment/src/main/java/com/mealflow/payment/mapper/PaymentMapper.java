@@ -17,11 +17,17 @@ public interface PaymentMapper {
   long maxPaymentOrderId();
 
   @Insert("""
-      INSERT INTO payment_order (id, order_id, user_id, amount_cent, status, create_time, update_time)
-      VALUES (#{id}, #{orderId}, #{userId}, #{amountCent}, #{status}, #{now}, #{now})
+      INSERT INTO payment_order (id, order_id, user_id, provider, merchant_order_no, amount_cent, status, create_time, update_time)
+      VALUES (#{id}, #{orderId}, #{userId}, #{provider}, #{merchantOrderNo}, #{amountCent}, #{status}, #{now}, #{now})
       """)
-  int insert(@Param("id") long id, @Param("orderId") long orderId, @Param("userId") long userId, @Param("amountCent") int amountCent,
+  int insert(@Param("id") long id, @Param("orderId") long orderId, @Param("userId") long userId,
+      @Param("provider") String provider, @Param("merchantOrderNo") String merchantOrderNo, @Param("amountCent") int amountCent,
       @Param("status") String status, @Param("now") LocalDateTime now);
+
+  @Update("UPDATE payment_order SET channel_transaction_no = #{channelTransactionNo}, callback_digest = #{callbackDigest}, callback_status = #{callbackStatus}, update_time = #{now} WHERE id = #{id}")
+  int recordCallback(@Param("id") long id, @Param("channelTransactionNo") String channelTransactionNo,
+      @Param("callbackDigest") String callbackDigest, @Param("callbackStatus") String callbackStatus,
+      @Param("now") LocalDateTime now);
 
   @Update("""
       UPDATE payment_order
