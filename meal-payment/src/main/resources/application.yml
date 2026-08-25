@@ -9,14 +9,9 @@ spring:
     hikari:
       maximum-pool-size: ${DB_POOL_MAX_SIZE:4}
       minimum-idle: ${DB_POOL_MIN_IDLE:1}
-  flyway:
-    enabled: true
-    table: flyway_schema_history_payment
-    baseline-on-migrate: true
-    baseline-version: 0
   sql:
     init:
-      mode: never
+      mode: always
   cloud:
     nacos:
       discovery:
@@ -48,4 +43,4 @@ mealflow:
       app-id: ${ALIPAY_APP_ID:}
       private-key: ${ALIPAY_PRIVATE_KEY:}
       public-key: ${ALIPAY_PUBLIC_KEY:}
-      notify-url: ${NGROK_URL:}/payments/alipay/callback
+      notify-url: ${ALIPAY_NOTIFY_URL:${NGROK_URL:}/payments/alipay/callback}

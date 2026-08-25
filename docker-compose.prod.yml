@@ -25,6 +25,8 @@ services:
       ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:?ALIPAY_PRIVATE_KEY is required in production}
       ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:?ALIPAY_PUBLIC_KEY is required in production}
       NGROK_URL: ${NGROK_URL:?NGROK_URL is required in production}
+      ALIPAY_NOTIFY_URL: https://${NGROK_URL:?NGROK_URL is required in production}/payments/alipay/callback
+    networks: [private, edge]
 
   meal-gateway:
     environment:
@@ -39,4 +41,4 @@ services:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?NGROK_AUTHTOKEN is required for alipay-sandbox}
     depends_on:
       - meal-gateway
-    networks: [private]
+    networks: [private, edge]
