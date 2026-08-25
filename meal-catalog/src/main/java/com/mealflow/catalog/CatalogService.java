@@ -16,9 +16,7 @@ import com.mealflow.catalog.mapper.StockReservationRow;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.StockReservationStatus;
-import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
-import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,19 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CatalogService {
   private final CatalogMapper catalogMapper;
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final CatalogDatabaseIdGenerator idGenerator;
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
 
-  public CatalogService(CatalogMapper catalogMapper) {
+  public CatalogService(CatalogMapper catalogMapper, CatalogDatabaseIdGenerator idGenerator) {
     this.catalogMapper = catalogMapper;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    ensureSkuColumns();
-    idGenerator.ensureAtLeast("stockReservation", catalogMapper.maxReservationId());
-    idGenerator.ensureAtLeast("sku", catalogMapper.maxSkuId());
-    idGenerator.ensureAtLeast("category", catalogMapper.maxCategoryId());
+    this.idGenerator = idGenerator;
   }
 
   public List<SkuView> listByMerchant(long merchantId) {
@@ -251,28 +242,6 @@ public class CatalogService {
 
   private String text(String value) {
     return value == null ? "" : value;
-  }
-
-  private void ensureSkuColumns() {
-    if (catalogMapper.countSkuColumn("category_id") == 0) {
-      catalogMapper.addSkuCategoryIdColumn();
-    }
-    if (catalogMapper.countSkuColumn("description") == 0) {
-      catalogMapper.addSkuDescriptionColumn();
-    }
-    if (catalogMapper.countSkuColumn("image_url") == 0) {
-      catalogMapper.addSkuImageUrlColumn();
-    }
-    if (catalogMapper.countSkuColumn("status") == 0) {
-      catalogMapper.addSkuStatusColumn();
-    }
-    if (catalogMapper.countSkuColumn("create_time") == 0) {
-      catalogMapper.addSkuCreateTimeColumn();
-    }
-    if (catalogMapper.countSkuColumn("update_time") == 0) {
-      catalogMapper.addSkuUpdateTimeColumn();
-    }
-    catalogMapper.hydrateSeedSkuMetadata();
   }
 
   private String statusName(int code) {

@@ -1,3 +1,15 @@
+CREATE TABLE IF NOT EXISTS business_sequence (
+  namespace VARCHAR(64) PRIMARY KEY,
+  next_value BIGINT NOT NULL
+);
+
+INSERT INTO business_sequence (namespace, next_value) VALUES ('category', 1000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('sku', 1000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('stockReservation', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+
 CREATE TABLE IF NOT EXISTS sku (
   id BIGINT PRIMARY KEY,
   merchant_id BIGINT NOT NULL,

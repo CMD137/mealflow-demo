@@ -13,58 +13,6 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface CatalogMapper {
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM stock_reservation")
-  long maxReservationId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM sku")
-  long maxSkuId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM category")
-  long maxCategoryId();
-
-  @Select("""
-      SELECT COUNT(*)
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE UPPER(TABLE_NAME) = UPPER('sku') AND UPPER(COLUMN_NAME) = UPPER(#{columnName})
-      """)
-  int countSkuColumn(String columnName);
-
-  @Update("ALTER TABLE sku ADD COLUMN category_id BIGINT NULL")
-  int addSkuCategoryIdColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN description VARCHAR(255) NOT NULL DEFAULT ''")
-  int addSkuDescriptionColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN image_url VARCHAR(255) NOT NULL DEFAULT ''")
-  int addSkuImageUrlColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'ON_SHELF'")
-  int addSkuStatusColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
-  int addSkuCreateTimeColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
-  int addSkuUpdateTimeColumn();
-
-  @Update("""
-      UPDATE sku
-      SET category_id = CASE
-            WHEN category_id IS NULL AND id IN (1, 2) THEN 1
-            WHEN category_id IS NULL AND id = 3 THEN 2
-            ELSE category_id
-          END,
-          description = CASE
-            WHEN description = '' AND id = 1 THEN '午高峰招牌牛肉饭'
-            WHEN description = '' AND id = 2 THEN '香煎鸡腿盖饭'
-            WHEN description = '' AND id = 3 THEN '冰爽柠檬茶'
-            ELSE description
-          END,
-          update_time = CURRENT_TIMESTAMP
-      WHERE merchant_id = 10 AND id IN (1, 2, 3)
-      """)
-  int hydrateSeedSkuMetadata();
-
   @Select("""
       SELECT s.id, s.merchant_id, s.category_id, c.name AS category_name, s.name, s.description,
              s.image_url, s.price_cent, s.stock, s.status
