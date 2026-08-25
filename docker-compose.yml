@@ -25,7 +25,6 @@ services:
       - ./meal-merchant/src/main/resources/data.sql:/docker-entrypoint-initdb.d/004-merchant-data.sql:ro
       - ./meal-cart/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/005-cart-schema.sql:ro
       - ./meal-fulfillment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/035-fulfillment-schema.sql:ro
-      - ./meal-notify/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/040-notify-schema.sql:ro
 
   redis:
     image: redis:7

@@ -52,19 +52,9 @@ public class NotifyService {
 
   @PostConstruct
   void initializeIdGenerator() {
-    ensureConsumerRecordPayloadColumns();
     idGenerator.ensureAtLeast("notifyMessage", notifyMapper.maxMessageId());
     idGenerator.ensureAtLeast("notifyDelivery", notifyMapper.maxDeliveryId());
     consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
-  }
-
-  private void ensureConsumerRecordPayloadColumns() {
-    if (consumerRecordMapper.countColumn("event_type") == 0) {
-      consumerRecordMapper.addEventTypeColumn();
-    }
-    if (consumerRecordMapper.countColumn("payload_json") == 0) {
-      consumerRecordMapper.addPayloadJsonColumn();
-    }
   }
 
   @Transactional

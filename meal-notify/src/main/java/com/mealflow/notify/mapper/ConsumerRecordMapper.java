@@ -21,19 +21,6 @@ public interface ConsumerRecordMapper extends PersistentConsumerRecordRepository
   @Select("SELECT COUNT(*) FROM consumer_record WHERE status = #{status}")
   long countByStatus(String status);
 
-  @Select("""
-      SELECT COUNT(*)
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_NAME = 'consumer_record' AND COLUMN_NAME = #{columnName}
-      """)
-  int countColumn(@Param("columnName") String columnName);
-
-  @Update("ALTER TABLE consumer_record ADD COLUMN event_type VARCHAR(128) NULL")
-  int addEventTypeColumn();
-
-  @Update("ALTER TABLE consumer_record ADD COLUMN payload_json TEXT NULL")
-  int addPayloadJsonColumn();
-
   @Override
   @Select("""
       SELECT status, event_type, payload_json, update_time
