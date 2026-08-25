@@ -90,14 +90,38 @@ mock/real 双模式；traceId 贯穿前端→网关→桥→Python→工具调�
 | 8 | 演示话术 | "我的订单到哪了" / "我排到第几了" 返回真实接口数据；FAQ 问题返回带引用答案 | ☐ |
 | 9 | 文档 | 本文档 + 根 README 启动顺序/mock-real 切换/双向 token 配置 | ☐ |
 
-## 6. 启动顺序（本地联调）
+## 6. 启动顺序
+
+### 方式一：全部进 Docker（推荐联调，网络走 compose 内部 DNS）
+
+```bash
+# 1) 构建并启动全部依赖与业务服务（或仅客服链路）
+docker compose up -d --build
+
+# 2) 配置 LLM / embedding（如未配置，工具查询仍可用，FAQ/RAG 回答会提示无法检索）
+#    export LLM_API_KEY=... EMBEDDING_API_KEY=...
+
+# 3) 双向内部 token（两端同值；默认 change-me 仅限本地）
+#    export AGENT_INTERNAL_TOKEN=... SUPPORT_INTERNAL_TOOL_TOKEN=...
+
+# 4) 前端
+.\start-frontend.cmd   # H5 -> 我的 -> 在线客服
+```
+
+网络拓扑：`meal-support-agent-runtime:8090` ↔ `meal-support:8111` 走 compose 私有网络；
+`meal-support` 通过 `AGENT_RUNTIME_BASE_URL`（默认容器服务名）访问 Python；
+Python 通过 `SUPPORT_BRIDGE_URL=http://meal-support:8111` 回访桥（唯一出口）。
+容器启动时自动构建 RAG 索引（无 embedding 配置时跳过并提示）。
+
+### 方式二：Python 本机跑（离线联调，与方案文档一致）
 
 1. 启动依赖：`docker compose up -d mysql redis`（如已有完整环境可跳过）。
-2. 启动 Java 桥（本机）：`mvn -o -pl meal-support -am spring-boot:run`（或 IDE），确保 8111。
-   - 若走 compose：`mvn -o -DskipTests package` 后 `docker compose up -d meal-support`，
-     Python 侧 `AGENT_RUNTIME_BASE_URL`/`SUPPORT_BRIDGE_URL` 用 `host.docker.internal`。
-3. 启动 Python：`cd meal-support-agent-runtime && python -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt && python scripts/build_local_rag_index.py && uvicorn app.main:app --port 8090`。
-4. 配置双向 token：两边 `AGENT_INTERNAL_TOKEN` 同值；`SUPPORT_INTERNAL_TOOL_TOKEN` 同值。
+2. 启动 Java 桥：本机 IDE 运行 meal-support（或 `mvn -o -pl meal-support -am spring-boot:run`），确保 8111。
+   - 若 Java 走 compose，则给 meal-support 传 `AGENT_RUNTIME_BASE_URL=http://host.docker.internal:8090`，
+     且本机 Python 需能访问容器内 8111（本机开发建议 Java 也本机跑）。
+3. 启动 Python：`cd meal-support-agent-runtime`，venv + `pip install -r requirements.txt`，
+   `python scripts/build_local_rag_index.py`，`uvicorn app.main:app --port 8090`。
+4. 配置双向 token：`AGENT_INTERNAL_TOKEN` 与 `SUPPORT_INTERNAL_TOOL_TOKEN` 两端同值。
 5. 前端：`.\start-frontend.cmd` 后访问 H5 → 我的 → 在线客服。
 
 ## 7. 已知说明

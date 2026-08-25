@@ -149,30 +149,29 @@ H5 SupportChatView → 网关 /api/support/** → meal-support (8111) → meal-s
   SSE 流式、Bearer 鉴权。
 - 完整实现说明与验收清单见 [docs/MealFlow-support-agent.md](docs/MealFlow-support-agent.md)。
 
-启动顺序（本地联调）：
+启动顺序（推荐全部进 Docker，网络走 compose 内部 DNS）：
 
 ```powershell
-# 1) 依赖（MySQL/Redis 等）
-docker compose up -d mysql redis
+# 1) 构建并启动全部（含 meal-support 与 meal-support-agent-runtime 两个新容器）
+docker compose up -d --build
 
-# 2) Java 桥（本机 IDE 运行 meal-support 或 mvn spring-boot:run，端口 8111）
-#    走 compose 时：mvn '-Dmaven.repo.local=.m2repo' -q -DskipTests package && docker compose up -d meal-support
+# 2) 需要 LLM/RAG 时注入密钥（不配置则工具查询仍可用，FAQ 回答提示无法检索）
+$env:LLM_API_KEY='...'; $env:EMBEDDING_API_KEY='...'
 
-# 3) Python 运行时（8090）
-cd meal-support-agent-runtime
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env.local   # 填 LLM/embedding 密钥与双向 token
-python scripts\build_local_rag_index.py
-uvicorn app.main:app --port 8090
+# 3) 双向内部 token（两端同值；默认 change-me 仅限本地）
+$env:AGENT_INTERNAL_TOKEN='...'; $env:SUPPORT_INTERNAL_TOOL_TOKEN='...'
 
 # 4) 前端
 .\start-frontend.cmd
 ```
 
-双向内部 token（A4）：Java 侧 `SUPPORT_INTERNAL_TOOL_TOKEN` / Python 侧 `AGENT_INTERNAL_TOKEN`、
-`SUPPORT_INTERNAL_TOKEN` 配置同值；未配置时安全策略会拒绝调用（fail-closed）。
+- 容器内网络：`meal-support-agent-runtime:8090` ↔ `meal-support:8111` 互访；
+  Python 唯一出口为 `SUPPORT_BRIDGE_URL=http://meal-support:8111/internal/support/tools/invoke`。
+- 若要在本机跑 Python（离线联调），见 [docs/MealFlow-support-agent.md](docs/MealFlow-support-agent.md) 方式二。
+
+双向内部 token（A4）：Java 侧 `SUPPORT_INTERNAL_TOOL_TOKEN` / `AGENT_RUNTIME_INTERNAL_TOKEN`、
+Python 侧 `AGENT_INTERNAL_TOKEN` / `SUPPORT_INTERNAL_TOOL_TOKEN` 配置同值；
+未配置时安全策略会拒绝调用（fail-closed）。
 
 ## 环境和密钥
 

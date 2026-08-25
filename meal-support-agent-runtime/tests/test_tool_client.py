@@ -30,7 +30,9 @@ class _Transport(httpx.MockTransport):
 
 
 def test_invoke_forwards_token_and_parses_result():
-    settings = Settings(support_bridge_url="http://bridge", support_internal_token="tool-secret")
+    settings = Settings(
+        support_bridge_url="http://bridge", support_internal_tool_token="tool-secret"
+    )
     client = SupportToolClient(settings)
     client._http = httpx.Client(transport=_Transport(), base_url="http://bridge")
     context = AgentRunContext(session_id="s1", user_id=1, role="CUSTOMER", trace_id="t1")
@@ -41,7 +43,7 @@ def test_invoke_forwards_token_and_parses_result():
 
 
 def test_invoke_fails_closed_without_token():
-    settings = Settings(support_bridge_url="http://bridge", support_internal_token="")
+    settings = Settings(support_bridge_url="http://bridge", support_internal_tool_token="")
     client = SupportToolClient(settings)
     context = AgentRunContext(session_id="s1", user_id=1, role="CUSTOMER", trace_id="t1")
     result = client.invoke(context, "get_user_orders", {})

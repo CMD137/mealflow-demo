@@ -12,6 +12,22 @@ MealFlow 智能客服 Agent 运行时（Python FastAPI，端口 8090）。
 
 ## 启动
 
+### 方式一：全部进 Docker（推荐联调，网络走 compose 内部 DNS）
+
+`meal-support` 与 `meal-support-agent-runtime` 都在 `docker-compose.yml` 中：
+
+- `meal-support` 通过 `AGENT_RUNTIME_BASE_URL=http://meal-support-agent-runtime:8090` 访问 Python；
+- Python 通过 `SUPPORT_BRIDGE_URL=http://meal-support:8111` 访问 Java 桥（唯一出口）；
+- 双向 token 由顶层变量 `AGENT_INTERNAL_TOKEN` / `SUPPORT_INTERNAL_TOOL_TOKEN` 注入（两端同值）。
+
+```bash
+docker compose up -d --build meal-support-agent-runtime meal-support
+# 需要 LLM/embedding 时：
+#   export LLM_API_KEY=... EMBEDDING_API_KEY=... 后再 up
+```
+
+### 方式二：Python 本机跑（venv + uvicorn，离线联调）
+
 ```bash
 python -m venv .venv
 # Windows: .venv\Scripts\activate
@@ -23,6 +39,10 @@ python scripts/build_local_rag_index.py   # 构建知识库索引（A5）
 uvicorn app.main:app --port 8090
 ```
 
+此时 Java 桥需能访问 `localhost:8090`：若 Java 也在本机跑（IDE）则直接通；
+若 Java 在容器，给 `meal-support` 传 `AGENT_RUNTIME_BASE_URL=http://host.docker.internal:8090`，
+并让 Python 可访问容器内的桥（本机开发建议 Java 也在本机跑，或临时发布 8111 端口）。
+
 ## 环境变量（见 .env.example）
 
 | 变量 | 说明 |
@@ -31,9 +51,9 @@ uvicorn app.main:app --port 8090
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` | embedding |
 | `REDIS_URL` | 复用 MealFlow 现有 Redis |
 | `HISTORY_MAX_TURNS` | A3 历史窗口（默认 10） |
-| `SUPPORT_BRIDGE_URL` | Java 桥地址（默认 http://localhost:8111） |
+| `SUPPORT_BRIDGE_URL` | Java 桥地址（compose 内为 http://meal-support:8111；本机为 http://localhost:8111） |
 | `AGENT_INTERNAL_TOKEN` | Java 桥 → Python 入站校验（A4，未配置时 /agent/* 返回 503） |
-| `SUPPORT_INTERNAL_TOKEN` | Python → Java 出站校验（A4，与 Java 侧 `SUPPORT_INTERNAL_TOOL_TOKEN` 同值） |
+| `SUPPORT_INTERNAL_TOOL_TOKEN` | Python → Java 出站校验（A4，与 Java 侧 `SUPPORT_INTERNAL_TOOL_TOKEN` 同值） |
 
 ## 测试
 

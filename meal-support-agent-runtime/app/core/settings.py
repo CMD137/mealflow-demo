@@ -39,9 +39,9 @@ class Settings(BaseSettings):
 
     # A4: bidirectional internal tokens
     #   agent_internal_token: Java bridge -> Python (/agent/*) inbound validation
-    #   support_internal_token: Python -> Java (/internal/support/tools/invoke)
+    #   support_internal_tool_token: Python -> Java (/internal/support/tools/invoke)
     agent_internal_token: str = ""
-    support_internal_token: str = "change-me"
+    support_internal_tool_token: str = "change-me"
 
     # SSE
     sse_ping_seconds: int = 15

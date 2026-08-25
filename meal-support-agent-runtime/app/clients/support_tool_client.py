@@ -21,14 +21,14 @@ class SupportToolClient:
         self._http.close()
 
     def invoke(self, context: AgentRunContext, tool_name: str, arguments: dict | None = None) -> dict:
-        token = self.settings.support_internal_token
+        token = self.settings.support_internal_tool_token
         if not token:
             return {
                 "success": False,
                 "tool": tool_name,
                 "data": None,
                 "errorCode": "CONFIG",
-                "errorMessage": "support_internal_token is not configured",
+                "errorMessage": "support_internal_tool_token is not configured",
             }
         headers = {"X-Internal-Token": token}
         payload = {

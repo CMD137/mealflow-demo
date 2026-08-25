@@ -350,10 +350,40 @@ services:
       MEAL_CATALOG_URI: http://meal-catalog:8103
       SUPPORT_TOOL_CLIENT_MODE: ${SUPPORT_TOOL_CLIENT_MODE:-mock}
       SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:-change-me}
-      AGENT_RUNTIME_BASE_URL: ${AGENT_RUNTIME_BASE_URL:-http://host.docker.internal:8090}
+      AGENT_RUNTIME_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-change-me}
+      # Default: the agent runtime runs in the same compose network.
+      # For local-dev (Python on host) override with AGENT_RUNTIME_BASE_URL=http://host.docker.internal:8090.
+      AGENT_RUNTIME_BASE_URL: ${AGENT_RUNTIME_BASE_URL:-http://meal-support-agent-runtime:8090}
     volumes:
       - ./meal-support/target/meal-support-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
+    networks: [private]
+
+  meal-support-agent-runtime:
+    build: ./meal-support-agent-runtime
+    image: mealflow-support-agent-runtime:0.1.0
+    container_name: mealflow-support-agent-runtime
+    depends_on:
+      redis:
+        condition: service_started
+      meal-support:
+        condition: service_started
+    environment:
+      # The Java bridge is the ONLY outbound exit; both directions use compose DNS names.
+      SUPPORT_BRIDGE_URL: http://meal-support:8111
+      REDIS_URL: redis://redis:6379/0
+      # A4: shared internal tokens - must equal the meal-support side values.
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-change-me}
+      SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:-change-me}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      HISTORY_MAX_TURNS: ${HISTORY_MAX_TURNS:-10}
+      KNOWLEDGE_DIR: /app/knowledge
+      CHROMA_DIR: /app/knowledge/chroma
     networks: [private]
 
   meal-gateway:
