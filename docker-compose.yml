@@ -21,11 +21,9 @@ services:
       retries: 20
       start_period: 20s
     volumes:
-      - ./meal-auth-user/src/main/resources/data.sql:/docker-entrypoint-initdb.d/002-auth-user-data.sql:ro
       - ./meal-merchant/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/003-merchant-schema.sql:ro
       - ./meal-merchant/src/main/resources/data.sql:/docker-entrypoint-initdb.d/004-merchant-data.sql:ro
       - ./meal-cart/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/005-cart-schema.sql:ro
-      - ./meal-catalog/src/main/resources/data.sql:/docker-entrypoint-initdb.d/011-catalog-data.sql:ro
       - ./meal-fulfillment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/035-fulfillment-schema.sql:ro
       - ./meal-notify/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/040-notify-schema.sql:ro
 
