@@ -6,25 +6,20 @@ import com.mealflow.cart.mapper.CartItemRow;
 import com.mealflow.cart.mapper.CartMapper;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
-import com.mealflow.infra.id.IdGenerator;
-import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CartService {
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final CartDatabaseIdGenerator idGenerator;
   private final CartMapper cartMapper;
 
-  public CartService(CartMapper cartMapper) {
+  public CartService(CartMapper cartMapper, CartDatabaseIdGenerator idGenerator) {
     this.cartMapper = cartMapper;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    idGenerator.ensureAtLeast("cartItem", cartMapper.maxCartItemId());
+    this.idGenerator = idGenerator;
   }
 
   @Transactional
@@ -34,9 +29,16 @@ public class CartService {
       cartMapper.increaseQuantity(existing.getId(), request.quantity(), LocalDateTime.now());
       return view(cartMapper.findById(existing.getId()));
     }
-    long id = idGenerator.next("cartItem");
-    cartMapper.insert(id, userId, request.merchantId(), request.skuId(), request.quantity(), true,
-        LocalDateTime.now());
+    long id = idGenerator.next();
+    try {
+      cartMapper.insert(id, userId, request.merchantId(), request.skuId(), request.quantity(), true,
+          LocalDateTime.now());
+    } catch (DuplicateKeyException duplicate) {
+      CartItemRow concurrent = cartMapper.findByUserSku(userId, request.skuId());
+      if (concurrent == null) throw duplicate;
+      cartMapper.increaseQuantity(concurrent.getId(), request.quantity(), LocalDateTime.now());
+      return view(cartMapper.findById(concurrent.getId()));
+    }
     return view(cartMapper.findById(id));
   }
 

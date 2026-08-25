@@ -1,3 +1,10 @@
+CREATE TABLE IF NOT EXISTS business_sequence (
+  namespace VARCHAR(64) PRIMARY KEY,
+  next_value BIGINT NOT NULL
+);
+INSERT INTO business_sequence (namespace, next_value) VALUES ('cartItem', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+
 CREATE TABLE IF NOT EXISTS cart_item (
   id BIGINT PRIMARY KEY,
   user_id BIGINT NOT NULL,
