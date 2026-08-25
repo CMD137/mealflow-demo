@@ -28,6 +28,7 @@ function logout() {
       <RouterLink to="/vouchers">优惠券<span>›</span></RouterLink>
       <RouterLink to="/sign">每日签到<span>›</span></RouterLink>
       <RouterLink to="/messages">通知消息<span>›</span></RouterLink>
+      <RouterLink to="/support">在线客服<span>›</span></RouterLink>
     </div>
 
     <button class="danger-button logout" @click="logout">退出登录</button>

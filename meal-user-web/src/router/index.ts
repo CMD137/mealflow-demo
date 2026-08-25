@@ -15,6 +15,7 @@ const router = createRouter({
     { path: '/vouchers', component: () => import('@/views/VouchersView.vue') },
     { path: '/sign', component: () => import('@/views/SignView.vue') },
     { path: '/messages', component: () => import('@/views/MessagesView.vue') },
+    { path: '/support', component: () => import('@/views/SupportChatView.vue') },
     { path: '/mine', component: () => import('@/views/MineView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]

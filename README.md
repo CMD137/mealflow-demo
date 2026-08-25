@@ -22,6 +22,9 @@ MealFlow 是一个面向外卖点餐、午晚高峰排队和商家履约的微�
 - 出餐释放产能后自动将等待中的 ticket 转为正式订单。
 - 后台员工、角色、权限菜单。
 - Outbox、consumer record、事件重放、通知投递记录。
+- 智能客服 Agent（可选模块）：Java 桥 `meal-support` + Python 运行时 `meal-support-agent-runtime`，
+  支持 RAG 检索增强（结构化引用）、Redis 多轮记忆与历史窗口、OpenAI 兼容工具调用、
+  SSE 流式输出、双向内部 token、mock/real 双模式。
 - Prometheus 指标和 Grafana 基础面板。
 
 ## 后端启动
@@ -130,6 +133,46 @@ powershell.exe -ExecutionPolicy Bypass -File scripts/e2e-smoke.ps1 -BaseUrl http
 - [docs/MealFlow-operation-flows.md](docs/MealFlow-operation-flows.md)：按功能拆分的完整操作链路联调手册。
 - [docs/MealFlow-storage-config.md](docs/MealFlow-storage-config.md)：上传与存储配置。
 - [docs/MealFlow-api-events.md](docs/MealFlow-api-events.md)：API 和事件契约。
+
+## 智能客服 Agent（可选模块）
+
+入口：用户端 H5"我的 → 在线客服"（或直接访问 `/support`）。链路：
+
+```
+H5 SupportChatView → 网关 /api/support/** → meal-support (8111) → meal-support-agent-runtime (8090)
+                                                └── Python 唯一出口 /internal/support/tools/invoke（只读查询）
+```
+
+- Java 桥 `meal-support`：会话（服务端内存 + TTL）、chat/SSE 流式、9 个只读工具（mock/real 双模式）、
+  问答日志 `meal_support_qa_log`、双向内部 token。
+- Python 运行时：ReAct 工具调用（OpenAI 兼容）、RAG（Chroma + 结构化引用）、Redis 多轮记忆 + 历史窗口、
+  SSE 流式、Bearer 鉴权。
+- 完整实现说明与验收清单见 [docs/MealFlow-support-agent.md](docs/MealFlow-support-agent.md)。
+
+启动顺序（本地联调）：
+
+```powershell
+# 1) 依赖（MySQL/Redis 等）
+docker compose up -d mysql redis
+
+# 2) Java 桥（本机 IDE 运行 meal-support 或 mvn spring-boot:run，端口 8111）
+#    走 compose 时：mvn '-Dmaven.repo.local=.m2repo' -q -DskipTests package && docker compose up -d meal-support
+
+# 3) Python 运行时（8090）
+cd meal-support-agent-runtime
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env.local   # 填 LLM/embedding 密钥与双向 token
+python scripts\build_local_rag_index.py
+uvicorn app.main:app --port 8090
+
+# 4) 前端
+.\start-frontend.cmd
+```
+
+双向内部 token（A4）：Java 侧 `SUPPORT_INTERNAL_TOOL_TOKEN` / Python 侧 `AGENT_INTERNAL_TOKEN`、
+`SUPPORT_INTERNAL_TOKEN` 配置同值；未配置时安全策略会拒绝调用（fail-closed）。
 
 ## 环境和密钥
 
