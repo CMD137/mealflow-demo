@@ -295,18 +295,29 @@ public class OrderService {
 
   private synchronized OrderRecord createOrder(long userId, long merchantId, Long ticketId, long capacityTokenId,
       QueueClient.QueueTicketSnapshot snapshot) {
-      long orderId = idGenerator.next("order");
-      PaymentClient.PaymentView payment = paymentClient.create(new PaymentClient.CreatePaymentRequest(
+    long orderId = idGenerator.next("order");
+    PaymentClient.PaymentView payment = paymentClient.create(new PaymentClient.CreatePaymentRequest(
         "payment-create:" + orderId, orderId, userId, snapshot.totalAmount()));
     List<OrderItemSnapshot> items = snapshot.items().stream().map(this::toOrderItemSnapshot).toList();
     OrderRecord order = new OrderRecord(orderId, userId, merchantId, OrderStatus.PENDING_PAYMENT, ticketId,
         capacityTokenId, payment.payOrderId(), snapshot.reservationIds(), snapshot.voucherLockId(), items,
         snapshot.totalAmount());
     LocalDateTime now = LocalDateTime.now();
-    orderMapper.insert(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
-        order.capacityTokenId, order.payOrderId, toJson(order.reservationIds), order.voucherLockId,
-        toJson(order.items), order.amountCent, now);
-    queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
+    try {
+      orderMapper.insert(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
+          order.capacityTokenId, order.payOrderId, toJson(order.reservationIds), order.voucherLockId,
+          toJson(order.items), order.amountCent, now);
+      queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
+    } catch (RuntimeException failure) {
+      // The payment service is outside this transaction; close it before the local order insert rolls back.
+      try {
+        paymentClient.close(payment.payOrderId(), new PaymentClient.ClosePaymentRequest(
+            "payment-close-orphan:" + orderId, "ORDER_CREATE_FAILED"));
+      } catch (RuntimeException closeFailure) {
+        failure.addSuppressed(closeFailure);
+      }
+      throw failure;
+    }
     appendOrderEvent("OrderCreated", order);
     return order;
   }
