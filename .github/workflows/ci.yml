@@ -33,3 +33,18 @@ jobs:
       - name: Build frontend
         working-directory: ${{ matrix.app }}
         run: npm run build
+
+  agent-runtime:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: meal-support-agent-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run agent runtime tests
+        run: pytest tests/ -q
