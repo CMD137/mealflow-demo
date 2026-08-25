@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS payment_order (
+CREATE TABLE payment_order (
   id BIGINT PRIMARY KEY,
   order_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS payment_order (
   UNIQUE KEY uk_payment_order_merchant_order_no (merchant_order_no)
 );
 
-CREATE TABLE IF NOT EXISTS payment_idempotency_record (
+CREATE TABLE payment_idempotency_record (
   subject VARCHAR(128) NOT NULL,
   idempotency_key VARCHAR(128) NOT NULL,
   request_hash CHAR(64) NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS payment_idempotency_record (
   INDEX idx_payment_idempotency_lease (lease_expire_time)
 );
 
-CREATE TABLE IF NOT EXISTS payment_local_event (
+CREATE TABLE payment_local_event (
   id BIGINT PRIMARY KEY,
   event_key VARCHAR(256) NOT NULL,
   event_type VARCHAR(128) NOT NULL,
