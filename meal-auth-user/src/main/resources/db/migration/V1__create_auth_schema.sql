@@ -1,3 +1,15 @@
+CREATE TABLE IF NOT EXISTS business_sequence (
+  namespace VARCHAR(64) PRIMARY KEY,
+  next_value BIGINT NOT NULL
+);
+
+INSERT INTO business_sequence (namespace, next_value) VALUES ('userAccount', 1000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('userAddress', 1000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('merchantEmployee', 1000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+
 CREATE TABLE IF NOT EXISTS user_account (
   id BIGINT PRIMARY KEY,
   phone VARCHAR(32) NOT NULL,

@@ -14,32 +14,6 @@ import org.apache.ibatis.annotations.Delete;
 
 @Mapper
 public interface AuthUserMapper {
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM user_account")
-  long maxUserId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM user_address")
-  long maxAddressId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM merchant_employee")
-  long maxEmployeeId();
-
-  @Select("""
-      SELECT COUNT(*)
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE UPPER(TABLE_NAME) = UPPER('user_address') AND UPPER(COLUMN_NAME) = UPPER(#{columnName})
-      """)
-  int countAddressColumn(String columnName);
-
-  @Update("ALTER TABLE user_address ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT FALSE")
-  int addAddressDefaultColumn();
-
-  @Update("""
-      UPDATE user_address
-      SET is_default = TRUE, update_time = CURRENT_TIMESTAMP
-      WHERE id IN (20, 21) AND is_default = FALSE
-      """)
-  int hydrateSeedDefaultAddresses();
-
   @Select("SELECT id, phone, nickname, status FROM user_account WHERE id = #{id}")
   @Results(id = "userMap", value = {
       @Result(column = "id", property = "id"),

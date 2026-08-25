@@ -24,8 +24,6 @@ import com.mealflow.authuser.otp.OtpPort;
 import com.mealflow.authuser.security.SessionTokenHasher;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
-import com.mealflow.infra.id.IdGenerator;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -47,26 +45,19 @@ public class AuthUserService {
   private static final String SIGN_DAYS_SUFFIX = ":days";
   private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final AuthDatabaseIdGenerator idGenerator;
   private final AuthUserMapper authUserMapper;
   private final StringRedisTemplate redisTemplate;
   private final OtpPort otpPort;
   private final SessionTokenHasher sessionTokenHasher;
 
   public AuthUserService(AuthUserMapper authUserMapper, StringRedisTemplate redisTemplate, OtpPort otpPort,
-      SessionTokenHasher sessionTokenHasher) {
+      SessionTokenHasher sessionTokenHasher, AuthDatabaseIdGenerator idGenerator) {
     this.authUserMapper = authUserMapper;
     this.redisTemplate = redisTemplate;
     this.otpPort = otpPort;
     this.sessionTokenHasher = sessionTokenHasher;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    ensureAddressDefaultColumn();
-    idGenerator.ensureAtLeast("userAccount", authUserMapper.maxUserId());
-    idGenerator.ensureAtLeast("userAddress", authUserMapper.maxAddressId());
-    idGenerator.ensureAtLeast("merchantEmployee", authUserMapper.maxEmployeeId());
+    this.idGenerator = idGenerator;
   }
 
   @Transactional
@@ -394,10 +385,4 @@ public class AuthUserService {
     return employee;
   }
 
-  private void ensureAddressDefaultColumn() {
-    if (authUserMapper.countAddressColumn("is_default") == 0) {
-      authUserMapper.addAddressDefaultColumn();
-    }
-    authUserMapper.hydrateSeedDefaultAddresses();
-  }
 }

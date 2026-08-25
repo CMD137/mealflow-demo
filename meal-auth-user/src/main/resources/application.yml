@@ -13,9 +13,13 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
   sql:
     init:
-      mode: always
+      mode: never
   cloud:
     nacos:
       discovery:
