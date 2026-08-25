@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS voucher (
+CREATE TABLE voucher (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(128) NOT NULL DEFAULT '',
   type VARCHAR(32) NOT NULL DEFAULT 'SECKILL',
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS voucher (
   INDEX idx_voucher_status (status)
 );
 
-CREATE TABLE IF NOT EXISTS user_voucher (
+CREATE TABLE user_voucher (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL,
   voucher_id BIGINT NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS user_voucher (
   INDEX idx_user_voucher_status (status)
 );
 
-CREATE TABLE IF NOT EXISTS voucher_claim (
+CREATE TABLE voucher_claim (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   event_key VARCHAR(256) NOT NULL,
   user_id BIGINT NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS voucher_claim (
   INDEX idx_voucher_claim_status (status)
 );
 
-CREATE TABLE IF NOT EXISTS voucher_claim_retry (
+CREATE TABLE voucher_claim_retry (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   event_key VARCHAR(256) NOT NULL,
   user_id BIGINT NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS voucher_claim_retry (
   INDEX idx_voucher_claim_retry_status_time (status, next_retry_time)
 );
 
-CREATE TABLE IF NOT EXISTS voucher_lock (
+CREATE TABLE voucher_lock (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_voucher_id BIGINT NOT NULL,
   status VARCHAR(32) NOT NULL,
