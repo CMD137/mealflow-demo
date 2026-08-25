@@ -15,6 +15,7 @@ spring:
       minimum-idle: ${DB_POOL_MIN_IDLE:1}
   flyway:
     enabled: true
+    table: flyway_schema_history_catalog
     baseline-on-migrate: true
     baseline-version: 0
   sql:
