@@ -13,9 +13,6 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface LocalEventMapper {
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM payment_local_event")
-  long maxEventId();
-
   @Select("SELECT COUNT(*) FROM payment_local_event WHERE status = #{status}")
   long countByStatus(String status);
 

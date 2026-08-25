@@ -7,7 +7,6 @@ import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.PaymentStatus;
 import com.mealflow.infra.event.EventKey;
-import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.LocalEventView;
 import com.mealflow.payment.api.PaymentView;
@@ -18,7 +17,6 @@ import com.mealflow.payment.mapper.PaymentOrderRow;
 import com.mealflow.payment.outbox.OutboxEventPublisher;
 import com.mealflow.payment.provider.PaymentProviderPort;
 import com.mealflow.payment.api.PaymentCheckoutView;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,7 +30,7 @@ public class PaymentService {
   private final Duration outboxLease;
   private final int outboxMaxAttempts;
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final PaymentDatabaseIdGenerator idGenerator;
   private final PaymentIdempotencyService idempotencyService;
   private final PaymentMapper paymentMapper;
   private final LocalEventMapper localEventMapper;
@@ -46,7 +44,7 @@ public class PaymentService {
       @org.springframework.beans.factory.annotation.Value("${mealflow.payment.provider:mock-wechat}") String provider,
       @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.lease-seconds:60}") long outboxLeaseSeconds,
       @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.max-attempts:5}") int outboxMaxAttempts,
-      PaymentIdempotencyService idempotencyService) {
+      PaymentIdempotencyService idempotencyService, PaymentDatabaseIdGenerator idGenerator) {
     this.paymentMapper = paymentMapper;
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
@@ -57,12 +55,7 @@ public class PaymentService {
     this.outboxLease = Duration.ofSeconds(outboxLeaseSeconds);
     this.outboxMaxAttempts = outboxMaxAttempts;
     this.idempotencyService = idempotencyService;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    idGenerator.ensureAtLeast("paymentOrder", paymentMapper.maxPaymentOrderId());
-    idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
+    this.idGenerator = idGenerator;
   }
 
   @Transactional
@@ -201,7 +194,7 @@ public class PaymentService {
   private void appendPaymentPaidEvent(PaymentView payment) {
     String eventType = "PaymentPaid";
     int version = 1;
-    localEventMapper.insert(idGenerator.next("localEvent"),
+    localEventMapper.insert(idGenerator.next("paymentLocalEvent"),
         EventKey.of("payment", eventType, payment.payOrderId(), version),
         eventType,
         version,
