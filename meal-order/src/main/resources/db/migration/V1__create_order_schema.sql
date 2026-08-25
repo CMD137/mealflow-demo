@@ -6,6 +6,9 @@ CREATE TABLE IF NOT EXISTS business_sequence (
 INSERT INTO business_sequence (namespace, next_value) VALUES ('order', 10000)
 ON DUPLICATE KEY UPDATE next_value = next_value;
 
+INSERT INTO business_sequence (namespace, next_value) VALUES ('order_local_event', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+
 CREATE TABLE IF NOT EXISTS idempotency_record (
   subject VARCHAR(128) NOT NULL,
   idempotency_key VARCHAR(128) NOT NULL,
@@ -18,8 +21,6 @@ CREATE TABLE IF NOT EXISTS idempotency_record (
   PRIMARY KEY (subject, idempotency_key),
   INDEX idx_idempotency_expire (lease_expire_time)
 );
-INSERT INTO business_sequence (namespace, next_value) VALUES ('order_local_event', 10000)
-ON DUPLICATE KEY UPDATE next_value = next_value;
 
 CREATE TABLE IF NOT EXISTS customer_order (
   id BIGINT PRIMARY KEY,
