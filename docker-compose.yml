@@ -21,11 +21,7 @@ services:
       retries: 20
       start_period: 20s
     volumes:
-      - ./meal-merchant/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/003-merchant-schema.sql:ro
-      - ./meal-merchant/src/main/resources/data.sql:/docker-entrypoint-initdb.d/004-merchant-data.sql:ro
-      - ./meal-cart/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/005-cart-schema.sql:ro
-      - ./meal-fulfillment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/035-fulfillment-schema.sql:ro
-
+      - mysql-data:/var/lib/mysql
   redis:
     image: redis:7
     container_name: mealflow-redis
@@ -268,6 +264,7 @@ services:
       OUTBOX_TOPIC: mealflow-payment-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
       ROCKETMQ_PRODUCER_GROUP: mealflow-payment-producer
+      TZ: Asia/Shanghai
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -401,6 +398,8 @@ services:
     networks: [private]
 
 volumes:
+  mysql-data:
+    name: mealflow-mysql-data
   redis-data:
 
 networks:

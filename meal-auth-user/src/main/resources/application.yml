@@ -13,14 +13,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-  flyway:
-    enabled: true
-    table: flyway_schema_history_auth
-    baseline-on-migrate: true
-    baseline-version: 0
   sql:
     init:
-      mode: never
+      mode: always
   cloud:
     nacos:
       discovery:

@@ -55,3 +55,10 @@ CREATE TABLE IF NOT EXISTS stock_reservation (
   KEY idx_order_id(order_id),
   KEY idx_status_expire(status, expire_time)
 );
+
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 1000) FROM category)
+WHERE namespace = 'category' AND next_value < (SELECT COALESCE(MAX(id), 1000) FROM category);
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 1000) FROM sku)
+WHERE namespace = 'sku' AND next_value < (SELECT COALESCE(MAX(id), 1000) FROM sku);
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 10000) FROM stock_reservation)
+WHERE namespace = 'stockReservation' AND next_value < (SELECT COALESCE(MAX(id), 10000) FROM stock_reservation);

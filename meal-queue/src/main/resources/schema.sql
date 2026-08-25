@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS capacity_token (
   status VARCHAR(32) NOT NULL,
   expire_time TIMESTAMP NOT NULL,
   release_reason VARCHAR(128) NULL,
+  released_ticket_id BIGINT NULL,
+  released_capacity_token_id BIGINT NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   UNIQUE KEY uk_capacity_token_request (request_id),
@@ -54,3 +56,8 @@ CREATE TABLE IF NOT EXISTS merchant_queue_limit (
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL
 );
+
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 10000) FROM queue_ticket)
+WHERE namespace = 'queueTicket' AND next_value < (SELECT COALESCE(MAX(id), 10000) FROM queue_ticket);
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 10000) FROM capacity_token)
+WHERE namespace = 'capacityToken' AND next_value < (SELECT COALESCE(MAX(id), 10000) FROM capacity_token);

@@ -17,3 +17,6 @@ CREATE TABLE IF NOT EXISTS cart_item (
   UNIQUE KEY uk_cart_user_sku (user_id, sku_id),
   INDEX idx_cart_user_id (user_id)
 );
+
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 10000) FROM cart_item)
+WHERE namespace = 'cartItem' AND next_value < (SELECT COALESCE(MAX(id), 10000) FROM cart_item);

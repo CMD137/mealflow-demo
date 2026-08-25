@@ -88,3 +88,10 @@ CREATE TABLE IF NOT EXISTS role_permission (
   create_time TIMESTAMP NOT NULL,
   PRIMARY KEY (role_code, permission_code)
 );
+
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 1000) FROM user_account)
+WHERE namespace = 'userAccount' AND next_value < (SELECT COALESCE(MAX(id), 1000) FROM user_account);
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 1000) FROM user_address)
+WHERE namespace = 'userAddress' AND next_value < (SELECT COALESCE(MAX(id), 1000) FROM user_address);
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 1000) FROM merchant_employee)
+WHERE namespace = 'merchantEmployee' AND next_value < (SELECT COALESCE(MAX(id), 1000) FROM merchant_employee);

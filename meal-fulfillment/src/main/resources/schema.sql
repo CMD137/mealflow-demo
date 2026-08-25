@@ -52,3 +52,8 @@ CREATE TABLE IF NOT EXISTS fulfillment_meal_ready_task (
   update_time TIMESTAMP NOT NULL,
   INDEX idx_fulfillment_task_dispatch (status, next_retry_time)
 );
+
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 10000) FROM fulfillment_operation_log)
+WHERE namespace = 'fulfillmentOperation' AND next_value < (SELECT COALESCE(MAX(id), 10000) FROM fulfillment_operation_log);
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 10000) FROM fulfillment_local_event)
+WHERE namespace = 'fulfillmentLocalEvent' AND next_value < (SELECT COALESCE(MAX(id), 10000) FROM fulfillment_local_event);
