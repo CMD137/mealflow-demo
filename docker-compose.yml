@@ -29,10 +29,6 @@ services:
       - ./meal-catalog/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/010-catalog-schema.sql:ro
       - ./meal-catalog/src/main/resources/data.sql:/docker-entrypoint-initdb.d/011-catalog-data.sql:ro
       - ./meal-queue/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/020-queue-schema.sql:ro
-      - ./meal-order/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/025-order-schema.sql:ro
-      - ./meal-promotion/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/026-promotion-schema.sql:ro
-      - ./meal-promotion/src/main/resources/data.sql:/docker-entrypoint-initdb.d/027-promotion-data.sql:ro
-      - ./meal-payment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/030-payment-schema.sql:ro
       - ./meal-fulfillment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/035-fulfillment-schema.sql:ro
       - ./meal-notify/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/040-notify-schema.sql:ro
 
