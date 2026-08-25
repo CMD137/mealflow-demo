@@ -107,6 +107,7 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
         || path.equals("/auth/ping")
         || path.equals("/actuator/health")
         || (HttpMethod.GET.equals(method) && path.endsWith("/ping"))
+        || path.equals("/api/support/ping")
         || (HttpMethod.GET.equals(method) && isPublicCatalogPath(path));
   }
 

@@ -18,5 +18,6 @@ scrape_configs:
           - meal-payment:8108
           - meal-fulfillment:8109
           - meal-notify:8110
+          - meal-support:8111
         labels:
           system: mealflow

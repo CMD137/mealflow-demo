@@ -327,6 +327,35 @@ services:
     command: ["java", "-jar", "/app/app.jar"]
     networks: [private]
 
+  meal-support:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-support
+    depends_on:
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+      SUPPORT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      SUPPORT_DB_USERNAME: root
+      SUPPORT_DB_PASSWORD: mealflow
+      SUPPORT_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      MEAL_ORDER_URI: http://meal-order:8105
+      MEAL_QUEUE_URI: http://meal-queue:8106
+      MEAL_PROMOTION_URI: http://meal-promotion:8107
+      MEAL_NOTIFY_URI: http://meal-notify:8110
+      MEAL_MERCHANT_URI: http://meal-merchant:8102
+      MEAL_CATALOG_URI: http://meal-catalog:8103
+      SUPPORT_TOOL_CLIENT_MODE: ${SUPPORT_TOOL_CLIENT_MODE:-mock}
+      SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:-change-me}
+      AGENT_RUNTIME_BASE_URL: ${AGENT_RUNTIME_BASE_URL:-http://host.docker.internal:8090}
+    volumes:
+      - ./meal-support/target/meal-support-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    networks: [private]
+
   meal-gateway:
     image: eclipse-temurin:17-jre
     container_name: mealflow-gateway
@@ -341,6 +370,7 @@ services:
       - meal-payment
       - meal-fulfillment
       - meal-notify
+      - meal-support
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -354,6 +384,7 @@ services:
       MEAL_PAYMENT_URI: http://meal-payment:8108
       MEAL_FULFILLMENT_URI: http://meal-fulfillment:8109
       MEAL_NOTIFY_URI: http://meal-notify:8110
+      MEAL_SUPPORT_URI: http://meal-support:8111
     volumes:
       - ./meal-gateway/target/meal-gateway-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -376,6 +407,7 @@ services:
       - meal-payment
       - meal-fulfillment
       - meal-notify
+      - meal-support
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:

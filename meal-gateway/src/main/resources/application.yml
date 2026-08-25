@@ -66,6 +66,10 @@ spring:
           uri: ${MEAL_NOTIFY_URI:http://localhost:8110}
           predicates:
             - Path=/notify/**
+        - id: meal-support
+          uri: ${MEAL_SUPPORT_URI:http://localhost:8111}
+          predicates:
+            - Path=/api/support/**
 server:
   port: 8080
 management:
