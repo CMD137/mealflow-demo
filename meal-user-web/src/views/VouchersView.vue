@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import AppShell from '@/components/AppShell.vue';
-import { claimVoucherApi, vouchersApi, walletApi } from '@/api/promotion';
+import { claimStatusApi, claimVoucherApi, vouchersApi, walletApi } from '@/api/promotion';
 import { formatMoney } from '@/utils/format';
 import type { UserVoucherView, VoucherView } from '@/types/api';
 
@@ -30,17 +30,42 @@ async function claim(voucher: VoucherView) {
   message.value = '';
   try {
     const result = await claimVoucherApi(voucher.voucherId);
-    if (result.status === 'CLAIMED') {
+    if (result.status === 'PENDING') {
+      message.value = '领取处理中…';
+      const finalStatus = await pollClaim(voucher.voucherId);
+      if (finalStatus === 'CLAIMED') {
+        message.value = '抢券成功，已放入券包';
+      } else if (finalStatus === 'SOLD_OUT') {
+        message.value = '来晚了，券已抢完';
+      } else {
+        message.value = '已受理，请稍后在券包查看';
+      }
+    } else if (result.status === 'CLAIMED') {
       message.value = `抢券成功，已放入券包`;
     } else if (result.status === 'DUPLICATE') {
       message.value = `你已经抢过这张券了`;
-    } else {
+    } else if (result.status === 'SOLD_OUT') {
       message.value = `来晚了，券已抢完`;
+    } else if (result.status === 'NOT_READY') {
+      message.value = '活动尚未开始，请稍后再来';
+    } else {
+      message.value = '活动已结束或暂不可领取';
     }
     await load();
   } finally {
     claimingId.value = null;
   }
+}
+
+async function pollClaim(voucherId: number) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    const status = await claimStatusApi(voucherId);
+    if (status.status === 'CLAIMED' || status.status === 'SOLD_OUT') {
+      return status.status;
+    }
+  }
+  return 'PENDING';
 }
 
 function ownedCount(voucherId: number) {
@@ -52,7 +77,10 @@ function voucherMeta(voucherId: number) {
 }
 
 function canClaim(voucher: VoucherView) {
-  return voucher.status === 'ACTIVE' && voucher.stock > 0;
+  const now = Date.now();
+  const started = !voucher.startTime || new Date(voucher.startTime).getTime() <= now;
+  const notEnded = !voucher.endTime || new Date(voucher.endTime).getTime() > now;
+  return voucher.status === 'ACTIVE' && voucher.stock > 0 && started && notEnded;
 }
 
 function claimButtonText(voucher: VoucherView) {
@@ -64,6 +92,12 @@ function claimButtonText(voucher: VoucherView) {
   }
   if (voucher.stock <= 0) {
     return '已抢完';
+  }
+  if (voucher.startTime && new Date(voucher.startTime).getTime() > Date.now()) {
+    return '即将开始';
+  }
+  if (voucher.endTime && new Date(voucher.endTime).getTime() <= Date.now()) {
+    return '已结束';
   }
   return '立即抢券';
 }

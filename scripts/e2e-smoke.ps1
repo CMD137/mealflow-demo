@@ -113,7 +113,15 @@ Step "claiming seckill voucher through promotion service"
 $seckill = (Invoke-MealFlow -Method POST -Path "/vouchers/1000/seckill" -Body @{
   requestId = "e2e-seckill-$stamp"
 } -Headers $seckillHeaders).data
-Assert-True ($seckill.status -eq "CLAIMED") "Expected seckill voucher to be claimed"
+Assert-True ($seckill.status -eq "PENDING" -or $seckill.status -eq "DUPLICATE") "Expected seckill request to be accepted"
+for ($claimAttempt = 1; $claimAttempt -le 20; $claimAttempt++) {
+  $seckill = (Invoke-MealFlow -Method GET -Path "/vouchers/1000/claims/me" -Headers $seckillHeaders).data
+  if ($seckill.status -eq "CLAIMED") {
+    break
+  }
+  Start-Sleep -Seconds 1
+}
+Assert-True ($seckill.status -eq "CLAIMED") "Expected pending seckill claim to settle"
 $wallet = (Invoke-MealFlow -Method GET -Path "/vouchers/wallet" -Headers $seckillHeaders).data
 $claimedVoucher = @($wallet | Where-Object { $_.voucherId -eq 1000 -and $_.status -eq "AVAILABLE" })
 Assert-True ($claimedVoucher.Count -ge 1) "Claimed voucher was not found in wallet"

@@ -1,5 +1,7 @@
 package com.mealflow.promotion.mapper;
 
+import java.time.LocalDateTime;
+
 public class VoucherRow {
   private long id;
   private String name;
@@ -7,6 +9,8 @@ public class VoucherRow {
   private int discountCent;
   private int stock;
   private String status;
+  private LocalDateTime startTime;
+  private LocalDateTime endTime;
 
   public long getId() {
     return id;
@@ -54,5 +58,21 @@ public class VoucherRow {
 
   public void setStatus(String status) {
     this.status = status;
+  }
+
+  public LocalDateTime getStartTime() {
+    return startTime;
+  }
+
+  public void setStartTime(LocalDateTime startTime) {
+    this.startTime = startTime;
+  }
+
+  public LocalDateTime getEndTime() {
+    return endTime;
+  }
+
+  public void setEndTime(LocalDateTime endTime) {
+    this.endTime = endTime;
   }
 }

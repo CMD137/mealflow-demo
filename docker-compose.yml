@@ -39,6 +39,9 @@ services:
   redis:
     image: redis:7
     container_name: mealflow-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
     networks: [private]
 
   rocketmq-namesrv:
@@ -228,6 +231,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      rocketmq-broker:
+        condition: service_started
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
@@ -235,10 +240,15 @@ services:
       PROMOTION_DB_USERNAME: root
       PROMOTION_DB_PASSWORD: mealflow
       PROMOTION_DB_DRIVER: com.mysql.cj.jdbc.Driver
-      PROMOTION_SECKILL_MODE: redis
-      PROMOTION_RECONCILE_ENABLED: "true"
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
+      ROCKETMQ_PRODUCER_GROUP: mealflow-promotion-seckill-producer
+      SECKILL_EVENT_CONSUMER_ENABLED: "true"
+      SECKILL_EVENT_CONSUMER_GROUP: mealflow-promotion-seckill-consumer
+      SECKILL_EVENT_TOPICS: mealflow-seckill-commands
+      SECKILL_EVENT_MAX_RECONSUME_TIMES: 5
+      PROMOTION_PENDING_RECOVERY_ENABLED: "true"
     volumes:
       - ./meal-promotion/target/meal-promotion-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -396,6 +406,9 @@ services:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks: [private]
+
+volumes:
+  redis-data:
 
 networks:
   edge:

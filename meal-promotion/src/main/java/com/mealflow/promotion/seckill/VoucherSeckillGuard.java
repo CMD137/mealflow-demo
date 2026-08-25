@@ -3,22 +3,28 @@ package com.mealflow.promotion.seckill;
 import java.util.Set;
 
 public interface VoucherSeckillGuard {
-  ClaimResult tryClaim(long userId, long voucherId, int initialStock);
+  ClaimResult tryClaim(long userId, long voucherId, long nextRetryTime);
 
   void compensate(long userId, long voucherId);
 
-  default int remainingStock(long voucherId, int databaseStock) {
-    return databaseStock;
-  }
+  void complete(long userId, long voucherId);
+
+  Set<Long> findDuePending(long voucherId, long now, int limit);
+
+  void delayPending(long userId, long voucherId, long nextRetryTime);
+
+  boolean isClaimed(long userId, long voucherId);
+
+  boolean isPending(long userId, long voucherId);
 
   default void syncStock(long voucherId, int stock) {
   }
 
-  default Set<Long> claimedUsers(long voucherId) {
-    return Set.of();
+  default boolean syncStockIfAbsent(long voucherId, int stock) {
+    return false;
   }
 
   enum ClaimResult {
-    ACCEPTED, SOLD_OUT, DUPLICATE
+    ACCEPTED, SOLD_OUT, DUPLICATE, NOT_READY
   }
 }

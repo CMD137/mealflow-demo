@@ -13,6 +13,7 @@ import com.mealflow.promotion.api.VoucherLockResponse;
 import com.mealflow.promotion.api.VoucherLockView;
 import com.mealflow.promotion.api.VoucherTransitionRequest;
 import com.mealflow.promotion.api.VoucherView;
+import com.mealflow.promotion.seckill.VoucherClaimPendingRecoveryScheduler;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,8 +29,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/vouchers")
 public class PromotionController {
   private final PromotionService promotionService;
-  public PromotionController(PromotionService promotionService) {
+  private final VoucherClaimPendingRecoveryScheduler pendingRecoveryScheduler;
+
+  public PromotionController(PromotionService promotionService,
+      VoucherClaimPendingRecoveryScheduler pendingRecoveryScheduler) {
     this.promotionService = promotionService;
+    this.pendingRecoveryScheduler = pendingRecoveryScheduler;
+  }
+
+  @GetMapping("/{voucherId}/claims/me")
+  public Result<SeckillVoucherResponse> myClaim(@PathVariable long voucherId,
+      @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    return Result.ok(promotionService.claimStatus(RequestIdentity.requireUser(userId), voucherId));
   }
 
   @PostMapping("/{voucherId}/seckill")
@@ -94,7 +105,7 @@ public class PromotionController {
 
   @PostMapping("/internal/claims/retries/retry")
   public Result<Integer> retryClaimRetries() {
-    return Result.ok(promotionService.retryClaimRetries(100));
+    return Result.ok(pendingRecoveryScheduler.recoverPending());
   }
 
   @GetMapping("/internal/locks")
@@ -102,8 +113,4 @@ public class PromotionController {
     return Result.ok(promotionService.locks());
   }
 
-  @PostMapping("/internal/claims/reconcile")
-  public Result<Integer> reconcileClaims() {
-    return Result.ok(promotionService.reconcileRedisClaims());
-  }
 }

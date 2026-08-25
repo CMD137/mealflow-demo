@@ -71,6 +71,8 @@ export interface VoucherView {
   discountCent: number;
   stock: number;
   status: string;
+  startTime?: string | null;
+  endTime?: string | null;
 }
 
 export interface UserVoucherView {
@@ -80,8 +82,9 @@ export interface UserVoucherView {
 }
 
 export interface SeckillVoucherResponse {
+  eventKey: string;
   claimId?: number | null;
-  status: 'CLAIMED' | 'DUPLICATE' | 'SOLD_OUT';
+  status: 'PENDING' | 'CLAIMED' | 'DUPLICATE' | 'SOLD_OUT' | 'FAILED' | 'NOT_READY' | 'NOT_FOUND';
   userVoucherId?: number | null;
 }
 

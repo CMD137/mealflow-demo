@@ -1,4 +1,4 @@
 package com.mealflow.promotion.api;
 
-public record SeckillVoucherResponse(Long claimId, String status, Long userVoucherId) {
+public record SeckillVoucherResponse(String eventKey, String status, Long claimId, Long userVoucherId) {
 }

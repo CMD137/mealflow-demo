@@ -28,12 +28,24 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+rocketmq:
+  name-server: ${ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:mealflow-promotion-seckill-producer}
 mealflow:
   promotion:
-    seckill-mode: ${PROMOTION_SECKILL_MODE:mysql}
-    reconcile:
-      enabled: ${PROMOTION_RECONCILE_ENABLED:false}
-      initial-delay-ms: ${PROMOTION_RECONCILE_INITIAL_DELAY_MS:15000}
-      fixed-delay-ms: ${PROMOTION_RECONCILE_FIXED_DELAY_MS:30000}
-    claim-retry:
-      max-retries: ${PROMOTION_CLAIM_RETRY_MAX_RETRIES:3}
+    seckill:
+      topic: ${SECKILL_EVENT_TOPIC:mealflow-seckill-commands}
+    pending-recovery:
+      enabled: ${PROMOTION_PENDING_RECOVERY_ENABLED:true}
+      initial-delay-ms: ${PROMOTION_PENDING_RECOVERY_INITIAL_DELAY_MS:10000}
+      fixed-delay-ms: ${PROMOTION_PENDING_RECOVERY_FIXED_DELAY_MS:5000}
+      initial-timeout-ms: ${PROMOTION_PENDING_RECOVERY_INITIAL_TIMEOUT_MS:10000}
+      batch-size: ${PROMOTION_PENDING_RECOVERY_BATCH_SIZE:100}
+      max-backoff-ms: ${PROMOTION_PENDING_RECOVERY_MAX_BACKOFF_MS:300000}
+  mq:
+    seckill-consumer:
+      enabled: ${SECKILL_EVENT_CONSUMER_ENABLED:true}
+      group: ${SECKILL_EVENT_CONSUMER_GROUP:mealflow-promotion-seckill-consumer}
+      topics: ${SECKILL_EVENT_TOPICS:mealflow-seckill-commands}
+      max-reconsume-times: ${SECKILL_EVENT_MAX_RECONSUME_TIMES:5}

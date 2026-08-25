@@ -2,7 +2,8 @@ param(
   [string]$BaseUrl = "http://localhost:8080",
   [int]$Users = 50,
   [long]$VoucherId = 1000,
-  [int]$TimeoutSec = 10
+  [int]$TimeoutSec = 10,
+  [int]$ExpectedClaimed = -1
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,6 +43,15 @@ $jobs = for ($i = 1; $i -le $Users; $i++) {
       $claim = Invoke-Json -Method POST -Path "/vouchers/$VoucherId/seckill" -Headers $headers -Body @{
         requestId = "load-seckill-$Stamp-$UserNo"
       }
+      if ($claim.data.status -eq "PENDING") {
+        for ($attempt = 1; $attempt -le 20; $attempt++) {
+          Start-Sleep -Milliseconds 500
+          $claim = Invoke-Json -Method GET -Path "/vouchers/$VoucherId/claims/me" -Headers $headers
+          if ($claim.data.status -ne "PENDING") {
+            break
+          }
+        }
+      }
       [pscustomobject]@{
         userNo = $UserNo
         success = $claim.success
@@ -75,4 +85,11 @@ $summary | Format-Table -AutoSize
 
 if (($results | Where-Object { -not $_.success -and $_.code -eq "EXCEPTION" }).Count -gt 0) {
   throw "Seckill load test has request exceptions"
+}
+
+if ($ExpectedClaimed -ge 0) {
+  $claimed = @($results | Where-Object { $_.status -eq "CLAIMED" }).Count
+  if ($claimed -ne $ExpectedClaimed) {
+    throw "Expected $ExpectedClaimed claimed vouchers, got $claimed"
+  }
 }
