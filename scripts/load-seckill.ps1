@@ -35,9 +35,10 @@ $jobs = for ($i = 1; $i -le $Users; $i++) {
 
     try {
       $phone = "139{0:D8}" -f (($Stamp + $UserNo) % 100000000)
+      Invoke-Json -Method POST -Path "/auth/codes" -Body @{ phone = $phone } | Out-Null
       $login = (Invoke-Json -Method POST -Path "/auth/login" -Body @{
         phone = $phone
-        password = "123456"
+        code = "123456"
       }).data
       $headers = @{ Authorization = "Bearer $($login.token)" }
       $claim = Invoke-Json -Method POST -Path "/vouchers/$VoucherId/seckill" -Headers $headers -Body @{

@@ -12,6 +12,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       AUTH_OTP_MODE: redis
+      AUTH_OTP_TEST_CODE: ""
       AUTH_OTP_LOG_CODE: "false"
       AUTH_OTP_PEPPER: ${AUTH_OTP_PEPPER:?AUTH_OTP_PEPPER is required in production}
       AUTH_SESSION_PEPPER: ${AUTH_SESSION_PEPPER:?AUTH_SESSION_PEPPER is required in production}

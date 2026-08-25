@@ -77,6 +77,8 @@ services:
       AUTH_USER_DB_USERNAME: root
       AUTH_USER_DB_PASSWORD: mealflow
       AUTH_USER_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      AUTH_OTP_MODE: memory
+      AUTH_OTP_TEST_CODE: "123456"
       REDIS_HOST: redis
       REDIS_PORT: 6379
     volumes:
@@ -234,6 +236,7 @@ services:
       rocketmq-broker:
         condition: service_started
     environment:
+      TZ: Asia/Hong_Kong
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       PROMOTION_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
