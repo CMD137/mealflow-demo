@@ -1,3 +1,13 @@
+CREATE TABLE IF NOT EXISTS business_sequence (
+  namespace VARCHAR(64) PRIMARY KEY,
+  next_value BIGINT NOT NULL
+);
+
+INSERT INTO business_sequence (namespace, next_value) VALUES ('queueTicket', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('capacityToken', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+
 CREATE TABLE IF NOT EXISTS queue_ticket (
   id BIGINT PRIMARY KEY,
   ticket_no VARCHAR(64) NOT NULL,
@@ -15,6 +25,7 @@ CREATE TABLE IF NOT EXISTS queue_ticket (
   processing_time TIMESTAMP NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_queue_ticket_request (request_id),
   INDEX idx_queue_ticket_merchant_status (merchant_id, status),
   INDEX idx_queue_ticket_status_score (status, score)
 );
@@ -30,6 +41,7 @@ CREATE TABLE IF NOT EXISTS capacity_token (
   release_reason VARCHAR(128) NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_capacity_token_request (request_id),
   INDEX idx_capacity_token_merchant_status (merchant_id, status),
   INDEX idx_capacity_token_order_id (order_id),
   INDEX idx_capacity_token_ticket_id (ticket_id)

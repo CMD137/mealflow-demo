@@ -6,7 +6,6 @@ import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.CapacityTokenStatus;
 import com.mealflow.common.status.QueueTicketStatus;
-import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.queue.api.CapacityTokenView;
 import com.mealflow.queue.api.QueueApplyRequest;
@@ -40,7 +39,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class QueueService {
   private static final int AVG_PREPARE_SECONDS = 180;
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final QueueDatabaseIdGenerator idGenerator;
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
   private final WaitingQueueStore waitingQueueStore;
   private final CapacityInflightCounter capacityInflightCounter;
@@ -48,11 +47,13 @@ public class QueueService {
   private final ObjectMapper objectMapper;
   private final boolean capacityInflightReconcileEnabled;
 
-  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper, WaitingQueueStore waitingQueueStore,
+  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper, QueueDatabaseIdGenerator idGenerator,
+      WaitingQueueStore waitingQueueStore,
       CapacityInflightCounter capacityInflightCounter,
       @Value("${mealflow.queue.inflight-reconcile.enabled:false}") boolean capacityInflightReconcileEnabled) {
     this.queueMapper = queueMapper;
     this.objectMapper = objectMapper;
+    this.idGenerator = idGenerator;
     this.waitingQueueStore = waitingQueueStore;
     this.capacityInflightCounter = capacityInflightCounter;
     this.capacityInflightReconcileEnabled = capacityInflightReconcileEnabled;
@@ -60,8 +61,6 @@ public class QueueService {
 
   @PostConstruct
   void rebuildRuntimeIndexes() {
-    idGenerator.ensureAtLeast("queueTicket", queueMapper.maxTicketId());
-    idGenerator.ensureAtLeast("capacityToken", queueMapper.maxTokenId());
     waitingQueueStore.rebuild(queueMapper.findWaitingTickets(QueueTicketStatus.WAITING.name(), LocalDateTime.now())
         .stream()
         .map(ticket -> new WaitingTicketEntry(ticket.getMerchantId(), ticket.getId(), ticket.getTicketNo(),
