@@ -41,3 +41,10 @@ mealflow:
     fixed-delay-ms: ${OUTBOX_FIXED_DELAY_MS:5000}
     lease-seconds: ${OUTBOX_LEASE_SECONDS:60}
     max-attempts: ${OUTBOX_MAX_ATTEMPTS:5}
+  payment:
+    provider: ${PAYMENT_PROVIDER:alipay-sandbox}
+    alipay:
+      app-id: ${ALIPAY_APP_ID:}
+      private-key: ${ALIPAY_PRIVATE_KEY:}
+      public-key: ${ALIPAY_PUBLIC_KEY:}
+      notify-url: ${NGROK_URL:}/payments/alipay/callback

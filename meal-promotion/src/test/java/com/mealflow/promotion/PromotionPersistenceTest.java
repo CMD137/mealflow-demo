@@ -36,7 +36,6 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
     "spring.cloud.nacos.discovery.enabled=false",
-    "spring.sql.init.mode=always",
     "mealflow.mq.seckill-consumer.enabled=false",
     "mealflow.promotion.pending-recovery.enabled=false"
 })
