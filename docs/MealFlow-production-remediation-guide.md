@@ -5,7 +5,7 @@
 > 输入依据：`MealFlow-2027-campus-recruitment-audit.md`、当前源码/表结构、完整构建与 E2E 运行结果  
 > 目标：在不盲目增加中间件的前提下，把当前“单实例可运行的微服务原型”改造成安全、可重试、可扩容、可观测、可灰度的生产基线。
 
-本文不是架构愿望清单。每一项都给出当前问题、目标状态、具体落点、迁移顺序、失败处理和验收标准。示例 SQL 是目标模型草案，落地时应转成各服务自己的 Flyway migration，并先在测试环境用现有数据验证。
+本文不是架构愿望清单。每一项都给出当前问题、目标状态、具体落点、迁移顺序、失败处理和验收标准。当前项目明确不引入数据库迁移框架：新库由各服务的幂等 `schema.sql` / `data.sql` 初始化，已有库升级使用人工审核、单独备份和执行的兼容 SQL，并先在测试环境用现有数据验证。
 
 ## 1. 修复总原则
 
@@ -59,7 +59,7 @@ Internet
 | 阶段 | 范围 | 进入下一阶段的硬条件 |
 |---|---|---|
 | Phase 0：止血 | 精确路由、真实验证码、去默认身份、资源归属、关闭直连端口、修排队转单 | 安全矩阵全绿；匿名/跨用户/跨商家攻击全部失败；转单业务字段一致 |
-| Phase 1：数据护栏 | Flyway、数据库 ID、唯一键、持久幂等、HTTP 超时 | 重启和双实例下重复请求只产生一份业务结果 |
+| Phase 1：数据护栏 | 幂等建表脚本、数据库 ID、唯一键、持久幂等、HTTP 超时 | 重启和双实例下重复请求只产生一份业务结果 |
 | Phase 2：交易闭环 | 下单 Saga、支付确认流程、取消/退款、过期补偿 | 任意一步超时/宕机后最终完成或完整补偿，无长期孤儿资源 |
 | Phase 3：Redis/队列 | 券库存事实、原子补偿、队列 CAS/租约、Redis 可重建 | Redis 清空或双 worker 下不超发、不重复转单 |
 | Phase 4：MQ 与运营 | Outbox 退避/死信、消费者步骤化、通知启用、告警 | 重复/乱序/毒消息可观测、可恢复且不重复产生业务副作用 |
@@ -162,22 +162,13 @@ Internet
 
 ## 5. 数据库迁移、ID 与唯一约束
 
-### 5.1 引入 Flyway
+### 5.1 数据库脚本约定（不使用迁移框架）
 
-每个服务维护自己的 `db/migration`：
-
-```text
-V1__baseline.sql
-V2__add_idempotency_and_business_keys.sql
-V3__add_saga_columns_nullable.sql
-V4__backfill_saga_data.sql
-V5__enforce_not_null_and_unique.sql
-```
-
-- 禁用生产环境 `spring.sql.init.mode=always` 和所有 `PostConstruct ALTER TABLE`。
-- migration 使用独立 DDL 账号，由发布任务先执行；应用运行账号没有 CREATE/ALTER/DROP 权限。
-- 大表变更采用 expand-contract：先加 nullable 列/索引，双写并回填，校验完成后切读，再加 NOT NULL/删除旧列。
-- Flyway 失败时禁止应用新版本启动；不要在应用启动时自动“修复” checksum。
+- 每个服务只维护一份完整、可重复执行的 `schema.sql`；演示数据放在 `data.sql`，使用 `INSERT IGNORE` 或等价幂等写法。
+- 新建开发库由 Spring SQL Init 自动初始化。不要把各服务脚本重复挂载到 MySQL 的 `/docker-entrypoint-initdb.d`。
+- `schema.sql` 负责完整目标结构，不尝试用 `CREATE TABLE IF NOT EXISTS` 自动改造已有同名旧表。
+- 已有数据库需要改列或回填时，先备份，再由开发者审核并手工执行一次性兼容 SQL；执行记录随版本说明保存，不在应用启动时运行 `ALTER TABLE`。
+- 结构变更先加 nullable 列/索引并回填，确认新旧代码均可运行后再收紧约束；破坏性删除至少延后一个稳定版本。
 
 ### 5.2 删除 `MAX(id) + AtomicLong`
 
@@ -622,7 +613,7 @@ Dashboard 必须能从一张订单号跳到 Saga、库存预占、券锁、token
 ### 15.1 测试层次
 
 - 单元测试：状态机、权限规则、请求哈希、退避算法、Lua 返回码。
-- Repository 测试：Testcontainers MySQL 验证真实唯一键、锁、隔离级别、SKIP LOCKED 和 Flyway。
+- Repository 测试：Testcontainers MySQL 验证 `schema.sql` 初始化、真实唯一键、锁、隔离级别和 SKIP LOCKED。
 - 组件测试：真实 Redis 验证 Lua/重建；真实 RocketMQ 验证重复消息、重投和 DLQ。
 - 契约测试：order 与 catalog/promotion/queue/payment 的请求/响应和错误码兼容。
 - E2E：外部只经过 gateway，断言完整业务字段和不变量，而非只看 HTTP 200。
@@ -700,7 +691,7 @@ E2E 的 retry 只能用于等待异步完成，不能对所有业务错误无差
 
 ### 18.1 推荐顺序
 
-1. **只加不改**：Flyway 增加新表、nullable 列、索引和指标。
+1. **只加不改**：审核后的兼容 SQL 增加新表、nullable 列、索引和指标。
 2. **双写**：旧业务路径继续响应，同时写 idempotency/Saga/新库存字段；失败只告警，不切流量。
 3. **影子核对**：新状态机不产生外部副作用，仅计算应有结果，与旧结果比对。
 4. **小流量切写**：按用户 hash/商家白名单启用新路径；不能随机让同一请求在新旧路径跳变。
@@ -727,7 +718,7 @@ E2E 的 retry 只能用于等待异步完成，不能对所有业务错误无差
 | 1 | 精确公共路由、移除默认身份、关闭直连端口、mock 接口限 dev | 无 | 安全路由测试通过 |
 | 2 | OTP、session/token hash/轮换、登录限流 | PR1 | 任意 code/重放失败，安全日志脱敏 |
 | 3 | CurrentPrincipal、内部服务令牌、资源归属 SQL | PR1 | 六主体权限矩阵通过 |
-| 4 | Flyway、AUTO_INCREMENT/业务号、关键唯一键 | 无，可与 1～3 并行开发但分开发布 | 现有数据校验、迁移/回滚演练通过 |
+| 4 | 幂等建表脚本、AUTO_INCREMENT/业务号、关键唯一键 | 无，可与 1～3 并行开发但分开发布 | 空库初始化、现有数据兼容和回滚演练通过 |
 | 5 | 持久幂等组件和订单/支付接入 | PR4 | 重启/双实例重复请求只一份结果 |
 | 6 | 修 queue 转单、容量 CAS、票租约和过期事件 | PR3～5 | 双 worker 与转单不变量通过 |
 | 7 | catalog 预占过期/续期/对账 | PR4～5 | 宕机/过期后库存账平 |
@@ -752,7 +743,7 @@ E2E 的 retry 只能用于等待异步完成，不能对所有业务错误无差
 
 ### 数据与一致性
 
-- [ ] Flyway 管理所有 schema，无运行时 DDL。
+- [ ] 各服务 `schema.sql` 可初始化空库；已有库兼容 SQL 已审核、备份并演练，无运行时 `ALTER TABLE`。
 - [ ] 本地 ID 生成器移除，关键业务唯一键上线且无历史冲突。
 - [ ] 幂等记录比较请求 hash，重启和多实例有效。
 - [ ] 下单/支付/取消 Saga 可恢复、可补偿、可人工处理。
