@@ -14,8 +14,6 @@ import com.mealflow.fulfillment.mapper.LocalEventMapper;
 import com.mealflow.fulfillment.mapper.LocalEventRow;
 import com.mealflow.fulfillment.outbox.OutboxEventPublisher;
 import com.mealflow.infra.event.EventKey;
-import com.mealflow.infra.id.IdGenerator;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -32,7 +30,7 @@ import org.springframework.web.client.RestTemplate;
 public class FulfillmentService {
   private static final Duration OUTBOX_SENDING_TIMEOUT = Duration.ofMinutes(1);
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final FulfillmentIdGenerator idGenerator;
   private final RestTemplate restTemplate;
   private final ServiceEndpoints endpoints;
   private final FulfillmentMapper fulfillmentMapper;
@@ -41,19 +39,15 @@ public class FulfillmentService {
   private final ObjectMapper objectMapper;
 
   public FulfillmentService(RestTemplate restTemplate, ServiceEndpoints endpoints, FulfillmentMapper fulfillmentMapper,
-      LocalEventMapper localEventMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper) {
+      LocalEventMapper localEventMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper,
+      FulfillmentIdGenerator idGenerator) {
     this.restTemplate = restTemplate;
     this.endpoints = endpoints;
     this.fulfillmentMapper = fulfillmentMapper;
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    idGenerator.ensureAtLeast("fulfillmentOperation", fulfillmentMapper.maxOperationId());
-    idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
+    this.idGenerator = idGenerator;
   }
 
   @Transactional
@@ -164,7 +158,7 @@ public class FulfillmentService {
 
   private void appendFulfillmentEvent(String eventType, String requestId, OrderView order) {
     int version = 1;
-    localEventMapper.insert(idGenerator.next("localEvent"),
+    localEventMapper.insert(idGenerator.next("fulfillmentLocalEvent"),
         EventKey.of("fulfillment", eventType, order.orderId(), version),
         eventType,
         version,

@@ -1,3 +1,7 @@
+CREATE TABLE IF NOT EXISTS business_sequence (namespace VARCHAR(64) PRIMARY KEY, next_value BIGINT NOT NULL);
+INSERT INTO business_sequence (namespace, next_value) VALUES ('fulfillmentOperation', 10000) ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('fulfillmentLocalEvent', 10000) ON DUPLICATE KEY UPDATE next_value = next_value;
+
 CREATE TABLE IF NOT EXISTS fulfillment_operation_log (
   id BIGINT PRIMARY KEY,
   request_id VARCHAR(128) NOT NULL,
