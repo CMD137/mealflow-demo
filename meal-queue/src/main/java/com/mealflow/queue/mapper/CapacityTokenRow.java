@@ -11,6 +11,8 @@ public class CapacityTokenRow {
   private String status;
   private LocalDateTime expireTime;
   private String releaseReason;
+  private Long releasedTicketId;
+  private Long releasedCapacityTokenId;
 
   public long getId() {
     return id;
@@ -74,5 +76,12 @@ public class CapacityTokenRow {
 
   public void setReleaseReason(String releaseReason) {
     this.releaseReason = releaseReason;
+  }
+
+  public Long getReleasedTicketId() { return releasedTicketId; }
+  public void setReleasedTicketId(Long releasedTicketId) { this.releasedTicketId = releasedTicketId; }
+  public Long getReleasedCapacityTokenId() { return releasedCapacityTokenId; }
+  public void setReleasedCapacityTokenId(Long releasedCapacityTokenId) {
+    this.releasedCapacityTokenId = releasedCapacityTokenId;
   }
 }

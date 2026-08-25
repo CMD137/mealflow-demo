@@ -7,7 +7,6 @@ import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.ConsumerRecordStatus;
 import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
-import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.notify.api.ConsumerRecordView;
 import com.mealflow.notify.api.DeliveryView;
 import com.mealflow.notify.api.MessageView;
@@ -34,7 +33,7 @@ public class NotifyService {
   private static final TypeReference<Map<String, Object>> EVENT_PAYLOAD = new TypeReference<>() {
   };
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final NotifyDatabaseIdGenerator idGenerator;
   private final NotifyMapper notifyMapper;
   private final ConsumerRecordMapper consumerRecordMapper;
   private final PersistentConsumerRecordTemplate consumerRecordTemplate;
@@ -42,19 +41,19 @@ public class NotifyService {
   private final ObjectMapper objectMapper;
 
   public NotifyService(NotifyMapper notifyMapper, ConsumerRecordMapper consumerRecordMapper,
-      NotifyStreamService notifyStreamService, ObjectMapper objectMapper) {
+      NotifyStreamService notifyStreamService, ObjectMapper objectMapper, NotifyDatabaseIdGenerator idGenerator) {
     this.notifyMapper = notifyMapper;
     this.consumerRecordMapper = consumerRecordMapper;
-    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper);
+    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper,
+        () -> idGenerator.next("notifyConsumerRecord"));
     this.notifyStreamService = notifyStreamService;
     this.objectMapper = objectMapper;
+    this.idGenerator = idGenerator;
   }
 
   @PostConstruct
   void initializeIdGenerator() {
-    idGenerator.ensureAtLeast("notifyMessage", notifyMapper.maxMessageId());
-    idGenerator.ensureAtLeast("notifyDelivery", notifyMapper.maxDeliveryId());
-    consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
+    // IDs are allocated from database rows and are safe across application instances.
   }
 
   @Transactional

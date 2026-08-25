@@ -107,7 +107,7 @@ public class QueueService {
   public synchronized ReleaseCapacityResponse releaseCapacity(long capacityTokenId, String reason) {
     CapacityToken token = requireToken(capacityTokenId);
     if (token.status != CapacityTokenStatus.HELD) {
-      return new ReleaseCapacityResponse(false, null);
+      return previousReleaseResult(token);
     }
     if (!releaseHeldToken(capacityTokenId, reason, token.merchantId)) {
       return new ReleaseCapacityResponse(false, null);
@@ -137,10 +137,22 @@ public class QueueService {
           ticket.expireTime);
       LocalDateTime readyTime = LocalDateTime.now();
       updateTicketStatus(ticket.id, QueueTicketStatus.READY, null, readyTime, null);
+      queueMapper.recordReleaseResult(capacityTokenId, ticket.id, nextToken.id, LocalDateTime.now());
       return new ReleaseCapacityResponse(true,
           new QueueReadyTicket(ticket.id, ticket.ticketNo, nextToken.id, ticket.snapshot));
     }
+    queueMapper.recordReleaseResult(capacityTokenId, null, null, LocalDateTime.now());
     return new ReleaseCapacityResponse(true, null);
+  }
+
+  private ReleaseCapacityResponse previousReleaseResult(CapacityToken token) {
+    if (token.status != CapacityTokenStatus.RELEASED || token.releasedTicketId == null
+        || token.releasedCapacityTokenId == null) {
+      return new ReleaseCapacityResponse(false, null);
+    }
+    QueueTicket ticket = requireTicket(token.releasedTicketId);
+    return new ReleaseCapacityResponse(false, new QueueReadyTicket(ticket.id, ticket.ticketNo,
+        token.releasedCapacityTokenId, ticket.snapshot));
   }
 
   @Transactional
@@ -335,7 +347,7 @@ public class QueueService {
   private CapacityToken mapToken(CapacityTokenRow row) {
     return new CapacityToken(row.getId(), row.getRequestId(), row.getMerchantId(), row.getTicketId(),
         row.getOrderId(), CapacityTokenStatus.valueOf(row.getStatus()), row.getExpireTime(),
-        row.getReleaseReason());
+        row.getReleaseReason(), row.getReleasedTicketId(), row.getReleasedCapacityTokenId());
   }
 
   private String toJson(QueueTicketSnapshot snapshot) {
@@ -399,9 +411,17 @@ public class QueueService {
     CapacityTokenStatus status;
     final LocalDateTime expireTime;
     String releaseReason;
+    final Long releasedTicketId;
+    final Long releasedCapacityTokenId;
 
     CapacityToken(long id, String requestId, long merchantId, Long ticketId, Long orderId,
         CapacityTokenStatus status, LocalDateTime expireTime, String releaseReason) {
+      this(id, requestId, merchantId, ticketId, orderId, status, expireTime, releaseReason, null, null);
+    }
+
+    CapacityToken(long id, String requestId, long merchantId, Long ticketId, Long orderId,
+        CapacityTokenStatus status, LocalDateTime expireTime, String releaseReason,
+        Long releasedTicketId, Long releasedCapacityTokenId) {
       this.id = id;
       this.requestId = requestId;
       this.merchantId = merchantId;
@@ -410,6 +430,8 @@ public class QueueService {
       this.status = status;
       this.expireTime = expireTime;
       this.releaseReason = releaseReason;
+      this.releasedTicketId = releasedTicketId;
+      this.releasedCapacityTokenId = releasedCapacityTokenId;
     }
   }
 }

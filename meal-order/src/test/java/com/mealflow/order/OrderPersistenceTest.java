@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
@@ -19,6 +20,7 @@ import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
 import com.mealflow.order.mapper.ConsumerRecordMapper;
+import com.mealflow.order.mapper.OrderSagaMapper;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -39,6 +41,12 @@ class OrderPersistenceTest {
 
   @Autowired
   private ConsumerRecordMapper consumerRecordMapper;
+
+  @Autowired
+  private OrderSagaMapper orderSagaMapper;
+
+  @Autowired
+  private OrderSagaCoordinator orderSagaCoordinator;
 
   @MockBean
   private CatalogClient catalogClient;
@@ -151,5 +159,37 @@ class OrderPersistenceTest {
           assertThat(record.getEventType()).isEqualTo("PaymentPaid");
           assertThat(record.getPayloadJson()).isEqualTo(payload);
         });
+  }
+
+  @Test
+  void resumesPaymentSagaAfterACompletedRemoteStep() {
+    when(catalogClient.snapshots(eq(10L), anyList()))
+        .thenReturn(List.of(new OrderItemSnapshot(1L, "恢复盖饭", 1200, 1)));
+    when(catalogClient.reserve(any()))
+        .thenReturn(new CatalogClient.ReserveStockResponse(List.of(8201L), "RESERVED"));
+    when(promotionClient.lock(any()))
+        .thenReturn(new PromotionClient.VoucherLockResponse(7201L, "LOCKED", 0));
+    when(queueClient.apply(any()))
+        .thenReturn(new QueueClient.QueueApplyResponse("READY", 6201L, null, null, 0, 0, null));
+    when(paymentClient.create(any()))
+        .thenReturn(new PaymentClient.PaymentView(5201L, 10201L, 101L, 1200, "UNPAID"));
+    doThrow(new IllegalStateException("catalog unavailable")).doNothing().when(catalogClient).confirm(any());
+
+    SubmitOrderResponse response = orderService.submit(101L,
+        new SubmitOrderRequest("order-saga-retry", 10L, null, null,
+            List.of(new OrderSkuItem(1L, 1)), null, "retry"));
+
+    orderService.markPaid(response.orderId());
+
+    assertThat(orderService.get(response.orderId()).status()).isEqualTo("PENDING_PAYMENT");
+    assertThat(orderSagaMapper.findByOrderId(response.orderId()))
+        .extracting("status").containsExactly("FAILED", "NEW", "NEW");
+
+    orderSagaMapper.retryNow(response.orderId(), LocalDateTime.now());
+    orderSagaCoordinator.processReadyForOrder(response.orderId());
+
+    assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
+    assertThat(orderSagaMapper.findByOrderId(response.orderId()))
+        .extracting("status").containsOnly("SUCCESS");
   }
 }

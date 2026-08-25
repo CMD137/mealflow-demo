@@ -38,8 +38,16 @@ public interface PaymentMapper {
   int markRefunded(@Param("id") long id, @Param("paid") String paid, @Param("refunded") String refunded,
       @Param("now") LocalDateTime now);
 
+  @Update("UPDATE payment_order SET status = #{refunding}, update_time = #{now} WHERE id = #{id} AND status = #{paid}")
+  int markRefunding(@Param("id") long id, @Param("paid") String paid, @Param("refunding") String refunding,
+      @Param("now") LocalDateTime now);
+
+  @Update("UPDATE payment_order SET status = #{refunded}, update_time = #{now} WHERE id = #{id} AND status = #{refunding}")
+  int completeRefund(@Param("id") long id, @Param("refunding") String refunding,
+      @Param("refunded") String refunded, @Param("now") LocalDateTime now);
+
   @Select("""
-      SELECT id, order_id, user_id, amount_cent, status
+      SELECT id, order_id, user_id, provider, merchant_order_no, channel_transaction_no, amount_cent, status
       FROM payment_order
       WHERE id = #{id}
       """)
@@ -47,13 +55,16 @@ public interface PaymentMapper {
       @Result(column = "id", property = "id"),
       @Result(column = "order_id", property = "orderId"),
       @Result(column = "user_id", property = "userId"),
+      @Result(column = "provider", property = "provider"),
+      @Result(column = "merchant_order_no", property = "merchantOrderNo"),
+      @Result(column = "channel_transaction_no", property = "channelTransactionNo"),
       @Result(column = "amount_cent", property = "amountCent"),
       @Result(column = "status", property = "status")
   })
   PaymentOrderRow findById(long id);
 
   @Select("""
-      SELECT id, order_id, user_id, amount_cent, status
+      SELECT id, order_id, user_id, provider, merchant_order_no, channel_transaction_no, amount_cent, status
       FROM payment_order
       ORDER BY id
       """)

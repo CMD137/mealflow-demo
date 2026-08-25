@@ -33,11 +33,19 @@ public class PromotionClient {
   }
 
   public void confirm(VoucherTransitionRequest request) {
-    restTemplate.postForObject(endpoints.promotion() + "/vouchers/internal/confirm", request, Result.class);
+    requireSuccess(restTemplate.postForObject(endpoints.promotion() + "/vouchers/internal/confirm", request,
+        Result.class));
   }
 
   public void release(VoucherTransitionRequest request) {
-    restTemplate.postForObject(endpoints.promotion() + "/vouchers/internal/release", request, Result.class);
+    requireSuccess(restTemplate.postForObject(endpoints.promotion() + "/vouchers/internal/release", request,
+        Result.class));
+  }
+
+  private void requireSuccess(Result<?> result) {
+    if (result == null || !result.success()) {
+      throw new IllegalStateException(result == null ? "promotion call failed" : result.message());
+    }
   }
 
   public record LockVoucherRequest(String requestId, long userId, Long userVoucherId, Long ticketId, Long orderId,

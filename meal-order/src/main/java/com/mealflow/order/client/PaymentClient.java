@@ -32,11 +32,19 @@ public class PaymentClient {
   }
 
   public void close(long payOrderId, ClosePaymentRequest request) {
-    restTemplate.postForObject(endpoints.payment() + "/payments/internal/" + payOrderId + "/close", request, Result.class);
+    requireSuccess(restTemplate.postForObject(endpoints.payment() + "/payments/internal/" + payOrderId + "/close",
+        request, Result.class), "payment close failed");
   }
 
   public void refund(long payOrderId) {
-    restTemplate.postForObject(endpoints.payment() + "/payments/internal/" + payOrderId + "/refund", null, Result.class);
+    requireSuccess(restTemplate.postForObject(endpoints.payment() + "/payments/internal/" + payOrderId + "/refund",
+        null, Result.class), "payment refund failed");
+  }
+
+  private void requireSuccess(Result<?> result, String fallback) {
+    if (result == null || !result.success()) {
+      throw new IllegalStateException(result == null ? fallback : result.message());
+    }
   }
 
   public record CreatePaymentRequest(String requestId, long orderId, long userId, int amountCent) {

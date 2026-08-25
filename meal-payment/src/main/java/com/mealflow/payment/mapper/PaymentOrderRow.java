@@ -6,6 +6,9 @@ public class PaymentOrderRow {
   private long userId;
   private int amountCent;
   private String status;
+  private String provider;
+  private String merchantOrderNo;
+  private String channelTransactionNo;
 
   public long getId() {
     return id;
@@ -46,4 +49,11 @@ public class PaymentOrderRow {
   public void setStatus(String status) {
     this.status = status;
   }
+
+  public String getProvider() { return provider; }
+  public void setProvider(String provider) { this.provider = provider; }
+  public String getMerchantOrderNo() { return merchantOrderNo; }
+  public void setMerchantOrderNo(String merchantOrderNo) { this.merchantOrderNo = merchantOrderNo; }
+  public String getChannelTransactionNo() { return channelTransactionNo; }
+  public void setChannelTransactionNo(String channelTransactionNo) { this.channelTransactionNo = channelTransactionNo; }
 }

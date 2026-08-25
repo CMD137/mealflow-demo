@@ -61,11 +61,13 @@ public class OrderService {
   private final ObjectMapper objectMapper;
   private final DatabaseIdGenerator idGenerator;
   private final OrderIdempotencyService idempotencyService;
+  private final OrderSagaCoordinator sagaCoordinator;
 
   public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
       PaymentClient paymentClient, OrderMapper orderMapper, LocalEventMapper localEventMapper,
       ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper,
-      DatabaseIdGenerator idGenerator, OrderIdempotencyService idempotencyService) {
+      DatabaseIdGenerator idGenerator, OrderIdempotencyService idempotencyService,
+      OrderSagaCoordinator sagaCoordinator) {
     this.catalogClient = catalogClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
@@ -73,11 +75,13 @@ public class OrderService {
     this.orderMapper = orderMapper;
     this.localEventMapper = localEventMapper;
     this.consumerRecordMapper = consumerRecordMapper;
-    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper);
+    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper,
+        () -> idGenerator.next("order_consumer_record"));
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
     this.idGenerator = idGenerator;
     this.idempotencyService = idempotencyService;
+    this.sagaCoordinator = sagaCoordinator;
   }
 
   @jakarta.annotation.PostConstruct
@@ -133,16 +137,11 @@ public class OrderService {
     return order;
   }
 
-  @Transactional
   public synchronized void markPaid(long orderId) {
     OrderRecord order = requireOrder(orderId);
     if (order.status == OrderStatus.PENDING_PAYMENT) {
-      updateStatus(orderId, OrderStatus.WAIT_MERCHANT_ACCEPT);
-      catalogClient.confirm(new CatalogClient.StockTransitionRequest("stock-confirm:" + orderId, order.reservationIds,
-          orderId, "PAYMENT_SUCCESS"));
-      promotionClient.confirm(new PromotionClient.VoucherTransitionRequest("voucher-confirm:" + orderId,
-          order.voucherLockId, orderId, "PAYMENT_SUCCESS"));
-      appendOrderEvent("OrderPaid", order.withStatus(OrderStatus.WAIT_MERCHANT_ACCEPT));
+      sagaCoordinator.enqueuePaymentSuccess(orderMapper.findById(orderId));
+      sagaCoordinator.processReadyForOrder(orderId);
     }
   }
 
@@ -171,31 +170,18 @@ public class OrderService {
     return consumePaymentPaid(eventKey, consumerGroup, row.getPayloadJson());
   }
 
-  @Transactional
   public synchronized void cancel(long orderId, String reason) {
     OrderRecord order = requireOrder(orderId);
-    if (order.status != OrderStatus.PENDING_PAYMENT && order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
-      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be cancelled");
-    }
-    if (order.status == OrderStatus.PENDING_PAYMENT) {
-      paymentClient.close(order.payOrderId, new PaymentClient.ClosePaymentRequest("payment-close:" + orderId, reason));
-    } else {
-      // A paid order must refund before releasing reserved business resources.
-      paymentClient.refund(order.payOrderId);
-    }
-    catalogClient.release(new CatalogClient.StockTransitionRequest("stock-release:" + orderId, order.reservationIds,
-        orderId, reason));
-    promotionClient.release(new PromotionClient.VoucherTransitionRequest("voucher-release:" + orderId,
-        order.voucherLockId, orderId, reason));
-    queueClient.release(order.capacityTokenId, new QueueClient.ReleaseCapacityRequest("capacity-release:" + orderId,
-        "ORDER_CANCELLED"));
-    updateStatus(orderId, OrderStatus.CANCELLED);
-    appendOrderEvent("OrderCancelled", order.withStatus(OrderStatus.CANCELLED));
+    sagaCoordinator.enqueueCancellation(orderMapper.findById(orderId), reason);
+    sagaCoordinator.processReadyForOrder(orderId);
   }
 
   @Transactional
   public synchronized void merchantAccept(long orderId) {
     OrderRecord order = requireOrder(orderId);
+    if (sagaCoordinator.hasIncompleteCancellation(orderId)) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cancellation is in progress");
+    }
     if (order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order is not waiting merchant accept");
     }
@@ -206,6 +192,9 @@ public class OrderService {
   @Transactional
   public synchronized void mealReady(long orderId) {
     OrderRecord order = requireOrder(orderId);
+    if (order.status == OrderStatus.WAIT_RIDER_PICKUP) {
+      return;
+    }
     if (order.status != OrderStatus.MERCHANT_ACCEPTED && order.status != OrderStatus.COOKING) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be marked meal ready");
     }
@@ -315,6 +304,11 @@ public class OrderService {
             "payment-close-orphan:" + orderId, "ORDER_CREATE_FAILED"));
       } catch (RuntimeException closeFailure) {
         failure.addSuppressed(closeFailure);
+        try {
+          sagaCoordinator.enqueueOrphanPayment(orderId, payment.payOrderId());
+        } catch (RuntimeException recoveryFailure) {
+          failure.addSuppressed(recoveryFailure);
+        }
       }
       throw failure;
     }

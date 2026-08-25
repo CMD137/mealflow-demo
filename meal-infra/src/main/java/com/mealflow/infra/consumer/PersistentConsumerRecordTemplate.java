@@ -5,11 +5,13 @@ import com.mealflow.infra.id.IdGenerator;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.function.Supplier;
+import java.util.function.LongSupplier;
 
 public class PersistentConsumerRecordTemplate {
   private static final Duration DEFAULT_PROCESSING_TIMEOUT = Duration.ofMinutes(5);
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final IdGenerator idGenerator;
+  private final LongSupplier recordIdSupplier;
   private final PersistentConsumerRecordRepository repository;
   private final Duration processingTimeout;
 
@@ -18,12 +20,26 @@ public class PersistentConsumerRecordTemplate {
   }
 
   public PersistentConsumerRecordTemplate(PersistentConsumerRecordRepository repository, Duration processingTimeout) {
+    this(repository, processingTimeout, null);
+  }
+
+  public PersistentConsumerRecordTemplate(PersistentConsumerRecordRepository repository,
+      LongSupplier recordIdSupplier) {
+    this(repository, DEFAULT_PROCESSING_TIMEOUT, recordIdSupplier);
+  }
+
+  public PersistentConsumerRecordTemplate(PersistentConsumerRecordRepository repository, Duration processingTimeout,
+      LongSupplier recordIdSupplier) {
     this.repository = repository;
     this.processingTimeout = processingTimeout;
+    this.recordIdSupplier = recordIdSupplier;
+    this.idGenerator = recordIdSupplier == null ? new IdGenerator() : null;
   }
 
   public void ensureIdAtLeast(long value) {
-    idGenerator.ensureAtLeast("consumerRecord", value);
+    if (idGenerator != null) {
+      idGenerator.ensureAtLeast("consumerRecord", value);
+    }
   }
 
   public int recoverProcessingTimeouts() {
@@ -54,7 +70,8 @@ public class PersistentConsumerRecordTemplate {
       record.setStatus(ConsumerRecordStatus.TIMEOUT.name());
     }
     if (record == null) {
-      repository.insertProcessing(idGenerator.next("consumerRecord"), eventKey, consumerGroup, eventType, payloadJson,
+      long recordId = recordIdSupplier == null ? idGenerator.next("consumerRecord") : recordIdSupplier.getAsLong();
+      repository.insertProcessing(recordId, eventKey, consumerGroup, eventType, payloadJson,
           now);
     } else if (repository.markProcessing(eventKey, consumerGroup, eventType, payloadJson, now) == 0) {
       return null;

@@ -14,6 +14,8 @@ import com.mealflow.payment.mapper.LocalEventMapper;
 import com.mealflow.payment.mapper.LocalEventRow;
 import com.mealflow.payment.mapper.PaymentMapper;
 import com.mealflow.payment.mapper.PaymentOrderRow;
+import com.mealflow.payment.mapper.PaymentRefundMapper;
+import com.mealflow.payment.mapper.PaymentRefundRow;
 import com.mealflow.payment.outbox.OutboxEventPublisher;
 import com.mealflow.payment.provider.PaymentProviderPort;
 import com.mealflow.payment.api.PaymentCheckoutView;
@@ -23,7 +25,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class PaymentService {
@@ -33,19 +37,24 @@ public class PaymentService {
   private final PaymentDatabaseIdGenerator idGenerator;
   private final PaymentIdempotencyService idempotencyService;
   private final PaymentMapper paymentMapper;
+  private final PaymentRefundMapper paymentRefundMapper;
   private final LocalEventMapper localEventMapper;
   private final OutboxEventPublisher outboxEventPublisher;
   private final ObjectMapper objectMapper;
   private final Map<String, PaymentProviderPort> paymentProviders;
   private final String provider;
+  private final TransactionTemplate transactionTemplate;
 
-  public PaymentService(PaymentMapper paymentMapper, LocalEventMapper localEventMapper,
+  public PaymentService(PaymentMapper paymentMapper, PaymentRefundMapper paymentRefundMapper,
+      LocalEventMapper localEventMapper,
       OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper, List<PaymentProviderPort> paymentProviders,
       @org.springframework.beans.factory.annotation.Value("${mealflow.payment.provider:mock-wechat}") String provider,
       @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.lease-seconds:60}") long outboxLeaseSeconds,
       @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.max-attempts:5}") int outboxMaxAttempts,
-      PaymentIdempotencyService idempotencyService, PaymentDatabaseIdGenerator idGenerator) {
+      PaymentIdempotencyService idempotencyService, PaymentDatabaseIdGenerator idGenerator,
+      PlatformTransactionManager transactionManager) {
     this.paymentMapper = paymentMapper;
+    this.paymentRefundMapper = paymentRefundMapper;
     this.localEventMapper = localEventMapper;
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
@@ -56,6 +65,7 @@ public class PaymentService {
     this.outboxMaxAttempts = outboxMaxAttempts;
     this.idempotencyService = idempotencyService;
     this.idGenerator = idGenerator;
+    this.transactionTemplate = new TransactionTemplate(transactionManager);
   }
 
   @Transactional
@@ -95,18 +105,49 @@ public class PaymentService {
         PaymentStatus.PAYING.name(), LocalDateTime.now());
   }
 
-  @Transactional
-  public PaymentView refund(long payOrderId) {
-    PaymentView payment = requirePayment(payOrderId);
-    PaymentStatus status = PaymentStatus.valueOf(payment.status());
+  public synchronized PaymentView refund(long payOrderId) {
+    PaymentOrderRow payment = requirePaymentRow(payOrderId);
+    PaymentStatus status = PaymentStatus.valueOf(payment.getStatus());
     if (status == PaymentStatus.REFUNDED) {
-      return payment;
+      return view(payment);
     }
-    if (status != PaymentStatus.PAID) {
+    if (status != PaymentStatus.PAID && status != PaymentStatus.REFUNDING) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is not refundable");
     }
-    paymentMapper.markRefunded(payOrderId, PaymentStatus.PAID.name(), PaymentStatus.REFUNDED.name(), LocalDateTime.now());
-    return requirePayment(payOrderId);
+    prepareRefund(payment);
+    PaymentRefundRow refund = paymentRefundMapper.findByPayOrderId(payOrderId);
+    PaymentProviderPort adapter = requireProvider(refund.getProvider());
+    try {
+      PaymentProviderPort.RefundResult result = adapter.refund(refund.getMerchantOrderNo(),
+          refund.getRefundRequestNo(), refund.getAmountCent());
+      if (result.successful()) {
+        completeRefund(refund, result);
+        return requirePayment(payOrderId);
+      }
+      throw new IllegalStateException(result.processing() ? "refund is processing" : "refund rejected: " + result.message());
+    } catch (RuntimeException ex) {
+      recordPending(refund, null, trimError(ex));
+      throw ex;
+    }
+  }
+
+  public int queryPendingRefunds(int limit) {
+    int completed = 0;
+    for (PaymentRefundRow refund : paymentRefundMapper.findDue(LocalDateTime.now(), limit)) {
+      try {
+        PaymentProviderPort.RefundResult result = requireProvider(refund.getProvider())
+            .queryRefund(refund.getMerchantOrderNo(), refund.getRefundRequestNo());
+        if (result.successful()) {
+          completeRefund(refund, result);
+          completed++;
+        } else {
+          recordPending(refund, result.rawResponse(), result.message());
+        }
+      } catch (RuntimeException ex) {
+        recordPending(refund, null, trimError(ex));
+      }
+    }
+    return completed;
   }
 
   public PaymentView get(long payOrderId) {
@@ -180,11 +221,53 @@ public class PaymentService {
   }
 
   private PaymentView requirePayment(long payOrderId) {
+    return view(requirePaymentRow(payOrderId));
+  }
+
+  private PaymentOrderRow requirePaymentRow(long payOrderId) {
     PaymentOrderRow payment = paymentMapper.findById(payOrderId);
     if (payment == null) {
       throw new BizException(ErrorCode.NOT_FOUND, "payment order not found");
     }
-    return view(payment);
+    return payment;
+  }
+
+  private void prepareRefund(PaymentOrderRow payment) {
+    transactionTemplate.executeWithoutResult(status -> {
+      LocalDateTime now = LocalDateTime.now();
+      PaymentOrderRow current = requirePaymentRow(payment.getId());
+      PaymentStatus currentStatus = PaymentStatus.valueOf(current.getStatus());
+      if (currentStatus == PaymentStatus.PAID) {
+        paymentMapper.markRefunding(current.getId(), PaymentStatus.PAID.name(), PaymentStatus.REFUNDING.name(), now);
+      } else if (currentStatus != PaymentStatus.REFUNDING && currentStatus != PaymentStatus.REFUNDED) {
+        throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is not refundable");
+      }
+      paymentRefundMapper.insert(idGenerator.next("paymentRefund"), current.getId(), current.getProvider(),
+          current.getMerchantOrderNo(), "MFR" + current.getId(), current.getAmountCent(), now);
+    });
+  }
+
+  private void completeRefund(PaymentRefundRow refund, PaymentProviderPort.RefundResult result) {
+    transactionTemplate.executeWithoutResult(status -> {
+      LocalDateTime now = LocalDateTime.now();
+      paymentRefundMapper.markSuccess(refund.getId(), result.channelTransactionNo(), result.channelRefundNo(),
+          result.rawResponse(), now);
+      paymentMapper.completeRefund(refund.getPayOrderId(), PaymentStatus.REFUNDING.name(),
+          PaymentStatus.REFUNDED.name(), now);
+    });
+  }
+
+  private void recordPending(PaymentRefundRow refund, String rawResponse, String error) {
+    LocalDateTime now = LocalDateTime.now();
+    paymentRefundMapper.recordPending(refund.getId(), rawResponse, error, retryAt(refund.getRetryCount() + 1, now), now);
+  }
+
+  private PaymentProviderPort requireProvider(String providerCode) {
+    PaymentProviderPort adapter = paymentProviders.get(providerCode);
+    if (adapter == null) {
+      throw new IllegalStateException("unsupported payment provider: " + providerCode);
+    }
+    return adapter;
   }
 
   private PaymentView view(PaymentOrderRow payment) {

@@ -8,7 +8,8 @@ The real MealFlow system is the microservice set wired by `docker-compose.yml`:
 `meal-fulfillment`, and `meal-notify`.
 
 This module is intentionally excluded from the default Maven reactor so it does
-not look like part of the production microservice topology.
+not look like part of the production microservice topology. Do not copy its
+in-memory ID generator or duplicate service implementations into microservices.
 
 Run it only when you need the old single-process demo:
 

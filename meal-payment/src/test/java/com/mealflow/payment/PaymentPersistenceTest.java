@@ -14,7 +14,8 @@ import org.springframework.boot.test.context.SpringBootTest;
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {
         "spring.cloud.nacos.discovery.enabled=false",
-        "mealflow.outbox.scheduler-enabled=false"
+        "mealflow.outbox.scheduler-enabled=false",
+        "mealflow.payment.provider=mock-wechat"
     }
 )
 class PaymentPersistenceTest {
@@ -80,5 +81,16 @@ class PaymentPersistenceTest {
           assertThat(event.status()).isEqualTo("SENT");
           assertThat(event.retryCount()).isEqualTo(2);
         });
+  }
+
+  @Test
+  void callsProviderAndPersistsRefundResult() {
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-refund", 2003L, 101L, 990));
+    paymentService.mockPay(created.payOrderId());
+
+    PaymentView refunded = paymentService.refund(created.payOrderId());
+
+    assertThat(refunded.status()).isEqualTo("REFUNDED");
+    assertThat(paymentService.refund(created.payOrderId()).status()).isEqualTo("REFUNDED");
   }
 }

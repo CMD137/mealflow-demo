@@ -51,6 +51,11 @@ public class PaymentController {
     return Result.ok(paymentService.refund(payOrderId));
   }
 
+  @PostMapping("/internal/refunds/query")
+  public Result<Integer> queryRefunds() {
+    return Result.ok(paymentService.queryPendingRefunds(100));
+  }
+
   @GetMapping("/{payOrderId}")
   public Result<PaymentView> get(@PathVariable long payOrderId,
       @RequestHeader(value = "X-User-Id", required = false) Long userId) {

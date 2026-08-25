@@ -32,8 +32,8 @@ public class QueueClient {
   }
 
   public void bindOrder(long capacityTokenId, BindOrderRequest request) {
-    restTemplate.postForObject(endpoints.queue() + "/queue/internal/capacity/" + capacityTokenId + "/bind-order",
-        request, Result.class);
+    requireData(restTemplate.postForObject(endpoints.queue() + "/queue/internal/capacity/" + capacityTokenId
+        + "/bind-order", request, Result.class), "queue bind order failed");
   }
 
   public ReleaseCapacityResponse release(long capacityTokenId, ReleaseCapacityRequest request) {
@@ -57,8 +57,8 @@ public class QueueClient {
   }
 
   public void orderCreated(long ticketId, BindOrderRequest request) {
-    restTemplate.postForObject(endpoints.queue() + "/queue/internal/tickets/" + ticketId + "/order-created",
-        request, Result.class);
+    requireData(restTemplate.postForObject(endpoints.queue() + "/queue/internal/tickets/" + ticketId
+        + "/order-created", request, Result.class), "queue order created failed");
   }
 
   private static <T> T requireData(Result<T> result, String fallback) {

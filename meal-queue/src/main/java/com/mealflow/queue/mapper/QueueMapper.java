@@ -100,7 +100,8 @@ public interface QueueMapper {
       @Param("now") LocalDateTime now);
 
   @Select("""
-      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
       FROM capacity_token
       WHERE id = #{id}
       """)
@@ -112,12 +113,15 @@ public interface QueueMapper {
       @Result(column = "order_id", property = "orderId"),
       @Result(column = "status", property = "status"),
       @Result(column = "expire_time", property = "expireTime"),
-      @Result(column = "release_reason", property = "releaseReason")
+      @Result(column = "release_reason", property = "releaseReason"),
+      @Result(column = "released_ticket_id", property = "releasedTicketId"),
+      @Result(column = "released_capacity_token_id", property = "releasedCapacityTokenId")
   })
   CapacityTokenRow findToken(long id);
 
   @Select("""
-      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
       FROM capacity_token
       WHERE ticket_id = #{ticketId} AND status = #{status}
       ORDER BY id DESC
@@ -127,7 +131,8 @@ public interface QueueMapper {
   CapacityTokenRow findHeldTokenByTicket(@Param("ticketId") long ticketId, @Param("status") String status);
 
   @Select("""
-      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
       FROM capacity_token
       WHERE order_id = #{orderId}
       ORDER BY id DESC
@@ -137,7 +142,8 @@ public interface QueueMapper {
   CapacityTokenRow findTokenByOrder(long orderId);
 
   @Select("""
-      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
       FROM capacity_token
       ORDER BY id
       """)
@@ -159,6 +165,15 @@ public interface QueueMapper {
       """)
   int updateTokenStatusFromStatus(@Param("id") long id, @Param("fromStatus") String fromStatus,
       @Param("toStatus") String toStatus, @Param("reason") String reason, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE capacity_token
+      SET released_ticket_id = #{ticketId}, released_capacity_token_id = #{releasedCapacityTokenId},
+          update_time = #{now}
+      WHERE id = #{id} AND status = 'RELEASED'
+      """)
+  int recordReleaseResult(@Param("id") long id, @Param("ticketId") Long ticketId,
+      @Param("releasedCapacityTokenId") Long releasedCapacityTokenId, @Param("now") LocalDateTime now);
 
   @Update("""
       UPDATE capacity_token
