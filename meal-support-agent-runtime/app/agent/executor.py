@@ -46,6 +46,9 @@ class AgentExecutor:
         citations: list[dict] = []
         tool_elapsed_ms = 0
         started = time.perf_counter()
+        bound_executor = lambda tool_name, arguments: self._tool_executor(  # noqa: E731
+            context, tool_name, arguments
+        )
 
         for _ in range(self._max_steps):
             response = self._llm.chat(messages, tools)
@@ -58,7 +61,7 @@ class AgentExecutor:
                     arguments = _parse_arguments(tool_call.function.arguments)
                     used_tools.append(name)
                     tool_started = time.perf_counter()
-                    content = self._tool_executor(name, arguments)
+                    content = bound_executor(name, arguments)
                     tool_elapsed_ms += int((time.perf_counter() - tool_started) * 1000)
                     if name == "local_rag_search":
                         try:

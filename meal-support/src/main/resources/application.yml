@@ -34,12 +34,18 @@ mealflow:
       timeout-ms: ${AGENT_RUNTIME_TIMEOUT_MS:30000}
     tool-client:
       mode: ${SUPPORT_TOOL_CLIENT_MODE:mock}
-      order: { base-url: ${MEAL_ORDER_URI:http://localhost:8105} }
-      queue: { base-url: ${MEAL_QUEUE_URI:http://localhost:8106} }
-      promotion: { base-url: ${MEAL_PROMOTION_URI:http://localhost:8107} }
-      notify: { base-url: ${MEAL_NOTIFY_URI:http://localhost:8110} }
-      merchant: { base-url: ${MEAL_MERCHANT_URI:http://localhost:8102} }
-      catalog: { base-url: ${MEAL_CATALOG_URI:http://localhost:8103} }
+      order:
+        base-url: ${MEAL_ORDER_URI:http://localhost:8105}
+      queue:
+        base-url: ${MEAL_QUEUE_URI:http://localhost:8106}
+      promotion:
+        base-url: ${MEAL_PROMOTION_URI:http://localhost:8107}
+      notify:
+        base-url: ${MEAL_NOTIFY_URI:http://localhost:8110}
+      merchant:
+        base-url: ${MEAL_MERCHANT_URI:http://localhost:8102}
+      catalog:
+        base-url: ${MEAL_CATALOG_URI:http://localhost:8103}
     internal:
       tool-token: ${SUPPORT_INTERNAL_TOOL_TOKEN:change-me}
     session:

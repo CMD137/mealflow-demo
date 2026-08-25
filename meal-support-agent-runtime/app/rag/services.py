@@ -14,9 +14,9 @@ class LocalRagService:
 
     def build_index(self) -> int:
         chunks = load_documents(self._knowledge_dir)
-        ids = [f"{chunk.source}:{chunk.chunk_index}" for chunk in chunks]
+        ids = [f"{chunk.source}:{index}" for index, chunk in enumerate(chunks)]
         metadatas = [
-            {"source": chunk.source, "chunk_index": chunk.chunk_index} for chunk in chunks
+            {"source": chunk.source, "chunk_index": index} for index, chunk in enumerate(chunks)
         ]
         self._store.upsert(ids, [chunk.content for chunk in chunks], metadatas)
         return len(chunks)

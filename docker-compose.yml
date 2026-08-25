@@ -384,7 +384,8 @@ services:
       HISTORY_MAX_TURNS: ${HISTORY_MAX_TURNS:-10}
       KNOWLEDGE_DIR: /app/knowledge
       CHROMA_DIR: /app/knowledge/chroma
-    networks: [private]
+    # private (internal) for bridge/redis; edge for LLM/embedding egress.
+    networks: [private, edge]
 
   meal-gateway:
     image: eclipse-temurin:17-jre

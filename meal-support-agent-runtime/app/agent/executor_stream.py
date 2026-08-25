@@ -38,6 +38,9 @@ class AgentStreamExecutor:
         used_tools: list[str] = []
         citations: list[dict] = []
         started = time.perf_counter()
+        bound_executor = lambda tool_name, arguments: self._tool_executor(  # noqa: E731
+            context, tool_name, arguments
+        )
 
         yield {"event": "status", "data": "thinking"}
 
@@ -85,7 +88,7 @@ class AgentStreamExecutor:
                     arguments = _parse_arguments(entry["arguments"])
                     used_tools.append(name)
                     yield {"event": "tool", "data": name}
-                    content = self._tool_executor(name, arguments)
+                    content = bound_executor(name, arguments)
                     if name == "local_rag_search":
                         try:
                             citations.extend(json.loads(content).get("citations", []))

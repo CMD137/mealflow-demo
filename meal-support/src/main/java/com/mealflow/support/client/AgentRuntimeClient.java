@@ -4,8 +4,10 @@ import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.support.dto.AgentChatRequest;
 import com.mealflow.support.dto.AgentChatResponse;
+import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -16,12 +18,16 @@ public class AgentRuntimeClient {
   private final String chatPath;
   private final String internalToken;
 
-  public AgentRuntimeClient(RestClient restClient,
+  public AgentRuntimeClient(
       @Value("${mealflow.support.agent-runtime.base-url:http://localhost:8090}") String baseUrl,
       @Value("${mealflow.support.agent-runtime.chat-path:/agent/chat}") String chatPath,
-      @Value("${mealflow.support.agent-runtime.internal-token:}") String internalToken) {
-    // Keep the configured connect/read timeouts from HttpClientConfig.
-    this.restClient = restClient.mutate().baseUrl(baseUrl).build();
+      @Value("${mealflow.support.agent-runtime.internal-token:}") String internalToken,
+      @Value("${mealflow.support.agent-runtime.timeout-ms:60000}") long timeoutMs) {
+    // LLM tool loops can take tens of seconds; use a dedicated client with a generous read timeout.
+    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(Duration.ofSeconds(3));
+    factory.setReadTimeout(Duration.ofMillis(Math.max(1000, timeoutMs)));
+    this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     this.chatPath = chatPath;
     this.internalToken = internalToken;
   }
