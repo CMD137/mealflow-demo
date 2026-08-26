@@ -93,7 +93,7 @@ class AuthUserPersistenceTest {
     assertThat(employee.employeeId()).isGreaterThan(1000L);
     assertThat(employee.merchantId()).isEqualTo(10L);
     assertThat(employee.roleCode()).isEqualTo("KITCHEN_MANAGER");
-    assertThat(authUserService.employees(10L)).extracting("phone").contains("13800000066");
+    assertThat(authUserService.employees(10L, 1, 100).items()).extracting("phone").contains("13800000066");
 
     authUserService.requestLoginCode("13800000066");
     LoginResponse login = authUserService.login(new LoginRequest("13800000066", "123456"));

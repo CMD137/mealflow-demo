@@ -96,10 +96,37 @@ public interface OrderMapper {
         AND create_time &lt;= #{endTime}
       </if>
       ORDER BY id DESC
+      LIMIT #{limit} OFFSET #{offset}
       </script>
       """)
   @ResultMap("orderMap")
   List<OrderRow> findAdminOrders(@Param("merchantId") Long merchantId, @Param("userId") Long userId,
+      @Param("status") String status, @Param("beginTime") LocalDateTime beginTime,
+      @Param("endTime") LocalDateTime endTime, @Param("limit") int limit, @Param("offset") int offset);
+
+  @Select("""
+      <script>
+      SELECT COUNT(*)
+      FROM customer_order
+      WHERE 1 = 1
+      <if test="merchantId != null">
+        AND merchant_id = #{merchantId}
+      </if>
+      <if test="userId != null">
+        AND user_id = #{userId}
+      </if>
+      <if test="status != null and status != ''">
+        AND status = #{status}
+      </if>
+      <if test="beginTime != null">
+        AND create_time &gt;= #{beginTime}
+      </if>
+      <if test="endTime != null">
+        AND create_time &lt;= #{endTime}
+      </if>
+      </script>
+      """)
+  long countAdminOrders(@Param("merchantId") Long merchantId, @Param("userId") Long userId,
       @Param("status") String status, @Param("beginTime") LocalDateTime beginTime,
       @Param("endTime") LocalDateTime endTime);
 

@@ -14,6 +14,7 @@ import com.mealflow.catalog.api.SkuView;
 import com.mealflow.catalog.api.StockReservationView;
 import com.mealflow.catalog.api.StockTransitionRequest;
 import com.mealflow.catalog.storage.CatalogImageService;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.api.Result;
 import com.mealflow.common.security.RequestIdentity;
 import jakarta.validation.Valid;
@@ -82,9 +83,11 @@ public class CatalogController {
   }
 
   @GetMapping("/admin/skus")
-  public Result<List<SkuView>> adminSkus(
-      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
-    return Result.ok(catalogService.adminSkus(RequestIdentity.requireMerchant(merchantId)));
+  public Result<PageResult<SkuView>> adminSkus(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize) {
+    return Result.ok(catalogService.adminSkus(RequestIdentity.requireMerchant(merchantId), page, pageSize));
   }
 
   @PostMapping(value = "/admin/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

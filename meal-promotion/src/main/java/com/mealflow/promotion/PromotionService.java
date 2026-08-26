@@ -1,6 +1,7 @@
 package com.mealflow.promotion;
 
 import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.VoucherLockStatus;
 import com.mealflow.promotion.api.LockVoucherRequest;
@@ -179,6 +180,17 @@ public class PromotionService {
 
   public List<VoucherView> vouchers() {
     return promotionMapper.findVouchers().stream().map(this::voucherView).toList();
+  }
+
+  public PageResult<VoucherView> vouchers(int page, int pageSize) {
+    int normalizedPageSize = Math.min(Math.max(pageSize, 1), 100);
+    int normalizedPage = Math.max(page, 1);
+    long total = promotionMapper.countVouchers();
+    List<VoucherView> items = promotionMapper.findVouchersPage(normalizedPageSize, (normalizedPage - 1) * normalizedPageSize)
+        .stream()
+        .map(this::voucherView)
+        .toList();
+    return PageResult.of(items, total, normalizedPage, normalizedPageSize);
   }
 
   public List<VoucherView> activeVouchers() {

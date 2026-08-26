@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.ConsumerRecordStatus;
 import com.mealflow.common.status.LocalEventStatus;
@@ -229,9 +230,15 @@ public class OrderService {
     return orderMapper.findByUserId(userId).stream().map(this::mapOrder).map(this::view).toList();
   }
 
-  public List<OrderView> adminOrders(AdminOrderQuery query) {
-    return orderMapper.findAdminOrders(query.merchantId(), query.userId(), query.status(), query.beginTime(),
-        query.endTime()).stream().map(this::mapOrder).map(this::view).toList();
+  public PageResult<OrderView> adminOrders(AdminOrderQuery query) {
+    long total = orderMapper.countAdminOrders(query.merchantId(), query.userId(), query.status(), query.beginTime(),
+        query.endTime());
+    List<OrderView> items = orderMapper.findAdminOrders(query.merchantId(), query.userId(), query.status(),
+        query.beginTime(), query.endTime(), query.pageSize(), query.offset()).stream()
+        .map(this::mapOrder)
+        .map(this::view)
+        .toList();
+    return PageResult.of(items, total, query.page(), query.pageSize());
   }
 
   public OrderStatisticsView adminStatistics(AdminOrderQuery query) {

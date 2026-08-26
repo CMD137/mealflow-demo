@@ -20,7 +20,8 @@ async function load() {
   }
   loading.value = true;
   try {
-    rows.value = await adminOrdersApi({ merchantId });
+    const page = await adminOrdersApi({ merchantId, page: 1, pageSize: 100 });
+    rows.value = page.items;
   } finally {
     loading.value = false;
   }

@@ -96,10 +96,9 @@ class OrderPersistenceTest {
     orderService.markPaid(response.orderId());
 
     assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
-    assertThat(orderService.adminOrders(new AdminOrderQuery(10L, 101L, "WAIT_MERCHANT_ACCEPT", null, null)))
-        .extracting("orderId")
-        .contains(response.orderId());
-    OrderStatisticsView statistics = orderService.adminStatistics(new AdminOrderQuery(10L, null, null, null, null));
+    assertThat(orderService.adminOrders(new AdminOrderQuery(10L, 101L, "WAIT_MERCHANT_ACCEPT", null, null, 1, 20))
+        .items()).extracting("orderId").contains(response.orderId());
+    OrderStatisticsView statistics = orderService.adminStatistics(new AdminOrderQuery(10L, null, null, null, null, 1, 1));
     assertThat(statistics.totalCount()).isGreaterThanOrEqualTo(1);
     assertThat(statistics.waitingAcceptCount()).isGreaterThanOrEqualTo(1);
     assertThat(orderService.events())

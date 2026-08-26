@@ -204,6 +204,7 @@ public interface AuthUserMapper {
       LEFT JOIN merchant_role r ON r.role_code = e.role_code
       WHERE e.merchant_id = #{merchantId}
       ORDER BY e.id
+      LIMIT #{limit} OFFSET #{offset}
       """)
   @Results(id = "employeeDetailMap", value = {
       @Result(column = "employee_id", property = "employeeId"),
@@ -215,7 +216,11 @@ public interface AuthUserMapper {
       @Result(column = "role_name", property = "roleName"),
       @Result(column = "status", property = "status")
   })
-  List<EmployeeDetailRow> findEmployees(long merchantId);
+  List<EmployeeDetailRow> findEmployeesPage(@Param("merchantId") long merchantId, @Param("limit") int limit,
+      @Param("offset") int offset);
+
+  @Select("SELECT COUNT(*) FROM merchant_employee WHERE merchant_id = #{merchantId}")
+  long countEmployees(long merchantId);
 
   @Select("""
       SELECT e.id AS employee_id, e.merchant_id, e.user_id, u.phone, u.nickname,

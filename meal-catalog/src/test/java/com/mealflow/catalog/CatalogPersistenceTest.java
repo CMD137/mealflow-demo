@@ -57,7 +57,7 @@ class CatalogPersistenceTest {
     assertThat(sku.categoryName()).isEqualTo("面食");
     assertThat(catalogService.adminCategories(10L)).extracting("name").contains("面食");
     assertThat(catalogService.listCategories(10L)).extracting("name").contains("面食");
-    assertThat(catalogService.adminSkus(10L)).extracting("name").contains("番茄牛肉面");
+    assertThat(catalogService.adminSkus(10L, 1, 100).items()).extracting("name").contains("番茄牛肉面");
     assertThat(catalogService.listByMerchant(10L)).extracting("skuId").contains(sku.skuId());
 
     SkuView stocked = catalogService.updateSkuStock(10L, sku.skuId(), 5);

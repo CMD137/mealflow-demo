@@ -1,5 +1,6 @@
 package com.mealflow.promotion;
 
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.api.Result;
 import com.mealflow.common.security.RequestIdentity;
 import com.mealflow.promotion.api.LockVoucherRequest;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -61,8 +63,9 @@ public class PromotionController {
   }
 
   @GetMapping("/admin")
-  public Result<List<VoucherView>> vouchers() {
-    return Result.ok(promotionService.vouchers());
+  public Result<PageResult<VoucherView>> vouchers(@RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize) {
+    return Result.ok(promotionService.vouchers(page, pageSize));
   }
 
   @PostMapping("/admin")

@@ -12,6 +12,9 @@ const loading = ref(false);
 const submitLoading = ref(false);
 const dialogVisible = ref(false);
 const rows = ref<OrderView[]>([]);
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(20);
 const skus = ref<SkuView[]>([]);
 const selected = ref<OrderView | null>(null);
 const submitResult = ref<SubmitOrderResponse | null>(null);
@@ -34,15 +37,28 @@ async function load() {
       adminOrdersApi({
         merchantId: filters.merchantId,
         userId: filters.userId,
-        status: filters.status || undefined
+        status: filters.status || undefined,
+        page: page.value,
+        pageSize: pageSize.value
       }),
-      adminSkusApi()
+      adminSkusApi({ page: 1, pageSize: 100 })
     ]);
-    rows.value = orderData;
-    skus.value = skuData;
+    rows.value = orderData.items;
+    total.value = orderData.total;
+    skus.value = skuData.items;
   } finally {
     loading.value = false;
   }
+}
+
+function handlePageChange(nextPage: number) {
+  page.value = nextPage;
+  load();
+}
+
+function handleQuery() {
+  page.value = 1;
+  load();
 }
 
 function openCreate() {
@@ -138,7 +154,7 @@ onMounted(load);
           <el-option label="已取消" value="CANCELLED" />
         </el-select>
       </div>
-      <el-button type="primary" @click="load">查询</el-button>
+      <el-button type="primary" @click="handleQuery">查询</el-button>
     </div>
 
     <div class="content-panel">
@@ -163,6 +179,15 @@ onMounted(load);
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-bar">
+        <el-pagination
+          layout="total, prev, pager, next"
+          :total="total"
+          :current-page="page"
+          :page-size="pageSize"
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
 
     <el-drawer v-model="selected" title="订单详情" size="460px">
@@ -232,6 +257,12 @@ onMounted(load);
 </template>
 
 <style scoped>
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+
 .order-form {
   margin-top: 16px;
 }

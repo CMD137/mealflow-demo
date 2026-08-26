@@ -30,6 +30,13 @@ public interface PromotionMapper {
   @ResultMap("voucherMap")
   List<VoucherRow> findVouchers();
 
+  @Select("SELECT id, name, type, discount_cent, stock, status, start_time, end_time FROM voucher ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+  @ResultMap("voucherMap")
+  List<VoucherRow> findVouchersPage(@Param("limit") int limit, @Param("offset") int offset);
+
+  @Select("SELECT COUNT(*) FROM voucher")
+  long countVouchers();
+
   @Select("SELECT id FROM voucher ORDER BY id")
   List<Long> findVoucherIds();
 

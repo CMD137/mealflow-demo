@@ -13,6 +13,7 @@ import com.mealflow.authuser.api.MenuView;
 import com.mealflow.authuser.api.RoleRequest;
 import com.mealflow.authuser.api.RoleView;
 import com.mealflow.authuser.api.SignInView;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.authuser.api.TokenPrincipalView;
 import com.mealflow.authuser.api.TokenValidationRequest;
 import com.mealflow.authuser.api.UserView;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -119,9 +121,11 @@ public class AuthUserController {
   }
 
   @GetMapping("/auth/admin/employees")
-  public Result<List<EmployeeView>> employees(
-      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
-    return Result.ok(authUserService.employees(RequestIdentity.requireMerchant(merchantId)));
+  public Result<PageResult<EmployeeView>> employees(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize) {
+    return Result.ok(authUserService.employees(RequestIdentity.requireMerchant(merchantId), page, pageSize));
   }
 
   @PostMapping("/auth/admin/employees")

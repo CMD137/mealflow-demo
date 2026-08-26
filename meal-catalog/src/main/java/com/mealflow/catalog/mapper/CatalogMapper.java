@@ -42,9 +42,14 @@ public interface CatalogMapper {
       LEFT JOIN category c ON c.id = s.category_id
       WHERE s.merchant_id = #{merchantId}
       ORDER BY COALESCE(c.sort_order, 999999), s.id
+      LIMIT #{limit} OFFSET #{offset}
       """)
   @ResultMap("skuMap")
-  List<SkuRow> findAdminSkusByMerchant(long merchantId);
+  List<SkuRow> findAdminSkusByMerchantPage(@Param("merchantId") long merchantId, @Param("limit") int limit,
+      @Param("offset") int offset);
+
+  @Select("SELECT COUNT(*) FROM sku WHERE merchant_id = #{merchantId}")
+  long countAdminSkusByMerchant(long merchantId);
 
   @Select("""
       SELECT s.id, s.merchant_id, s.category_id, c.name AS category_name, s.name, s.description,

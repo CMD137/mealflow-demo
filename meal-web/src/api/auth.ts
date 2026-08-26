@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { EmployeeView, LoginRequest, LoginResponse, MenuView, RoleView, UserView } from '@/types/api';
+import type { EmployeeView, LoginRequest, LoginResponse, MenuView, PageResult, RoleView, UserView } from '@/types/api';
 
 export function loginApi(payload: LoginRequest) {
   return http.post<unknown, LoginResponse>('/auth/login', payload);
@@ -25,8 +25,8 @@ export function saveRoleApi(payload: { roleCode: string; roleName: string; descr
   return http.post<unknown, RoleView>('/auth/admin/roles', payload);
 }
 
-export function employeesApi() {
-  return http.get<unknown, EmployeeView[]>('/auth/admin/employees');
+export function employeesApi(params?: { page?: number; pageSize?: number }) {
+  return http.get<unknown, PageResult<EmployeeView>>('/auth/admin/employees', { params });
 }
 
 export function addEmployeeApi(payload: { phone: string; nickname: string; roleCode: string }) {

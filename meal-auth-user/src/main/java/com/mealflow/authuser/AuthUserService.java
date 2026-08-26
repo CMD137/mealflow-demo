@@ -23,6 +23,7 @@ import com.mealflow.authuser.mapper.UserAddressRow;
 import com.mealflow.authuser.otp.OtpPort;
 import com.mealflow.authuser.security.SessionTokenHasher;
 import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.exception.BizException;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -203,8 +204,13 @@ public class AuthUserService {
     return roleView(authUserMapper.findRole(request.roleCode()));
   }
 
-  public List<EmployeeView> employees(long merchantId) {
-    return authUserMapper.findEmployees(merchantId).stream().map(this::employeeView).toList();
+  public PageResult<EmployeeView> employees(long merchantId, int page, int pageSize) {
+    int normalizedPageSize = Math.min(Math.max(pageSize, 1), 100);
+    int normalizedPage = Math.max(page, 1);
+    long total = authUserMapper.countEmployees(merchantId);
+    List<EmployeeView> items = authUserMapper.findEmployeesPage(merchantId, normalizedPageSize,
+        (normalizedPage - 1) * normalizedPageSize).stream().map(this::employeeView).toList();
+    return PageResult.of(items, total, normalizedPage, normalizedPageSize);
   }
 
   @Transactional

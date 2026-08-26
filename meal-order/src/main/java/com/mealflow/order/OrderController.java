@@ -1,5 +1,6 @@
 package com.mealflow.order;
 
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.api.Result;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
@@ -95,14 +96,16 @@ public class OrderController {
   }
 
   @GetMapping("/admin")
-  public Result<List<OrderView>> adminOrders(
+  public Result<PageResult<OrderView>> adminOrders(
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @RequestParam(required = false) Long userId,
       @RequestParam(required = false) String status,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beginTime,
-      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
-    return Result.ok(orderService.adminOrders(new AdminOrderQuery(RequestIdentity.requireMerchant(merchantId), userId, status,
-        beginTime, endTime)));
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize) {
+    return Result.ok(orderService.adminOrders(new AdminOrderQuery(RequestIdentity.requireMerchant(merchantId), userId,
+        status, beginTime, endTime, page, pageSize)));
   }
 
   @GetMapping("/admin/statistics")
@@ -111,7 +114,7 @@ public class OrderController {
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beginTime,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
     return Result.ok(orderService.adminStatistics(new AdminOrderQuery(RequestIdentity.requireMerchant(merchantId), null, null,
-        beginTime, endTime)));
+        beginTime, endTime, 1, 1)));
   }
 
   @GetMapping("/internal/events")

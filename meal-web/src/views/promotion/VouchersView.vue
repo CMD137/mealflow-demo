@@ -8,15 +8,25 @@ import { formatMoney, statusType } from '@/utils/format';
 const loading = ref(false);
 const dialogVisible = ref(false);
 const rows = ref<VoucherView[]>([]);
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(20);
 const form = reactive({ voucherId: 0, name: '', type: 'SECKILL', discountCent: 100, stock: 0, status: 'ACTIVE' });
 
 async function load() {
   loading.value = true;
   try {
-    rows.value = await vouchersApi();
+    const data = await vouchersApi({ page: page.value, pageSize: pageSize.value });
+    rows.value = data.items;
+    total.value = data.total;
   } finally {
     loading.value = false;
   }
+}
+
+function handlePageChange(nextPage: number) {
+  page.value = nextPage;
+  load();
 }
 
 function openCreate() {
@@ -74,6 +84,15 @@ onMounted(load);
           <template #default="{ row }"><el-button text type="primary" @click="openEdit(row)">编辑</el-button></template>
         </el-table-column>
       </el-table>
+      <div class="pagination-bar">
+        <el-pagination
+          layout="total, prev, pager, next"
+          :total="total"
+          :current-page="page"
+          :page-size="pageSize"
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
 
     <el-dialog v-model="dialogVisible" :title="form.voucherId ? '编辑优惠券' : '新增优惠券'" width="520px">
@@ -96,3 +115,11 @@ onMounted(load);
     </el-dialog>
   </section>
 </template>
+
+<style scoped>
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+</style>

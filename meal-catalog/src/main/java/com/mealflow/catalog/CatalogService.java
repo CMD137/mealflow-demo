@@ -14,6 +14,7 @@ import com.mealflow.catalog.mapper.CategoryRow;
 import com.mealflow.catalog.mapper.SkuRow;
 import com.mealflow.catalog.mapper.StockReservationRow;
 import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.StockReservationStatus;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
@@ -47,8 +48,16 @@ public class CatalogService {
     return catalogMapper.findActiveCategories(merchantId).stream().map(this::categoryView).toList();
   }
 
-  public List<SkuView> adminSkus(long merchantId) {
-    return catalogMapper.findAdminSkusByMerchant(merchantId).stream().map(this::skuView).toList();
+  public PageResult<SkuView> adminSkus(long merchantId, int page, int pageSize) {
+    int normalizedPageSize = Math.min(Math.max(pageSize, 1), 100);
+    int normalizedPage = Math.max(page, 1);
+    long total = catalogMapper.countAdminSkusByMerchant(merchantId);
+    List<SkuView> items = catalogMapper
+        .findAdminSkusByMerchantPage(merchantId, normalizedPageSize, (normalizedPage - 1) * normalizedPageSize)
+        .stream()
+        .map(this::skuView)
+        .toList();
+    return PageResult.of(items, total, normalizedPage, normalizedPageSize);
   }
 
   public List<OrderItemSnapshot> buildSnapshots(long merchantId, List<OrderSkuItem> items) {

@@ -1,8 +1,8 @@
 import { http } from './http';
-import type { VoucherView } from '@/types/api';
+import type { PageResult, VoucherView } from '@/types/api';
 
-export function vouchersApi() {
-  return http.get<unknown, VoucherView[]>('/vouchers/admin');
+export function vouchersApi(params?: { page?: number; pageSize?: number }) {
+  return http.get<unknown, PageResult<VoucherView>>('/vouchers/admin', { params });
 }
 
 export function saveVoucherApi(
