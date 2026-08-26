@@ -49,6 +49,12 @@ services:
   meal-auth-user:
     image: eclipse-temurin:17-jre
     container_name: mealflow-auth-user
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8101 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -75,6 +81,12 @@ services:
   meal-merchant:
     image: eclipse-temurin:17-jre
     container_name: mealflow-merchant
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8102 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -95,6 +107,12 @@ services:
   meal-catalog:
     image: eclipse-temurin:17-jre
     container_name: mealflow-catalog
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8103 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -125,6 +143,12 @@ services:
   meal-cart:
     image: eclipse-temurin:17-jre
     container_name: mealflow-cart
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8104 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -145,6 +169,12 @@ services:
   meal-order:
     image: eclipse-temurin:17-jre
     container_name: mealflow-order
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8105 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       mysql:
         condition: service_healthy
@@ -185,6 +215,12 @@ services:
   meal-queue:
     image: eclipse-temurin:17-jre
     container_name: mealflow-queue
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8106 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -212,6 +248,12 @@ services:
   meal-promotion:
     image: eclipse-temurin:17-jre
     container_name: mealflow-promotion
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8107 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -246,6 +288,12 @@ services:
   meal-payment:
     image: eclipse-temurin:17-jre
     container_name: mealflow-payment
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8108 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -278,6 +326,12 @@ services:
   meal-fulfillment:
     image: eclipse-temurin:17-jre
     container_name: mealflow-fulfillment
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8109 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       mysql:
         condition: service_healthy
@@ -308,6 +362,12 @@ services:
   meal-notify:
     image: eclipse-temurin:17-jre
     container_name: mealflow-notify
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8110 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -335,6 +395,12 @@ services:
   meal-support:
     image: eclipse-temurin:17-jre
     container_name: mealflow-support
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8111 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -368,6 +434,12 @@ services:
     build: ./meal-support-agent-runtime
     image: mealflow-support-agent-runtime:0.1.0
     container_name: mealflow-support-agent-runtime
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8090 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       redis:
         condition: service_started
@@ -397,18 +469,35 @@ services:
   meal-gateway:
     image: eclipse-temurin:17-jre
     container_name: mealflow-gateway
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
-      - meal-auth-user
-      - meal-merchant
-      - meal-catalog
-      - meal-cart
-      - meal-order
-      - meal-queue
-      - meal-promotion
-      - meal-payment
-      - meal-fulfillment
-      - meal-notify
-      - meal-support
+      meal-auth-user:
+        condition: service_healthy
+      meal-merchant:
+        condition: service_healthy
+      meal-catalog:
+        condition: service_healthy
+      meal-cart:
+        condition: service_healthy
+      meal-order:
+        condition: service_healthy
+      meal-queue:
+        condition: service_healthy
+      meal-promotion:
+        condition: service_healthy
+      meal-payment:
+        condition: service_healthy
+      meal-fulfillment:
+        condition: service_healthy
+      meal-notify:
+        condition: service_healthy
+      meal-support:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"

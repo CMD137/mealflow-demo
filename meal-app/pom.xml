@@ -11,7 +11,9 @@
   </parent>
 
   <artifactId>meal-app</artifactId>
-  <name>meal-app</name>
+  <name>meal-app (legacy-demo)</name>
+  <description>LEGACY single-app demo (in-memory IdGenerator/IdempotentTemplate). Only built with the
+    legacy-demo Maven profile; excluded from the default reactor and docker-compose.</description>
 
   <dependencies>
     <dependency>
