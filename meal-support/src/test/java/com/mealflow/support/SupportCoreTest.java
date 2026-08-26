@@ -72,6 +72,18 @@ class SupportCoreTest {
   }
 
   @Test
+  void invokeFailsClosedWhenInternalTokenIsNotConfigured() {
+    ToolInvokeService unconfigured = new ToolInvokeService(sessionStore, new ToolRegistryService(),
+        new MockToolClient(), toolInvokeServiceRealClient(), "", "mock");
+
+    BizException ex = assertThrows(BizException.class,
+        () -> unconfigured.invoke("",
+            new ToolInvokeRequest(customerSession.sessionId(), "get_user_orders", Map.of())));
+
+    assertEquals("FORBIDDEN", ex.errorCode().code());
+  }
+
+  @Test
   void invokeMockModeReturnsFixedData() {
     ToolInvokeResponse response = toolInvokeService.invoke("secret-token",
         new ToolInvokeRequest(customerSession.sessionId(), "get_user_orders", Map.of()));
@@ -108,5 +120,11 @@ class SupportCoreTest {
   void registryExposesNineTools() {
     assertEquals(9, new ToolRegistryService().all().size());
     assertFalse(new ToolRegistryService().all().stream().anyMatch(tool -> tool.name().startsWith("internal_")));
+  }
+
+  private RealToolClient toolInvokeServiceRealClient() {
+    return new RealToolClient(RestClient.create(), new ObjectMapper(),
+        "http://localhost:8105", "http://localhost:8106", "http://localhost:8107",
+        "http://localhost:8110", "http://localhost:8102", "http://localhost:8103");
   }
 }

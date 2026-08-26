@@ -28,6 +28,17 @@ services:
       ALIPAY_NOTIFY_URL: https://${NGROK_URL:?NGROK_URL is required in production}/payments/alipay/callback
     networks: [private, edge]
 
+  meal-support:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:?SUPPORT_INTERNAL_TOOL_TOKEN is required in production}
+      AGENT_RUNTIME_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?AGENT_INTERNAL_TOKEN is required in production}
+
+  meal-support-agent-runtime:
+    environment:
+      SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:?SUPPORT_INTERNAL_TOOL_TOKEN is required in production}
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?AGENT_INTERNAL_TOKEN is required in production}
+
   meal-gateway:
     environment:
       SPRING_PROFILES_ACTIVE: prod

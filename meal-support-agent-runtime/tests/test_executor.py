@@ -53,7 +53,8 @@ class FakeLlm:
         )
 
 
-def fake_tool_executor(tool_name, arguments):
+def fake_tool_executor(context, tool_name, arguments):
+    assert context.session_id == "s1"
     return '{"success": true, "tool": "get_user_orders", "data": {"orders": [1, 2]}}'
 
 

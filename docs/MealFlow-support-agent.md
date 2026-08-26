@@ -101,7 +101,7 @@ docker compose up -d --build
 # 2) 配置 LLM / embedding（如未配置，工具查询仍可用，FAQ/RAG 回答会提示无法检索）
 #    export LLM_API_KEY=... EMBEDDING_API_KEY=...
 
-# 3) 双向内部 token（两端同值；默认 change-me 仅限本地）
+# 3) 双向内部 token（两个方向分别配置；生产环境必须显式提供）
 #    export AGENT_INTERNAL_TOKEN=... SUPPORT_INTERNAL_TOOL_TOKEN=...
 
 # 4) 前端
@@ -121,7 +121,7 @@ Python 通过 `SUPPORT_BRIDGE_URL=http://meal-support:8111` 回访桥（唯一�
      且本机 Python 需能访问容器内 8111（本机开发建议 Java 也本机跑）。
 3. 启动 Python：`cd meal-support-agent-runtime`，venv + `pip install -r requirements.txt`，
    `python scripts/build_local_rag_index.py`，`uvicorn app.main:app --port 8090`。
-4. 配置双向 token：`AGENT_INTERNAL_TOKEN` 与 `SUPPORT_INTERNAL_TOOL_TOKEN` 两端同值。
+4. 配置双向 token：两个方向使用不同随机值；每个值只需在调用方与接收方保持一致。
 5. 前端：`.\start-frontend.cmd` 后访问 H5 → 我的 → 在线客服。
 
 ## 7. 已知说明

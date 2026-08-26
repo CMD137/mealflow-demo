@@ -47,6 +47,6 @@ mealflow:
       catalog:
         base-url: ${MEAL_CATALOG_URI:http://localhost:8103}
     internal:
-      tool-token: ${SUPPORT_INTERNAL_TOOL_TOKEN:change-me}
+      tool-token: ${SUPPORT_INTERNAL_TOOL_TOKEN:}
     session:
       ttl-seconds: ${SUPPORT_SESSION_TTL_SECONDS:3600}

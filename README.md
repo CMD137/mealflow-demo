@@ -158,7 +158,7 @@ docker compose up -d --build
 # 2) 需要 LLM/RAG 时注入密钥（不配置则工具查询仍可用，FAQ 回答提示无法检索）
 $env:LLM_API_KEY='...'; $env:EMBEDDING_API_KEY='...'
 
-# 3) 双向内部 token（两端同值；默认 change-me 仅限本地）
+# 3) 双向内部 token（两个方向分别配置；生产环境必须显式提供）
 $env:AGENT_INTERNAL_TOKEN='...'; $env:SUPPORT_INTERNAL_TOOL_TOKEN='...'
 
 # 4) 前端
@@ -170,7 +170,8 @@ $env:AGENT_INTERNAL_TOKEN='...'; $env:SUPPORT_INTERNAL_TOOL_TOKEN='...'
 - 若要在本机跑 Python（离线联调），见 [docs/MealFlow-support-agent.md](docs/MealFlow-support-agent.md) 方式二。
 
 双向内部 token（A4）：Java 侧 `SUPPORT_INTERNAL_TOOL_TOKEN` / `AGENT_RUNTIME_INTERNAL_TOKEN`、
-Python 侧 `AGENT_INTERNAL_TOKEN` / `SUPPORT_INTERNAL_TOOL_TOKEN` 配置同值；
+Python 侧 `AGENT_INTERNAL_TOKEN` / `SUPPORT_INTERNAL_TOOL_TOKEN`；两个方向使用不同随机值，
+每个值只需在调用方与接收方保持一致；
 未配置时安全策略会拒绝调用（fail-closed）。
 
 ## 环境和密钥

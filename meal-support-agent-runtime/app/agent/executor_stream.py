@@ -24,7 +24,7 @@ from app.tools.remote.specs import TOOL_SPECS
 
 class AgentStreamExecutor:
     def __init__(self, llm: LlmClient, history: RedisChatHistory,
-                 tool_executor: Callable[[str, dict], str], settings: Settings):
+                 tool_executor: Callable[[AgentRunContext, str, dict], str], settings: Settings):
         self._llm = llm
         self._history = history
         self._tool_executor = tool_executor
@@ -38,10 +38,6 @@ class AgentStreamExecutor:
         used_tools: list[str] = []
         citations: list[dict] = []
         started = time.perf_counter()
-        bound_executor = lambda tool_name, arguments: self._tool_executor(  # noqa: E731
-            context, tool_name, arguments
-        )
-
         yield {"event": "status", "data": "thinking"}
 
         for _ in range(self._max_steps):
@@ -88,7 +84,7 @@ class AgentStreamExecutor:
                     arguments = _parse_arguments(entry["arguments"])
                     used_tools.append(name)
                     yield {"event": "tool", "data": name}
-                    content = bound_executor(name, arguments)
+                    content = self._tool_executor(context, name, arguments)
                     if name == "local_rag_search":
                         try:
                             citations.extend(json.loads(content).get("citations", []))

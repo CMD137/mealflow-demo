@@ -29,7 +29,7 @@ public class ToolInvokeService {
 
   public ToolInvokeService(SessionContextStore sessionStore, ToolRegistryService registry,
       MockToolClient mockToolClient, RealToolClient realToolClient,
-      @Value("${mealflow.support.internal.tool-token:change-me}") String internalToolToken,
+      @Value("${mealflow.support.internal.tool-token:}") String internalToolToken,
       @Value("${mealflow.support.tool-client.mode:mock}") String toolClientMode) {
     this.sessionStore = sessionStore;
     this.registry = registry;

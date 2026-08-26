@@ -30,7 +30,7 @@ def _dedupe_citations(citations: list[dict]) -> list[dict]:
 
 class AgentExecutor:
     def __init__(self, llm: LlmClient, history: RedisChatHistory,
-                 tool_executor: Callable[[str, dict], str], settings: Settings):
+                 tool_executor: Callable[[AgentRunContext, str, dict], str], settings: Settings):
         self._llm = llm
         self._history = history
         self._tool_executor = tool_executor
@@ -46,10 +46,6 @@ class AgentExecutor:
         citations: list[dict] = []
         tool_elapsed_ms = 0
         started = time.perf_counter()
-        bound_executor = lambda tool_name, arguments: self._tool_executor(  # noqa: E731
-            context, tool_name, arguments
-        )
-
         for _ in range(self._max_steps):
             response = self._llm.chat(messages, tools)
             choice = response.choices[0]
@@ -61,7 +57,7 @@ class AgentExecutor:
                     arguments = _parse_arguments(tool_call.function.arguments)
                     used_tools.append(name)
                     tool_started = time.perf_counter()
-                    content = bound_executor(name, arguments)
+                    content = self._tool_executor(context, name, arguments)
                     tool_elapsed_ms += int((time.perf_counter() - tool_started) * 1000)
                     if name == "local_rag_search":
                         try:
