@@ -83,9 +83,11 @@ EXPLAIN SELECT COUNT(*) FROM capacity_token WHERE merchant_id = 10 AND status = 
 |---|---|---|
 | `CatalogService.buildSnapshots` | 逐 SKU `findSku`(N+1) | 按 `sku_id IN (...)` 批量查询快照 |
 | `QueueService.tickets()` | 先查 ID 再逐票查询 + 逐票 Redis rank(N+1) | 批量查票、rank 按需/分页 |
-| `AuthUserService.signIn` | 月历逐日 GETBIT(31 次往返) | 一次读取整段位图本地解析 |
 | 深度分页 | `LIMIT x OFFSET y` 深翻页变慢 | 大表改用 `(create_time,id)` 游标 |
 | 压测 | 无固定版本/数据规模的 QPS 基线 | 用 `scripts/load-*.ps1` 先建立吞吐/P95 基线,再谈优化 |
+
+> 已修复(2026-09-02):`AuthUserService` 签到月历与连续天数改为读取 MySQL `points_ledger`,
+> 不再逐日 GETBIT(31 次往返);积分余额以 `user_account.points` 为事实,Redis 仅为派生缓存。
 
 ## 6. 何时更新本文
 
