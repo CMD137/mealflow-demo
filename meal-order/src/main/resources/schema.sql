@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS customer_order (
   update_time TIMESTAMP NOT NULL,
   INDEX idx_customer_order_user_id (user_id),
   INDEX idx_customer_order_status (status),
+  INDEX idx_customer_order_merchant_status_time (merchant_id, status, create_time),
   INDEX idx_customer_order_queue_ticket_id (queue_ticket_id)
 );
 
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS order_local_event (
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   UNIQUE KEY uk_order_local_event_key (event_key),
-  INDEX idx_order_local_event_status (status),
+  INDEX idx_order_local_event_status_id (status, id),
   INDEX idx_order_local_event_aggregate (aggregate_type, aggregate_id)
 );
 
