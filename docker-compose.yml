@@ -273,7 +273,7 @@ services:
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    networks: [private]
+    networks: [private, edge]
 
   meal-fulfillment:
     image: eclipse-temurin:17-jre

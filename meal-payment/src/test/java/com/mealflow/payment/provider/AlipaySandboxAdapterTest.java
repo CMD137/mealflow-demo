@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.alipay.api.internal.util.AlipaySignature;
+import com.alipay.api.request.AlipayTradeRefundRequest;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -44,4 +46,30 @@ class AlipaySandboxAdapterTest {
     assertFalse(timestamp.isBefore(before));
     assertTrue(timestamp.isBefore(after));
   }
+
+  @Test
+  void syncResponseVerificationIsCryptographicallySound() throws Exception {
+    // The verification logic itself must work when the key matches; the sandbox failure is a
+    // platform-side key mismatch, not a code defect.
+    KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+    generator.initialize(1024);
+    java.security.KeyPair pair = generator.generateKeyPair();
+    String privateKey = Base64.getEncoder().encodeToString(pair.getPrivate().getEncoded());
+    String publicKey = Base64.getEncoder().encodeToString(pair.getPublic().getEncoded());
+    AlipaySandboxAdapter adapter = new AlipaySandboxAdapter("test-app", privateKey, publicKey, "");
+
+    String responseJson = "{\"code\":\"10000\",\"msg\":\"Success\",\"trade_no\":\"T123\","
+        + "\"out_trade_no\":\"MF1\",\"fund_change\":\"Y\",\"refund_fee\":\"0.01\"}";
+    String sign = AlipaySignature.rsaSign(responseJson, privateKey, "UTF-8", "RSA2");
+    String body = "{\"alipay_trade_refund_response\":" + responseJson
+        + ",\"sign\":\"" + sign + "\",\"sign_type\":\"RSA2\"}";
+
+    assertTrue(adapter.verifySyncSignature(new AlipayTradeRefundRequest(), body),
+        "signature must verify when public key matches the signing key");
+
+    String tampered = body.replace("\"msg\":\"Success\"", "\"msg\":\"Tampered\"");
+    assertFalse(adapter.verifySyncSignature(new AlipayTradeRefundRequest(), tampered),
+        "tampered response must not verify");
+  }
+
 }
