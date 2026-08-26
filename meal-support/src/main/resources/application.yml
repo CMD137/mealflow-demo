@@ -50,3 +50,8 @@ mealflow:
       tool-token: ${SUPPORT_INTERNAL_TOOL_TOKEN:}
     session:
       ttl-seconds: ${SUPPORT_SESSION_TTL_SECONDS:3600}
+  internal:
+    auth:
+      enabled: ${INTERNAL_AUTH_ENABLED:true}
+      secret: ${INTERNAL_SECRET:mealflow-dev-internal-secret}
+      service-name: ${INTERNAL_SERVICE_NAME:meal-support}

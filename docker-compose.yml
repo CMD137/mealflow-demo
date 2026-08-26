@@ -380,6 +380,8 @@ services:
       # A4: shared internal tokens - must equal the meal-support side values.
       AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-mealflow-local-agent-token}
       SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:-mealflow-local-support-tool-token}
+      # A5: shared HMAC secret for service-to-service signatures (Java side default: mealflow-dev-internal-secret)
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-mealflow-dev-internal-secret}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}

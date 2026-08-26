@@ -37,3 +37,8 @@ mealflow:
       test-code: ${AUTH_OTP_TEST_CODE:}
     session:
       pepper: ${AUTH_SESSION_PEPPER:mealflow-dev-session-pepper}
+  internal:
+    auth:
+      enabled: ${INTERNAL_AUTH_ENABLED:true}
+      secret: ${INTERNAL_SECRET:mealflow-dev-internal-secret}
+      service-name: ${INTERNAL_SERVICE_NAME:meal-auth-user}

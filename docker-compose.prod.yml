@@ -16,6 +16,31 @@ services:
       AUTH_OTP_LOG_CODE: "false"
       AUTH_OTP_PEPPER: ${AUTH_OTP_PEPPER:?AUTH_OTP_PEPPER is required in production}
       AUTH_SESSION_PEPPER: ${AUTH_SESSION_PEPPER:?AUTH_SESSION_PEPPER is required in production}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-merchant:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-catalog:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-cart:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-order:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-queue:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-promotion:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
 
   meal-payment:
     environment:
@@ -26,23 +51,35 @@ services:
       ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:?ALIPAY_PUBLIC_KEY is required in production}
       NGROK_URL: ${NGROK_URL:?NGROK_URL is required in production}
       ALIPAY_NOTIFY_URL: https://${NGROK_URL:?NGROK_URL is required in production}/payments/alipay/callback
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
     networks: [private, edge]
+
+  meal-fulfillment:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-notify:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
 
   meal-support:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:?SUPPORT_INTERNAL_TOOL_TOKEN is required in production}
       AGENT_RUNTIME_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?AGENT_INTERNAL_TOKEN is required in production}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
 
   meal-support-agent-runtime:
     environment:
       SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:?SUPPORT_INTERNAL_TOOL_TOKEN is required in production}
       AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?AGENT_INTERNAL_TOKEN is required in production}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
 
   meal-gateway:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       GATEWAY_AUTH_ENABLED: "true"
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
 
   alipay-ngrok:
     image: ngrok/ngrok:alpine

@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     agent_internal_token: str = ""
     support_internal_tool_token: str = ""
 
+    # A5: shared HMAC secret for service-to-service signature (must equal Java INTERNAL_SECRET)
+    internal_secret: str = "mealflow-dev-internal-secret"
+    internal_service_name: str = "meal-support-agent-runtime"
+    internal_timestamp_window_seconds: int = 300
+
     # SSE
     sse_ping_seconds: int = 15
 

@@ -1,6 +1,7 @@
 package com.mealflow.gateway;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.mealflow.common.internal.InternalRequestSigner;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -32,10 +34,23 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
   private final Duration timeout;
 
   public GatewayAuthenticationFilter(WebClient.Builder webClientBuilder,
+      InternalRequestSigner internalRequestSigner,
       @Value("${mealflow.gateway.auth.auth-user-uri:http://localhost:8101}") String authUserUri,
       @Value("${mealflow.gateway.auth.enabled:true}") boolean enabled,
       @Value("${mealflow.gateway.auth.timeout-ms:3000}") long timeoutMs) {
-    this.webClient = webClientBuilder.baseUrl(authUserUri).build();
+    this.webClient = webClientBuilder.baseUrl(authUserUri)
+        .filter((request, next) -> {
+          if (!internalRequestSigner.isConfigured()) {
+            return next.exchange(request);
+          }
+          String rawPath = request.url().getRawPath() != null ? request.url().getRawPath() : request.url().getPath();
+          String rawQuery = request.url().getRawQuery();
+          ClientRequest signed = ClientRequest.from(request)
+              .headers(headers -> internalRequestSigner.sign(headers, request.method().name(), rawPath, rawQuery))
+              .build();
+          return next.exchange(signed);
+        })
+        .build();
     this.enabled = enabled;
     this.timeout = Duration.ofMillis(timeoutMs);
   }

@@ -38,3 +38,8 @@ mealflow:
   services:
     order: ${MEAL_ORDER_URI:http://localhost:8105}
     queue: ${MEAL_QUEUE_URI:http://localhost:8106}
+  internal:
+    auth:
+      enabled: ${INTERNAL_AUTH_ENABLED:true}
+      secret: ${INTERNAL_SECRET:mealflow-dev-internal-secret}
+      service-name: ${INTERNAL_SERVICE_NAME:meal-fulfillment}

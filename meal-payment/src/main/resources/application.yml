@@ -44,3 +44,8 @@ mealflow:
       private-key: ${ALIPAY_PRIVATE_KEY:}
       public-key: ${ALIPAY_PUBLIC_KEY:}
       notify-url: ${ALIPAY_NOTIFY_URL:https://${NGROK_URL:}/payments/alipay/callback}
+  internal:
+    auth:
+      enabled: ${INTERNAL_AUTH_ENABLED:true}
+      secret: ${INTERNAL_SECRET:mealflow-dev-internal-secret}
+      service-name: ${INTERNAL_SERVICE_NAME:meal-payment}
