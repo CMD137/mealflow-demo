@@ -264,7 +264,7 @@ services:
       OUTBOX_TOPIC: mealflow-payment-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
       ROCKETMQ_PRODUCER_GROUP: mealflow-payment-producer
-      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock-wechat}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-alipay-sandbox}
       ALIPAY_APP_ID: ${ALIPAY_APP_ID:-}
       ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:-}
       ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:-}
