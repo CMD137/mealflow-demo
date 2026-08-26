@@ -48,3 +48,24 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run agent runtime tests
         run: pytest tests/ -q
+
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local Compose configuration
+        run: docker compose -f docker-compose.yml config --quiet
+      - name: Validate production Compose configuration
+        env:
+          MYSQL_ROOT_PASSWORD: ci-placeholder
+          NACOS_AUTH_TOKEN: ci-placeholder
+          AUTH_OTP_PEPPER: ci-placeholder
+          AUTH_SESSION_PEPPER: ci-placeholder
+          ALIPAY_APP_ID: ci-placeholder
+          ALIPAY_PRIVATE_KEY: ci-placeholder
+          ALIPAY_PUBLIC_KEY: ci-placeholder
+          NGROK_URL: example.ngrok-free.app
+          NGROK_AUTHTOKEN: ci-placeholder
+          SUPPORT_INTERNAL_TOOL_TOKEN: ci-placeholder-tool-token
+          AGENT_INTERNAL_TOKEN: ci-placeholder-agent-token
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
