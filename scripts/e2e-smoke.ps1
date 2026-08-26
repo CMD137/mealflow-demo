@@ -202,7 +202,7 @@ Assert-True ($secondSubmit.mode -eq "QUEUED") "Second order should be queued"
 Assert-True ($null -ne $secondSubmit.ticketId) "Queued ticketId is missing"
 
 Step "mocking payment and waiting for payment event consumption"
-Invoke-MealFlow -Method POST -Path "/payments/$($firstSubmit.payOrderId)/mock-pay" -Headers $firstUserHeaders | Out-Null
+Invoke-MealFlow -Method POST -Path "/payments/internal/$($firstSubmit.payOrderId)/mock-pay" -Headers $adminHeaders | Out-Null
 Invoke-MealFlow -Method POST -Path "/payments/internal/events/dispatch" -Headers $adminHeaders | Out-Null
 for ($paidAttempt = 1; $paidAttempt -le 24; $paidAttempt++) {
   $paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)" -Headers $firstUserHeaders).data

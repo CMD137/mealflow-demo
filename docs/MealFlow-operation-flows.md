@@ -372,7 +372,7 @@ waitSeconds >= 0
 - ticket 初始状态通常为 `WAITING`。
 - 管理后台排队页能看到该 ticket。
 
-## 9. 用户端模拟支付链路
+## 9. 用户端支付宝结账链路
 
 前端入口：
 
@@ -387,8 +387,8 @@ waitSeconds >= 0
 
 ### 操作逻辑
 
-1. 用户点击模拟支付。
-2. 前端调用 `POST /payments/{payOrderId}/mock-pay`。
+1. 用户点击支付宝支付。
+2. 前端调用 `POST /payments/{payOrderId}/checkout`，获取渠道结账链接并跳转。
 3. `payment` 将支付单状态改为 `PAID`。
 4. `payment` 写入本地 Outbox 事件 `PaymentPaid`。
 5. 事件 dispatch 到 RocketMQ 或手动 dispatch。
@@ -402,7 +402,7 @@ waitSeconds >= 0
 用户侧：
 
 ```text
-POST /payments/{payOrderId}/mock-pay
+POST /payments/{payOrderId}/checkout
 GET /payments/{payOrderId}
 GET /orders/{orderId}
 ```

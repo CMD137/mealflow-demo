@@ -150,6 +150,12 @@ export interface PaymentView {
   status: string;
 }
 
+export interface PaymentCheckoutView {
+  payOrderId: number;
+  provider: string;
+  checkoutUrl: string;
+}
+
 export interface MessageView {
   messageId: number;
   userId: number;
