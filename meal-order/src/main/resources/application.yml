@@ -46,10 +46,10 @@ mealflow:
         initial-delay-ms: ${PAYMENT_EVENT_CONSUMER_RECOVERY_INITIAL_DELAY_MS:30000}
         fixed-delay-ms: ${PAYMENT_EVENT_CONSUMER_RECOVERY_FIXED_DELAY_MS:30000}
   services:
-    catalog: ${MEAL_CATALOG_URI:http://localhost:8103}
-    promotion: ${MEAL_PROMOTION_URI:http://localhost:8107}
-    queue: ${MEAL_QUEUE_URI:http://localhost:8106}
-    payment: ${MEAL_PAYMENT_URI:http://localhost:8108}
+    catalog: ${MEAL_CATALOG_URI:http://meal-catalog}
+    promotion: ${MEAL_PROMOTION_URI:http://meal-promotion}
+    queue: ${MEAL_QUEUE_URI:http://meal-queue}
+    payment: ${MEAL_PAYMENT_URI:http://meal-payment}
   internal:
     auth:
       enabled: ${INTERNAL_AUTH_ENABLED:true}

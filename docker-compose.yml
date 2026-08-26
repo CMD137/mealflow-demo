@@ -106,7 +106,8 @@ services:
 
   meal-catalog:
     image: eclipse-temurin:17-jre
-    container_name: mealflow-catalog
+    # No container_name: this service is the multi-instance demo target (docker compose up --scale
+    # meal-catalog=2) to show Nacos discovery + load balancing; replicas get mealflow-catalog-1/-2.
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8103 && exec 3>&- || exit 1'"]
       interval: 10s
@@ -195,10 +196,10 @@ services:
       ORDER_DB_USERNAME: root
       ORDER_DB_PASSWORD: mealflow
       ORDER_DB_DRIVER: com.mysql.cj.jdbc.Driver
-      MEAL_CATALOG_URI: http://meal-catalog:8103
-      MEAL_PROMOTION_URI: http://meal-promotion:8107
-      MEAL_QUEUE_URI: http://meal-queue:8106
-      MEAL_PAYMENT_URI: http://meal-payment:8108
+      MEAL_CATALOG_URI: http://meal-catalog
+      MEAL_PROMOTION_URI: http://meal-promotion
+      MEAL_QUEUE_URI: http://meal-queue
+      MEAL_PAYMENT_URI: http://meal-payment
       OUTBOX_PUBLISHER: rocketmq
       OUTBOX_TOPIC: mealflow-order-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
@@ -318,6 +319,9 @@ services:
       ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:-}
       NGROK_URL: ${NGROK_URL:-}
       TZ: Asia/Shanghai
+      # Multi-NIC container: pin the Nacos-registered IP to the private (10.200.x) network so
+      # peer services on the private network can reach this instance via load balancer.
+      SPRING_CLOUD_INETUTILS_PREFERRED_NETWORKS: "10.200"
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -348,8 +352,8 @@ services:
       FULFILLMENT_DB_USERNAME: root
       FULFILLMENT_DB_PASSWORD: mealflow
       FULFILLMENT_DB_DRIVER: com.mysql.cj.jdbc.Driver
-      MEAL_ORDER_URI: http://meal-order:8105
-      MEAL_QUEUE_URI: http://meal-queue:8106
+      MEAL_ORDER_URI: http://meal-order
+      MEAL_QUEUE_URI: http://meal-queue
       OUTBOX_PUBLISHER: rocketmq
       OUTBOX_TOPIC: mealflow-fulfillment-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
@@ -413,12 +417,12 @@ services:
       SUPPORT_DB_USERNAME: root
       SUPPORT_DB_PASSWORD: mealflow
       SUPPORT_DB_DRIVER: com.mysql.cj.jdbc.Driver
-      MEAL_ORDER_URI: http://meal-order:8105
-      MEAL_QUEUE_URI: http://meal-queue:8106
-      MEAL_PROMOTION_URI: http://meal-promotion:8107
-      MEAL_NOTIFY_URI: http://meal-notify:8110
-      MEAL_MERCHANT_URI: http://meal-merchant:8102
-      MEAL_CATALOG_URI: http://meal-catalog:8103
+      MEAL_ORDER_URI: http://meal-order
+      MEAL_QUEUE_URI: http://meal-queue
+      MEAL_PROMOTION_URI: http://meal-promotion
+      MEAL_NOTIFY_URI: http://meal-notify
+      MEAL_MERCHANT_URI: http://meal-merchant
+      MEAL_CATALOG_URI: http://meal-catalog
       SUPPORT_TOOL_CLIENT_MODE: ${SUPPORT_TOOL_CLIENT_MODE:-mock}
       SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:-mealflow-local-support-tool-token}
       AGENT_RUNTIME_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-mealflow-local-agent-token}
@@ -502,16 +506,6 @@ services:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       MEAL_AUTH_USER_URI: http://meal-auth-user:8101
-      MEAL_MERCHANT_URI: http://meal-merchant:8102
-      MEAL_CATALOG_URI: http://meal-catalog:8103
-      MEAL_CART_URI: http://meal-cart:8104
-      MEAL_ORDER_URI: http://meal-order:8105
-      MEAL_QUEUE_URI: http://meal-queue:8106
-      MEAL_PROMOTION_URI: http://meal-promotion:8107
-      MEAL_PAYMENT_URI: http://meal-payment:8108
-      MEAL_FULFILLMENT_URI: http://meal-fulfillment:8109
-      MEAL_NOTIFY_URI: http://meal-notify:8110
-      MEAL_SUPPORT_URI: http://meal-support:8111
     volumes:
       - ./meal-gateway/target/meal-gateway-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -574,5 +568,11 @@ volumes:
 
 networks:
   edge:
+  # Fixed subnet so services on multiple networks (private + edge) can pin their Nacos-registered
+  # IP to the private range via spring.cloud.inetutils.preferred-networks; otherwise a multi-NIC
+  # container may advertise an edge-network IP that peers on the private network cannot reach.
   private:
     internal: true
+    ipam:
+      config:
+        - subnet: 10.200.0.0/16

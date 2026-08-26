@@ -35,17 +35,17 @@ mealflow:
     tool-client:
       mode: ${SUPPORT_TOOL_CLIENT_MODE:mock}
       order:
-        base-url: ${MEAL_ORDER_URI:http://localhost:8105}
+        base-url: ${MEAL_ORDER_URI:http://meal-order}
       queue:
-        base-url: ${MEAL_QUEUE_URI:http://localhost:8106}
+        base-url: ${MEAL_QUEUE_URI:http://meal-queue}
       promotion:
-        base-url: ${MEAL_PROMOTION_URI:http://localhost:8107}
+        base-url: ${MEAL_PROMOTION_URI:http://meal-promotion}
       notify:
-        base-url: ${MEAL_NOTIFY_URI:http://localhost:8110}
+        base-url: ${MEAL_NOTIFY_URI:http://meal-notify}
       merchant:
-        base-url: ${MEAL_MERCHANT_URI:http://localhost:8102}
+        base-url: ${MEAL_MERCHANT_URI:http://meal-merchant}
       catalog:
-        base-url: ${MEAL_CATALOG_URI:http://localhost:8103}
+        base-url: ${MEAL_CATALOG_URI:http://meal-catalog}
     internal:
       tool-token: ${SUPPORT_INTERNAL_TOOL_TOKEN:}
     session:
