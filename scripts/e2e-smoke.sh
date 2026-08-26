@@ -6,10 +6,16 @@
 # which is also where the internal HMAC signing is exercised end-to-end.
 #
 # Usage: bash scripts/e2e-smoke.sh [BASE_URL]
+#
+# Requires curl + jq (both preinstalled on GitHub ubuntu runners). On Windows use the equivalent
+# PowerShell flow: scripts/e2e-smoke.ps1.
 set -euo pipefail
 
 BASE_URL="${1:-http://localhost:8080}"
 STAMP="$(date +%s%3N)"
+
+command -v jq >/dev/null 2>&1 || { echo "[mealflow-e2e] jq is required (install jqlang/jq, or use scripts/e2e-smoke.ps1 on Windows)" >&2; exit 1; }
+command -v curl >/dev/null 2>&1 || { echo "[mealflow-e2e] curl is required" >&2; exit 1; }
 
 step() { echo "[mealflow-e2e] $*"; }
 
