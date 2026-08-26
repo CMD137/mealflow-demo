@@ -2,6 +2,7 @@ package com.mealflow.payment.provider;
 
 import com.alipay.api.AlipayApiException;
 import com.alipay.api.AlipayClient;
+import com.alipay.api.AlipayConfig;
 import com.alipay.api.AlipayRequest;
 import com.alipay.api.AlipayResponse;
 import com.alipay.api.DefaultAlipayClient;
@@ -131,12 +132,15 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
    * Executes a sync API call without the SDK's hard-failing response verification, then attempts to
    * verify the response signature ourselves. If verification fails (expected in sandbox), logs a
    * prominent warning and still returns the parsed response so the caller can process the real
-   * channel result. The warning is appended to the result message for transparency.
+   * channel result.
+   *
+   * <p>Note: only {@link AlipayConfig} without an alipay public key makes the SDK skip its internal
+   * response check. Passing {@code null} through the String-arg {@link DefaultAlipayClient}
+   * constructor still creates a sign checker that throws on a null key.
    */
   private <T extends AlipayResponse> T executeWithoutStrictVerification(AlipayRequest<T> request)
       throws AlipayApiException {
-    // publicKey = null -> DefaultAlipayClient skips its internal response sign check.
-    T response = client(null).execute(request);
+    T response = tolerantClient().execute(request);
     String body = response == null ? null : response.getBody();
     if (body == null || body.isBlank() || publicKey.isBlank()) {
       return response;
@@ -173,8 +177,15 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
     return new DefaultAlipayClient(GATEWAY, appId, privateKey, "json", CHARSET, publicKey, SIGN_TYPE);
   }
 
-  private AlipayClient client(String alipayPublicKey) {
-    return new DefaultAlipayClient(GATEWAY, appId, privateKey, "json", CHARSET, alipayPublicKey, SIGN_TYPE);
+  private AlipayClient tolerantClient() throws AlipayApiException {
+    AlipayConfig config = new AlipayConfig();
+    config.setServerUrl(GATEWAY);
+    config.setAppId(appId);
+    config.setPrivateKey(privateKey);
+    config.setFormat("json");
+    config.setCharset(CHARSET);
+    config.setSignType(SIGN_TYPE);
+    return new DefaultAlipayClient(config);
   }
 
   private void requireCheckoutConfiguration() {
