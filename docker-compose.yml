@@ -264,6 +264,11 @@ services:
       OUTBOX_TOPIC: mealflow-payment-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
       ROCKETMQ_PRODUCER_GROUP: mealflow-payment-producer
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock-wechat}
+      ALIPAY_APP_ID: ${ALIPAY_APP_ID:-}
+      ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:-}
+      ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:-}
+      NGROK_URL: ${NGROK_URL:-}
       TZ: Asia/Shanghai
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
@@ -422,6 +427,16 @@ services:
     ports:
       - "8080:8080"
     networks: [edge, private]
+
+  alipay-ngrok:
+    image: ngrok/ngrok:alpine
+    profiles: [alipay-sandbox]
+    command: http meal-gateway:8080 --url=${NGROK_URL:-}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    depends_on:
+      - meal-gateway
+    networks: [private, edge]
 
   prometheus:
     image: prom/prometheus:v2.54.1

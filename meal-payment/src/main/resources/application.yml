@@ -43,4 +43,4 @@ mealflow:
       app-id: ${ALIPAY_APP_ID:}
       private-key: ${ALIPAY_PRIVATE_KEY:}
       public-key: ${ALIPAY_PUBLIC_KEY:}
-      notify-url: ${ALIPAY_NOTIFY_URL:${NGROK_URL:}/payments/alipay/callback}
+      notify-url: ${ALIPAY_NOTIFY_URL:https://${NGROK_URL:}/payments/alipay/callback}
