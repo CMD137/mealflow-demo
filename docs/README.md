@@ -31,6 +31,15 @@
 9. `MealFlow-review-fixes.md`
    架构评审问题修正对照表。
 
+10. `MealFlow-performance-baseline.md`
+   性能基线：关键表索引盘点、热点查询 EXPLAIN 步骤、分页/批量查询治理与已知缺口。
+
+11. `MealFlow-production-remediation-guide.md`
+   生产化修复指南：安全、一致性、可观测性的目标状态与 PR 拆分。
+
+12. `MealFlow-2027-campus-recruitment-audit.md`
+   2027 届校招深度审查报告（历史判断，部分结论已被后续提交修正，以源码为准）。
+
 ## 单一事实源约定
 
 - 表结构第一参考：`MealFlow-ddl.sql`。
@@ -39,6 +48,8 @@
 - 事件清单第一参考：`MealFlow-api-events.md`。
 - 幂等、Outbox、资源锁定第一参考：`MealFlow-consistency-data-model.md`。
 - 从零开发主路线第一参考：`MealFlow-development-guide.md`。
+- 索引与 EXPLAIN 基线第一参考：`MealFlow-performance-baseline.md`。
+- 旧库升级兼容脚本清单：`../scripts/migrations/README.md`。
 - 总览文档中的 DDL 片段必须与 `MealFlow-ddl.sql` 保持一致。
 
 ## 当前注意事项

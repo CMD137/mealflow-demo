@@ -38,6 +38,11 @@
 - `meal-app` 已从默认 Maven reactor 移出，仅保留在 `legacy-demo` profile 下作为本地内存版演示模块，避免与当前微服务主线混淆。
 - 可选智能客服由 `meal-support` Java 桥与 `meal-support-agent-runtime` Python 运行时组成；内部双向 token 默认 fail-closed，本地 Compose 提供开发值，生产 Compose 强制显式配置两个方向的独立 token。
 - GitHub Actions 已覆盖后端全量测试、两个前端构建、Python Agent 测试以及本地/生产 Compose 配置校验。
+- **服务间内部鉴权**：`meal-common` 提供 HMAC-SHA256 请求签名（service/method/path/query/timestamp/nonce），网关为所有转发请求签名，业务服务对非公开路径统一校验签名 + 时间窗 + nonce 防重放；内部 HTTP 客户端（order/fulfillment/support 与 Python agent 桥）自动签名，同时统一 connect 500ms/read 2s 超时，替代裸 `new RestTemplate()`。
+- **统一 traceId 与异常契约**：`meal-common` 自动注册 TraceFilter/TraceWebFilter，`X-Trace-Id` 进入 MDC 并回写响应头；全局 `@RestControllerAdvice` 按 ErrorCode 映射稳定 HTTP 状态码并携带 traceId，替代各服务各自为政的异常处理器。
+- **后台列表分页**：`/orders/admin`、`/vouchers/admin`、`/catalog/admin/skus`、`/auth/admin/employees` 返回 `PageResult{items,total,page,pageSize}`（pageSize 上限 100），管理端前端接入 el-pagination。
+- **告警规则与健康检查**：Prometheus 定义服务不可达/Outbox 积压/消费失败/秒杀修复 DEAD/5xx 五类告警规则；Compose 业务服务与网关增加端口健康检查，网关依赖改为 `service_healthy`。
+- **CI 容器级 E2E**：`e2e-compose` job 打包全部服务后启动 Compose，运行 `scripts/e2e-smoke.sh`（登录/秒杀/排队/支付事件/履约/转单全链路，含内部签名链路回归），失败自动转储容器日志。
 - 最近一次后端主线全量验证通过：`mvn -q test`、`mvn -q -DskipTests package`、`docker compose config`、`docker compose up -d --build`、`scripts/e2e-smoke.ps1`。
 - 本轮新增管理端能力已验证通过：`mvn -q -pl meal-auth-user -am test`、`mvn -q -pl meal-catalog -am test`、`mvn -q -pl meal-order -am test`、`mvn -q -pl meal-promotion -am test`、`mvn -q test`、`mvn -q -DskipTests package`。
 - Docker 复验已通过：已修复旧 MySQL 表结构下 `data.sql` 先于启动迁移执行导致的 catalog/auth-user/promotion 初始化兼容问题；`meal-queue`、`gateway`、`payment`、`fulfillment` 已用干净 Maven 依赖重建容器，完整 `scripts/e2e-smoke.ps1` 已覆盖 gateway ping、商品浏览、登录、秒杀领券、产能限流、下单排队、支付事件消费、履约出餐和排队 ticket 转单。
@@ -47,12 +52,12 @@
 - 正式前端已实现：后台管理端位于 `meal-web`，用户端移动 H5 位于 `meal-user-web`。后续重点不再是从零补前端，而是做浏览器自动化 e2e、移动端截图验收、交互细节和生产级异常态增强。
 - Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order、domain event 到 notify 的真实 MQ 消费均已接入 consumer_record，持久化消费模板已支持 PROCESSING 超时抢占重试和基于保存 payload 的本地重放，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。
 - Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua、领取资格对账补偿、领取修复重试和死信记录已在 `meal-promotion` 接入。后续可继续扩展更多 Redis/MQ 故障注入断言。
-- Prometheus/Grafana、业务积压指标和基础压测/故障脚本已完成；后续可继续扩展更细的队列等待 P90/P99、秒杀失败原因分布和故障注入自动断言。
-- 跨服务 traceId、OpenTelemetry、告警规则、内部短期服务身份，以及 Testcontainers/Compose 运行态冒烟仍是后续增强项；这些不阻塞当前单机 Compose 演示。
+- Prometheus/Grafana、业务积压指标、告警规则和基础压测/故障脚本已完成；后续可继续扩展队列等待 P90/P99、秒杀失败原因分布、Alertmanager 通知通道和故障注入自动断言。
+- traceId 透传、统一异常契约、内部 HMAC 服务身份、分页与复合索引已完成；后续可继续扩展 OpenTelemetry 标准 `traceparent` 导出（Tempo/Jaeger）、跨实例 nonce 去重（Redis）、Testcontainers 并发/故障回归和真实压测报告。
 
 ## 后续实施顺序
 
 1. 默认后端微服务主线、管理后台和用户端 H5 已完成闭环；下一步应优先把 e2e 从脚本验收扩展到浏览器验收。
 2. 继续完善用户端地址簿编辑、订单取消、再来一单、支付状态轮询等体验增强。
-3. 继续完善管理后台大表分页、筛选条件持久化、更细粒度表单校验和运维可视化。
-4. 在不扩大当前实现复杂度的前提下，逐步补统一 traceId、内部服务 token/JWT 和关键链路 Testcontainers 回归。
+3. 继续完善管理后台筛选条件持久化、更细粒度表单校验、大表游标分页与运维可视化。
+4. 在不扩大当前实现复杂度的前提下，逐步补 OTel 导出、Alertmanager 通知、Testcontainers 回归和真实压测基线。
