@@ -40,10 +40,11 @@ public interface OrderMapper {
 
   @Update("""
       UPDATE customer_order
-      SET status = #{status}, update_time = #{now}
-      WHERE id = #{id}
+      SET status = #{targetStatus}, update_time = #{now}
+      WHERE id = #{id} AND status = #{expectedStatus}
       """)
-  int updateStatus(@Param("id") long id, @Param("status") String status, @Param("now") LocalDateTime now);
+  int updateStatusIfCurrent(@Param("id") long id, @Param("expectedStatus") String expectedStatus,
+      @Param("targetStatus") String targetStatus, @Param("now") LocalDateTime now);
 
   @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order WHERE id = #{id}")
   @Results(id = "orderMap", value = {

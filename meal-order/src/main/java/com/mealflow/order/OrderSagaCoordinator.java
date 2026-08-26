@@ -211,7 +211,9 @@ public class OrderSagaCoordinator {
 
   private void updateAndAppend(OrderRow order, OrderStatus status, String eventType) {
     LocalDateTime now = LocalDateTime.now();
-    orderMapper.updateStatus(order.getId(), status.name(), now);
+    if (orderMapper.updateStatusIfCurrent(order.getId(), order.getStatus(), status.name(), now) != 1) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order status changed concurrently");
+    }
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("orderId", order.getId());
     payload.put("userId", order.getUserId());

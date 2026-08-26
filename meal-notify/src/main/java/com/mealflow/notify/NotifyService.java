@@ -18,7 +18,6 @@ import com.mealflow.notify.mapper.NotifyDeliveryRow;
 import com.mealflow.notify.mapper.NotifyMapper;
 import com.mealflow.notify.mapper.NotifyMessageRow;
 import com.mealflow.notify.mapper.NotifyTemplateRow;
-import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -49,11 +48,6 @@ public class NotifyService {
     this.notifyStreamService = notifyStreamService;
     this.objectMapper = objectMapper;
     this.idGenerator = idGenerator;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    // IDs are allocated from database rows and are safe across application instances.
   }
 
   @Transactional

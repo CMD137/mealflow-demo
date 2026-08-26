@@ -84,11 +84,6 @@ public class OrderService {
     this.sagaCoordinator = sagaCoordinator;
   }
 
-  @jakarta.annotation.PostConstruct
-  void initializePersistence() {
-    consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
-  }
-
   @Transactional
   public SubmitOrderResponse submit(long userId, SubmitOrderRequest request) {
     return idempotencyService.execute(userId, request.requestId(), request, () -> {
@@ -185,7 +180,7 @@ public class OrderService {
     if (order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order is not waiting merchant accept");
     }
-    updateStatus(orderId, OrderStatus.MERCHANT_ACCEPTED);
+    updateStatus(orderId, order.status, OrderStatus.MERCHANT_ACCEPTED);
     appendOrderEvent("OrderMerchantAccepted", order.withStatus(OrderStatus.MERCHANT_ACCEPTED));
   }
 
@@ -198,7 +193,7 @@ public class OrderService {
     if (order.status != OrderStatus.MERCHANT_ACCEPTED && order.status != OrderStatus.COOKING) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be marked meal ready");
     }
-    updateStatus(orderId, OrderStatus.WAIT_RIDER_PICKUP);
+    updateStatus(orderId, order.status, OrderStatus.WAIT_RIDER_PICKUP);
     appendOrderEvent("OrderMealReady", order.withStatus(OrderStatus.WAIT_RIDER_PICKUP));
   }
 
@@ -208,7 +203,7 @@ public class OrderService {
     if (order.status != OrderStatus.WAIT_RIDER_PICKUP) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be picked up");
     }
-    updateStatus(orderId, OrderStatus.DELIVERING);
+    updateStatus(orderId, order.status, OrderStatus.DELIVERING);
     appendOrderEvent("OrderPickedUp", order.withStatus(OrderStatus.DELIVERING));
   }
 
@@ -218,7 +213,7 @@ public class OrderService {
     if (order.status != OrderStatus.DELIVERING) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be delivered");
     }
-    updateStatus(orderId, OrderStatus.COMPLETED);
+    updateStatus(orderId, order.status, OrderStatus.COMPLETED);
     appendOrderEvent("OrderDelivered", order.withStatus(OrderStatus.COMPLETED));
   }
 
@@ -316,8 +311,10 @@ public class OrderService {
     return order;
   }
 
-  private void updateStatus(long orderId, OrderStatus status) {
-    orderMapper.updateStatus(orderId, status.name(), LocalDateTime.now());
+  private void updateStatus(long orderId, OrderStatus expected, OrderStatus target) {
+    if (orderMapper.updateStatusIfCurrent(orderId, expected.name(), target.name(), LocalDateTime.now()) != 1) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order status changed concurrently");
+    }
   }
 
   private OrderItemSnapshot toOrderItemSnapshot(Map<String, Object> item) {
