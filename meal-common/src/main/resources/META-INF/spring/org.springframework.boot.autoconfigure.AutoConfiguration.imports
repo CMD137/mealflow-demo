@@ -1,4 +1,5 @@
 com.mealflow.common.internal.InternalAuthAutoConfiguration
+com.mealflow.common.internal.InternalAuthMvcAutoConfiguration
 com.mealflow.common.trace.TraceMvcAutoConfiguration
 com.mealflow.common.trace.TraceReactiveAutoConfiguration
 com.mealflow.common.web.WebErrorAutoConfiguration
