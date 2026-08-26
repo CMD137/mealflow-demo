@@ -10,6 +10,8 @@ import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
 import com.mealflow.authuser.api.RoleRequest;
 import com.mealflow.authuser.api.RoleView;
+import com.mealflow.authuser.api.SignInView;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -103,5 +105,27 @@ class AuthUserPersistenceTest {
     EmployeeView disabled = authUserService.changeEmployeeStatus(10L, employee.employeeId(), "DISABLED");
     assertThat(disabled.status()).isEqualTo("DISABLED");
     assertThat(authUserService.validateToken(login.token())).isNull();
+  }
+
+  @Test
+  void signInPersistsPointsLedgerAndRejectsDuplicate() {
+    SignInView first = authUserService.signIn(100L);
+
+    assertThat(first.signedToday()).isTrue();
+    // First sign-in of a streak: 5 base + 1 streak bonus = 6.
+    assertThat(first.todayRewardPoints()).isEqualTo(6);
+    assertThat(first.totalPoints()).isEqualTo(6);
+    assertThat(first.monthSignDates()).contains(LocalDate.now().toString());
+
+    // Same-day duplicate must be a read-only no-op: no second ledger row, no double reward.
+    SignInView second = authUserService.signIn(100L);
+    assertThat(second.todayRewardPoints()).isZero();
+    assertThat(second.totalPoints()).isEqualTo(6);
+    assertThat(second.monthSignDates()).containsExactly(LocalDate.now().toString());
+
+    // Reads (sign info) come from the MySQL fact, not Redis.
+    SignInView info = authUserService.signInfo(100L);
+    assertThat(info.totalPoints()).isEqualTo(6);
+    assertThat(info.continuousDays()).isEqualTo(1);
   }
 }

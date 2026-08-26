@@ -27,6 +27,39 @@ public interface AuthUserMapper {
   @ResultMap("userMap")
   UserAccountRow findUserByPhone(String phone);
 
+  @Select("SELECT COALESCE(points, 0) FROM user_account WHERE id = #{userId}")
+  int findUserPoints(long userId);
+
+  @Update("""
+      UPDATE user_account
+      SET points = points + #{delta}, update_time = #{now}
+      WHERE id = #{userId}
+      """)
+  int addUserPoints(@Param("userId") long userId, @Param("delta") int delta, @Param("now") LocalDateTime now);
+
+  @Select("""
+      SELECT id FROM points_ledger
+      WHERE user_id = #{userId} AND biz_type = #{bizType} AND biz_key = #{bizKey}
+      """)
+  Long findPointsLedger(@Param("userId") long userId, @Param("bizType") String bizType,
+      @Param("bizKey") String bizKey);
+
+  @Select("""
+      SELECT biz_key FROM points_ledger
+      WHERE user_id = #{userId} AND biz_type = #{bizType} AND create_time >= #{since}
+      ORDER BY biz_key
+      """)
+  List<String> findPointsLedgerKeysSince(@Param("userId") long userId, @Param("bizType") String bizType,
+      @Param("since") LocalDateTime since);
+
+  @Insert("""
+      INSERT INTO points_ledger (id, user_id, biz_type, biz_key, delta, balance_after, create_time)
+      VALUES (#{id}, #{userId}, #{bizType}, #{bizKey}, #{delta}, #{balanceAfter}, #{now})
+      """)
+  int insertPointsLedger(@Param("id") long id, @Param("userId") long userId, @Param("bizType") String bizType,
+      @Param("bizKey") String bizKey, @Param("delta") int delta, @Param("balanceAfter") int balanceAfter,
+      @Param("now") LocalDateTime now);
+
   @Insert("""
       INSERT INTO user_account (id, phone, nickname, status, create_time, update_time)
       VALUES (#{id}, #{phone}, #{nickname}, #{status}, #{now}, #{now})

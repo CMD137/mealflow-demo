@@ -9,15 +9,32 @@ INSERT INTO business_sequence (namespace, next_value) VALUES ('userAddress', 100
 ON DUPLICATE KEY UPDATE next_value = next_value;
 INSERT INTO business_sequence (namespace, next_value) VALUES ('merchantEmployee', 1000)
 ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('pointsLedger', 1000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
 
 CREATE TABLE IF NOT EXISTS user_account (
   id BIGINT PRIMARY KEY,
   phone VARCHAR(32) NOT NULL,
   nickname VARCHAR(64) NOT NULL,
   status VARCHAR(32) NOT NULL,
+  points INT NOT NULL DEFAULT 0,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   UNIQUE KEY uk_user_account_phone (phone)
+);
+
+-- Points ledger: single source of truth for points movements (sign-in rewards etc.).
+-- Redis bitmap/counters, if used, are derived caches that must be rebuilt from this table.
+CREATE TABLE IF NOT EXISTS points_ledger (
+  id BIGINT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  biz_type VARCHAR(32) NOT NULL,
+  biz_key VARCHAR(64) NOT NULL,
+  delta INT NOT NULL,
+  balance_after INT NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  UNIQUE KEY uk_points_ledger_biz (user_id, biz_type, biz_key),
+  INDEX idx_points_ledger_user_time (user_id, create_time)
 );
 
 CREATE TABLE IF NOT EXISTS user_address (
