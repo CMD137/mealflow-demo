@@ -15,7 +15,8 @@ import org.apache.ibatis.annotations.Update;
 public interface OrderMapper {
   String ORDER_COLUMNS = """
       id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
-      reservation_ids_json, voucher_lock_id, items_json, amount_cent
+      reservation_ids_json, voucher_lock_id, items_json, amount_cent, contact_name, contact_phone,
+      delivery_address, payment_expire_time
       """;
 
   @Select("SELECT COALESCE(MAX(id), 10000) FROM customer_order")
@@ -24,11 +25,13 @@ public interface OrderMapper {
   @Insert("""
       INSERT INTO customer_order (
         id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
-        reservation_ids_json, voucher_lock_id, items_json, amount_cent, create_time, update_time
+        reservation_ids_json, voucher_lock_id, items_json, amount_cent, contact_name, contact_phone,
+        delivery_address, payment_expire_time, create_time, update_time
       )
       VALUES (
         #{id}, #{userId}, #{merchantId}, #{status}, #{queueTicketId}, #{capacityTokenId}, #{payOrderId},
-        #{reservationIdsJson}, #{voucherLockId}, #{itemsJson}, #{amountCent}, #{now}, #{now}
+        #{reservationIdsJson}, #{voucherLockId}, #{itemsJson}, #{amountCent}, #{contactName}, #{contactPhone},
+        #{deliveryAddress}, #{paymentExpireTime}, #{now}, #{now}
       )
       """)
   int insert(@Param("id") long id, @Param("userId") long userId, @Param("merchantId") long merchantId,
@@ -36,14 +39,17 @@ public interface OrderMapper {
       @Param("capacityTokenId") long capacityTokenId, @Param("payOrderId") long payOrderId,
       @Param("reservationIdsJson") String reservationIdsJson, @Param("voucherLockId") Long voucherLockId,
       @Param("itemsJson") String itemsJson, @Param("amountCent") int amountCent,
+      @Param("contactName") String contactName, @Param("contactPhone") String contactPhone,
+      @Param("deliveryAddress") String deliveryAddress, @Param("paymentExpireTime") LocalDateTime paymentExpireTime,
       @Param("now") LocalDateTime now);
 
   @Update("""
       UPDATE customer_order
-      SET status = #{status}, update_time = #{now}
-      WHERE id = #{id}
+      SET status = #{targetStatus}, update_time = #{now}
+      WHERE id = #{id} AND status = #{expectedStatus}
       """)
-  int updateStatus(@Param("id") long id, @Param("status") String status, @Param("now") LocalDateTime now);
+  int updateStatusIfCurrent(@Param("id") long id, @Param("expectedStatus") String expectedStatus,
+      @Param("targetStatus") String targetStatus, @Param("now") LocalDateTime now);
 
   @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order WHERE id = #{id}")
   @Results(id = "orderMap", value = {
@@ -57,7 +63,11 @@ public interface OrderMapper {
       @Result(column = "reservation_ids_json", property = "reservationIdsJson"),
       @Result(column = "voucher_lock_id", property = "voucherLockId"),
       @Result(column = "items_json", property = "itemsJson"),
-      @Result(column = "amount_cent", property = "amountCent")
+      @Result(column = "amount_cent", property = "amountCent"),
+      @Result(column = "contact_name", property = "contactName"),
+      @Result(column = "contact_phone", property = "contactPhone"),
+      @Result(column = "delivery_address", property = "deliveryAddress"),
+      @Result(column = "payment_expire_time", property = "paymentExpireTime")
   })
   OrderRow findById(long id);
 
@@ -65,9 +75,17 @@ public interface OrderMapper {
   @ResultMap("orderMap")
   OrderRow findByTicketId(long ticketId);
 
+  @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order WHERE status = 'PENDING_PAYMENT' AND payment_expire_time <= #{now} ORDER BY id LIMIT #{limit}")
+  @ResultMap("orderMap")
+  List<OrderRow> findExpiredPendingPayments(@Param("now") LocalDateTime now, @Param("limit") int limit);
+
   @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order ORDER BY id")
   @ResultMap("orderMap")
   List<OrderRow> findAll();
+
+  @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order WHERE user_id = #{userId} ORDER BY id DESC")
+  @ResultMap("orderMap")
+  List<OrderRow> findByUserId(long userId);
 
   @Select("""
       <script>
@@ -91,10 +109,37 @@ public interface OrderMapper {
         AND create_time &lt;= #{endTime}
       </if>
       ORDER BY id DESC
+      LIMIT #{limit} OFFSET #{offset}
       </script>
       """)
   @ResultMap("orderMap")
   List<OrderRow> findAdminOrders(@Param("merchantId") Long merchantId, @Param("userId") Long userId,
+      @Param("status") String status, @Param("beginTime") LocalDateTime beginTime,
+      @Param("endTime") LocalDateTime endTime, @Param("limit") int limit, @Param("offset") int offset);
+
+  @Select("""
+      <script>
+      SELECT COUNT(*)
+      FROM customer_order
+      WHERE 1 = 1
+      <if test="merchantId != null">
+        AND merchant_id = #{merchantId}
+      </if>
+      <if test="userId != null">
+        AND user_id = #{userId}
+      </if>
+      <if test="status != null and status != ''">
+        AND status = #{status}
+      </if>
+      <if test="beginTime != null">
+        AND create_time &gt;= #{beginTime}
+      </if>
+      <if test="endTime != null">
+        AND create_time &lt;= #{endTime}
+      </if>
+      </script>
+      """)
+  long countAdminOrders(@Param("merchantId") Long merchantId, @Param("userId") Long userId,
       @Param("status") String status, @Param("beginTime") LocalDateTime beginTime,
       @Param("endTime") LocalDateTime endTime);
 

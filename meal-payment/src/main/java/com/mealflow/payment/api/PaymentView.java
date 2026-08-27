@@ -1,4 +1,4 @@
 package com.mealflow.payment.api;
 
-public record PaymentView(long payOrderId, long orderId, int amountCent, String status) {
+public record PaymentView(long payOrderId, long orderId, long userId, int amountCent, String status) {
 }

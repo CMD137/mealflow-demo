@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Run backend tests
+        run: mvn --batch-mode test
+
+  frontend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [meal-web, meal-user-web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        working-directory: ${{ matrix.app }}
+        run: npm install
+      - name: Build frontend
+        working-directory: ${{ matrix.app }}
+        run: npm run build
+
+  agent-runtime:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: meal-support-agent-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run agent runtime tests
+        run: pytest tests/ -q
+
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local Compose configuration
+        run: docker compose -f docker-compose.yml config --quiet
+      - name: Validate production Compose configuration
+        env:
+          MYSQL_ROOT_PASSWORD: ci-placeholder
+          NACOS_AUTH_TOKEN: ci-placeholder
+          AUTH_OTP_PEPPER: ci-placeholder
+          AUTH_SESSION_PEPPER: ci-placeholder
+          ALIPAY_APP_ID: ci-placeholder
+          ALIPAY_PRIVATE_KEY: ci-placeholder
+          ALIPAY_PUBLIC_KEY: ci-placeholder
+          NGROK_URL: example.ngrok-free.app
+          NGROK_AUTHTOKEN: ci-placeholder
+          SUPPORT_INTERNAL_TOOL_TOKEN: ci-placeholder-tool-token
+          AGENT_INTERNAL_TOKEN: ci-placeholder-agent-token
+          INTERNAL_SECRET: ci-placeholder-internal-secret
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+
+  # Container-level integration regression: package every service, start the full Compose stack
+  # and run the E2E smoke (login -> seckill -> queue -> payment event -> fulfillment -> ticket
+  # conversion) through the gateway. This is the job that would catch cross-service regressions
+  # (routing, internal HMAC signing, Outbox/MQ wiring) that unit tests cannot.
+  e2e-compose:
+    runs-on: ubuntu-latest
+    needs: [backend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Package service jars
+        run: mvn --batch-mode -DskipTests package
+      - name: Start Compose stack
+        env:
+          PAYMENT_PROVIDER: mock-wechat
+        run: docker compose -f docker-compose.yml -f docker-compose.init.yml up -d --build
+      - name: Wait for gateway readiness
+        run: |
+          for i in $(seq 1 72); do
+            if curl -sf http://localhost:8080/ping >/dev/null 2>&1; then
+              echo "gateway ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "gateway did not become ready"
+          exit 1
+      - name: Run container-level E2E smoke
+        run: bash scripts/e2e-smoke.sh http://localhost:8080
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v

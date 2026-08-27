@@ -11,7 +11,7 @@ spring:
       minimum-idle: ${DB_POOL_MIN_IDLE:1}
   sql:
     init:
-      mode: always
+      mode: ${SPRING_SQL_INIT_MODE:never}
   cloud:
     nacos:
       discovery:
@@ -39,3 +39,8 @@ mealflow:
         enabled: ${NOTIFY_EVENT_CONSUMER_RECOVERY_ENABLED:true}
         initial-delay-ms: ${NOTIFY_EVENT_CONSUMER_RECOVERY_INITIAL_DELAY_MS:30000}
         fixed-delay-ms: ${NOTIFY_EVENT_CONSUMER_RECOVERY_FIXED_DELAY_MS:30000}
+  internal:
+    auth:
+      enabled: ${INTERNAL_AUTH_ENABLED:true}
+      secret: ${INTERNAL_SECRET:mealflow-dev-internal-secret}
+      service-name: ${INTERNAL_SERVICE_NAME:meal-notify}

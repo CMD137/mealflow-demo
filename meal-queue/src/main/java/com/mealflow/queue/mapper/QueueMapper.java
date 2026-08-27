@@ -13,12 +13,6 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface QueueMapper {
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM queue_ticket")
-  long maxTicketId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM capacity_token")
-  long maxTokenId();
-
   @Select("""
       SELECT id, ticket_no, merchant_id, score
       FROM queue_ticket
@@ -77,6 +71,16 @@ public interface QueueMapper {
   })
   QueueTicketRow findTicket(long id);
 
+  @Select("""
+      SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
+             estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
+      FROM queue_ticket
+      WHERE status IN ('WAITING', 'READY') AND expire_time <= #{now}
+      ORDER BY id
+      """)
+  @ResultMap("ticketMap")
+  List<QueueTicketRow> findExpiredTickets(@Param("now") LocalDateTime now);
+
   @Select("SELECT id FROM queue_ticket ORDER BY id")
   List<Long> findTicketIds();
 
@@ -89,6 +93,10 @@ public interface QueueMapper {
   int updateTicketStatus(@Param("id") long id, @Param("status") String status, @Param("orderId") Long orderId,
       @Param("readyTime") LocalDateTime readyTime, @Param("processingTime") LocalDateTime processingTime,
       @Param("now") LocalDateTime now);
+
+  @Update("UPDATE queue_ticket SET status = #{targetStatus}, update_time = #{now} WHERE id = #{id} AND status = #{expectedStatus}")
+  int expireTicket(@Param("id") long id, @Param("expectedStatus") String expectedStatus,
+      @Param("targetStatus") String targetStatus, @Param("now") LocalDateTime now);
 
   @Insert("""
       INSERT INTO capacity_token (
@@ -106,7 +114,8 @@ public interface QueueMapper {
       @Param("now") LocalDateTime now);
 
   @Select("""
-      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
       FROM capacity_token
       WHERE id = #{id}
       """)
@@ -118,12 +127,25 @@ public interface QueueMapper {
       @Result(column = "order_id", property = "orderId"),
       @Result(column = "status", property = "status"),
       @Result(column = "expire_time", property = "expireTime"),
-      @Result(column = "release_reason", property = "releaseReason")
+      @Result(column = "release_reason", property = "releaseReason"),
+      @Result(column = "released_ticket_id", property = "releasedTicketId"),
+      @Result(column = "released_capacity_token_id", property = "releasedCapacityTokenId")
   })
   CapacityTokenRow findToken(long id);
 
   @Select("""
-      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
+      FROM capacity_token
+      WHERE status = #{status} AND ticket_id IS NULL AND order_id IS NULL AND expire_time <= #{now}
+      ORDER BY id
+      """)
+  @ResultMap("tokenMap")
+  List<CapacityTokenRow> findExpiredUnboundTokens(@Param("now") LocalDateTime now, @Param("status") String status);
+
+  @Select("""
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
       FROM capacity_token
       WHERE ticket_id = #{ticketId} AND status = #{status}
       ORDER BY id DESC
@@ -133,7 +155,8 @@ public interface QueueMapper {
   CapacityTokenRow findHeldTokenByTicket(@Param("ticketId") long ticketId, @Param("status") String status);
 
   @Select("""
-      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
       FROM capacity_token
       WHERE order_id = #{orderId}
       ORDER BY id DESC
@@ -143,7 +166,8 @@ public interface QueueMapper {
   CapacityTokenRow findTokenByOrder(long orderId);
 
   @Select("""
-      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
       FROM capacity_token
       ORDER BY id
       """)
@@ -165,6 +189,15 @@ public interface QueueMapper {
       """)
   int updateTokenStatusFromStatus(@Param("id") long id, @Param("fromStatus") String fromStatus,
       @Param("toStatus") String toStatus, @Param("reason") String reason, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE capacity_token
+      SET released_ticket_id = #{ticketId}, released_capacity_token_id = #{releasedCapacityTokenId},
+          update_time = #{now}
+      WHERE id = #{id} AND status = 'RELEASED'
+      """)
+  int recordReleaseResult(@Param("id") long id, @Param("ticketId") Long ticketId,
+      @Param("releasedCapacityTokenId") Long releasedCapacityTokenId, @Param("now") LocalDateTime now);
 
   @Update("""
       UPDATE capacity_token
@@ -198,6 +231,15 @@ public interface QueueMapper {
 
   @Select("SELECT limit_value FROM merchant_queue_limit WHERE merchant_id = #{merchantId}")
   Integer findMerchantLimit(long merchantId);
+
+  @Update("UPDATE merchant_queue_limit SET inflight_count = inflight_count + 1 WHERE merchant_id = #{merchantId} AND inflight_count < limit_value")
+  int tryAcquireCapacity(long merchantId);
+
+  @Insert("INSERT INTO merchant_queue_limit (merchant_id, limit_value, inflight_count, create_time, update_time) VALUES (#{merchantId}, 1, 0, #{now}, #{now}) ON DUPLICATE KEY UPDATE merchant_id = merchant_id")
+  int ensureMerchantLimit(@Param("merchantId") long merchantId, @Param("now") LocalDateTime now);
+
+  @Update("UPDATE merchant_queue_limit SET inflight_count = CASE WHEN inflight_count > 0 THEN inflight_count - 1 ELSE 0 END WHERE merchant_id = #{merchantId}")
+  int releaseCapacity(long merchantId);
 
   @Insert("""
       INSERT INTO merchant_queue_limit (merchant_id, limit_value, create_time, update_time)

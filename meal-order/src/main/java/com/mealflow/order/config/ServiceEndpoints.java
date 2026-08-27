@@ -7,6 +7,7 @@ public record ServiceEndpoints(
     String catalog,
     String promotion,
     String queue,
-    String payment
+    String payment,
+    String authUser
 ) {
 }

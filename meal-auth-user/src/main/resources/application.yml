@@ -15,7 +15,7 @@ spring:
       port: ${REDIS_PORT:6379}
   sql:
     init:
-      mode: always
+      mode: ${SPRING_SQL_INIT_MODE:never}
   cloud:
     nacos:
       discovery:
@@ -28,3 +28,17 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+mealflow:
+  auth:
+    otp:
+      mode: ${AUTH_OTP_MODE:redis}
+      pepper: ${AUTH_OTP_PEPPER:mealflow-dev-otp-pepper}
+      log-code: ${AUTH_OTP_LOG_CODE:true}
+      test-code: ${AUTH_OTP_TEST_CODE:}
+    session:
+      pepper: ${AUTH_SESSION_PEPPER:mealflow-dev-session-pepper}
+  internal:
+    auth:
+      enabled: ${INTERNAL_AUTH_ENABLED:true}
+      secret: ${INTERNAL_SECRET:mealflow-dev-internal-secret}
+      service-name: ${INTERNAL_SERVICE_NAME:meal-auth-user}

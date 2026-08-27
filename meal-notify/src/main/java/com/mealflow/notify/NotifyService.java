@@ -7,7 +7,6 @@ import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.ConsumerRecordStatus;
 import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
-import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.notify.api.ConsumerRecordView;
 import com.mealflow.notify.api.DeliveryView;
 import com.mealflow.notify.api.MessageView;
@@ -19,7 +18,6 @@ import com.mealflow.notify.mapper.NotifyDeliveryRow;
 import com.mealflow.notify.mapper.NotifyMapper;
 import com.mealflow.notify.mapper.NotifyMessageRow;
 import com.mealflow.notify.mapper.NotifyTemplateRow;
-import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -34,7 +32,7 @@ public class NotifyService {
   private static final TypeReference<Map<String, Object>> EVENT_PAYLOAD = new TypeReference<>() {
   };
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final NotifyDatabaseIdGenerator idGenerator;
   private final NotifyMapper notifyMapper;
   private final ConsumerRecordMapper consumerRecordMapper;
   private final PersistentConsumerRecordTemplate consumerRecordTemplate;
@@ -42,29 +40,14 @@ public class NotifyService {
   private final ObjectMapper objectMapper;
 
   public NotifyService(NotifyMapper notifyMapper, ConsumerRecordMapper consumerRecordMapper,
-      NotifyStreamService notifyStreamService, ObjectMapper objectMapper) {
+      NotifyStreamService notifyStreamService, ObjectMapper objectMapper, NotifyDatabaseIdGenerator idGenerator) {
     this.notifyMapper = notifyMapper;
     this.consumerRecordMapper = consumerRecordMapper;
-    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper);
+    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper,
+        () -> idGenerator.next("notifyConsumerRecord"));
     this.notifyStreamService = notifyStreamService;
     this.objectMapper = objectMapper;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    ensureConsumerRecordPayloadColumns();
-    idGenerator.ensureAtLeast("notifyMessage", notifyMapper.maxMessageId());
-    idGenerator.ensureAtLeast("notifyDelivery", notifyMapper.maxDeliveryId());
-    consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
-  }
-
-  private void ensureConsumerRecordPayloadColumns() {
-    if (consumerRecordMapper.countColumn("event_type") == 0) {
-      consumerRecordMapper.addEventTypeColumn();
-    }
-    if (consumerRecordMapper.countColumn("payload_json") == 0) {
-      consumerRecordMapper.addPayloadJsonColumn();
-    }
+    this.idGenerator = idGenerator;
   }
 
   @Transactional

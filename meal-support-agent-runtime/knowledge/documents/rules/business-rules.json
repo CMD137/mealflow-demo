@@ -1,0 +1,22 @@
+[
+  {
+    "rule": "capacity",
+    "description": "商家产能未满时订单直接进入制作；已满时进入排队，出餐释放产能后自动转单。"
+  },
+  {
+    "rule": "queue_ticket_ttl",
+    "description": "排队票据默认有效期 15 分钟，超时未轮到的票据作废。"
+  },
+  {
+    "rule": "seckill",
+    "description": "秒杀券按活动时间开放，限量领取，每用户每种券限领一张，先到先得。"
+  },
+  {
+    "rule": "refund_window",
+    "description": "订单支付成功且商家未接单前可取消退款；接单进入制作后不支持取消。"
+  },
+  {
+    "rule": "voucher_per_order",
+    "description": "一个订单最多使用一张优惠券；订单取消后锁定券释放回券包。"
+  }
+]

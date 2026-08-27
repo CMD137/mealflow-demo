@@ -20,48 +20,58 @@ import com.mealflow.authuser.mapper.MerchantEmployeeRow;
 import com.mealflow.authuser.mapper.MerchantRoleRow;
 import com.mealflow.authuser.mapper.UserAccountRow;
 import com.mealflow.authuser.mapper.UserAddressRow;
+import com.mealflow.authuser.otp.OtpPort;
+import com.mealflow.authuser.security.SessionTokenHasher;
 import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.exception.BizException;
-import com.mealflow.infra.id.IdGenerator;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Set;
+import java.security.SecureRandom;
+import java.util.Base64;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class AuthUserService {
+  private static final Logger log = LoggerFactory.getLogger(AuthUserService.class);
   private static final String CUSTOMER_ROLE = "CUSTOMER";
+  private static final String SIGN_IN_BIZ_TYPE = "SIGN_IN";
   private static final Duration TOKEN_TTL = Duration.ofDays(7);
   private static final String SIGN_KEY_PREFIX = "sign:user:";
   private static final String SIGN_POINTS_SUFFIX = ":points";
   private static final String SIGN_DAYS_SUFFIX = ":days";
+  private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final AuthDatabaseIdGenerator idGenerator;
   private final AuthUserMapper authUserMapper;
   private final StringRedisTemplate redisTemplate;
+  private final OtpPort otpPort;
+  private final SessionTokenHasher sessionTokenHasher;
 
-  public AuthUserService(AuthUserMapper authUserMapper, StringRedisTemplate redisTemplate) {
+  public AuthUserService(AuthUserMapper authUserMapper, StringRedisTemplate redisTemplate, OtpPort otpPort,
+      SessionTokenHasher sessionTokenHasher, AuthDatabaseIdGenerator idGenerator) {
     this.authUserMapper = authUserMapper;
     this.redisTemplate = redisTemplate;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    ensureAddressDefaultColumn();
-    idGenerator.ensureAtLeast("userAccount", authUserMapper.maxUserId());
-    idGenerator.ensureAtLeast("userAddress", authUserMapper.maxAddressId());
-    idGenerator.ensureAtLeast("merchantEmployee", authUserMapper.maxEmployeeId());
+    this.otpPort = otpPort;
+    this.sessionTokenHasher = sessionTokenHasher;
+    this.idGenerator = idGenerator;
   }
 
   @Transactional
   public LoginResponse login(LoginRequest request) {
+    otpPort.verifyLoginCode(request.phone(), request.code());
     UserAccountRow user = authUserMapper.findUserByPhone(request.phone());
     if (user == null) {
       long id = idGenerator.next("userAccount");
@@ -69,18 +79,23 @@ public class AuthUserService {
       user = authUserMapper.findUser(id);
     }
     TokenPrincipalView principal = principalFor(user);
-    String token = "mf-" + UUID.randomUUID();
+    String token = newSessionToken();
     LocalDateTime now = LocalDateTime.now();
-    authUserMapper.insertToken(token, user.getId(), principal.roleCode(), principal.merchantId(), now.plus(TOKEN_TTL), now);
+    authUserMapper.insertToken(sessionTokenHasher.hash(token), user.getId(), principal.roleCode(), principal.merchantId(),
+        now.plus(TOKEN_TTL), now);
     return new LoginResponse(user.getId(), token, user.getNickname(), principal.roleCode(), principal.merchantId(),
         principal.permissions(), principal.menus());
+  }
+
+  public void requestLoginCode(String phone) {
+    otpPort.issueLoginCode(phone);
   }
 
   public TokenPrincipalView validateToken(String token) {
     if (token == null || token.isBlank()) {
       return null;
     }
-    AuthTokenRow row = authUserMapper.findToken(token);
+    AuthTokenRow row = authUserMapper.findToken(sessionTokenHasher.hash(token));
     if (row == null || row.isRevoked() || row.getExpireTime().isBefore(LocalDateTime.now())
         || "DISABLED".equals(row.getStatus())) {
       return null;
@@ -98,6 +113,12 @@ public class AuthUserService {
     return principalView(row.getUserId(), row.getPhone(), row.getNickname(), roleCode, merchantId);
   }
 
+  private String newSessionToken() {
+    byte[] bytes = new byte[32];
+    TOKEN_RANDOM.nextBytes(bytes);
+    return "mf_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+  }
+
   public UserView get(long userId) {
     UserAccountRow user = authUserMapper.findUser(userId);
     if (user == null) {
@@ -111,6 +132,10 @@ public class AuthUserService {
     return authUserMapper.findAddresses(userId).stream().map(this::addressView).toList();
   }
 
+  public AddressView address(long userId, long addressId) {
+    return addressView(requireAddress(userId, addressId));
+  }
+
   public SignInView signInfo(long userId) {
     get(userId);
     return signView(userId, LocalDate.now(), 0);
@@ -120,15 +145,36 @@ public class AuthUserService {
   public synchronized SignInView signIn(long userId) {
     get(userId);
     LocalDate today = LocalDate.now();
-    int rewardPoints = rewardPoints(userId, today);
-    Boolean alreadySigned = redisTemplate.opsForValue().setBit(signKey(userId, YearMonth.from(today)),
-        today.getDayOfMonth() - 1L, true);
-    if (!Boolean.TRUE.equals(alreadySigned)) {
-      redisTemplate.opsForValue().increment(pointsKey(userId), rewardPoints);
-      redisTemplate.opsForValue().increment(daysKey(userId));
-      return signView(userId, today, rewardPoints);
+    String bizKey = today.toString();
+    if (authUserMapper.findPointsLedger(userId, SIGN_IN_BIZ_TYPE, bizKey) != null) {
+      // Already signed today: read-only no-op, never a double reward.
+      return signView(userId, today, 0);
     }
-    return signView(userId, today, 0);
+    int reward = rewardPoints(userId, today);
+    LocalDateTime now = LocalDateTime.now();
+    if (authUserMapper.addUserPoints(userId, reward, now) != 1) {
+      throw new BizException(ErrorCode.NOT_FOUND, "user not found");
+    }
+    int newBalance = authUserMapper.findUserPoints(userId);
+    long ledgerId = idGenerator.next("pointsLedger");
+    try {
+      authUserMapper.insertPointsLedger(ledgerId, userId, SIGN_IN_BIZ_TYPE, bizKey, reward, newBalance, now);
+    } catch (DuplicateKeyException ex) {
+      // Concurrent duplicate sign-in: uk_points_ledger_biz wins and the points add rolls back with this tx.
+      throw new BizException(ErrorCode.DUPLICATE, "already signed in today");
+    }
+    // Redis bitmap/counters are DERIVED caches; refresh only after the ledger transaction commits.
+    // A Redis failure here must never affect the persisted fact, so it is logged, not thrown.
+    afterCommit(() -> {
+      try {
+        redisTemplate.opsForValue().setBit(signKey(userId, YearMonth.from(today)), today.getDayOfMonth() - 1L, true);
+        redisTemplate.opsForValue().increment(pointsKey(userId), reward);
+        redisTemplate.opsForValue().increment(daysKey(userId));
+      } catch (RuntimeException ex) {
+        log.warn("failed to refresh derived sign-in cache for user {}: {}", userId, ex.getMessage());
+      }
+    });
+    return signView(userId, today, reward);
   }
 
   @Transactional
@@ -173,26 +219,18 @@ public class AuthUserService {
 
   @Transactional
   public RoleView saveRole(RoleRequest request) {
-    LocalDateTime now = LocalDateTime.now();
-    MerchantRoleRow role = authUserMapper.findRole(request.roleCode());
-    String description = request.description() == null ? "" : request.description();
-    if (role == null) {
-      authUserMapper.insertRole(request.roleCode(), request.roleName(), description, false, now);
-    } else {
-      authUserMapper.updateRole(request.roleCode(), request.roleName(), description, now);
-    }
-    authUserMapper.deleteRolePermissions(request.roleCode());
-    for (String permission : request.permissions()) {
-      if (permission == null || permission.isBlank()) {
-        throw new BizException(ErrorCode.BAD_REQUEST, "permission must not be blank");
-      }
-      authUserMapper.insertRolePermission(request.roleCode(), permission, now);
-    }
-    return roleView(authUserMapper.findRole(request.roleCode()));
+    // Roles are platform-defined shared data in this school-project model. Letting one merchant
+    // administrator edit them would change permissions for every merchant, so the UI is read-only.
+    throw new BizException(ErrorCode.FORBIDDEN, "built-in roles are read-only");
   }
 
-  public List<EmployeeView> employees(long merchantId) {
-    return authUserMapper.findEmployees(merchantId).stream().map(this::employeeView).toList();
+  public PageResult<EmployeeView> employees(long merchantId, int page, int pageSize) {
+    int normalizedPageSize = Math.min(Math.max(pageSize, 1), 100);
+    int normalizedPage = Math.max(page, 1);
+    long total = authUserMapper.countEmployees(merchantId);
+    List<EmployeeView> items = authUserMapper.findEmployeesPage(merchantId, normalizedPageSize,
+        (normalizedPage - 1) * normalizedPageSize).stream().map(this::employeeView).toList();
+    return PageResult.of(items, total, normalizedPage, normalizedPageSize);
   }
 
   @Transactional
@@ -209,6 +247,10 @@ public class AuthUserService {
     }
 
     MerchantEmployeeRow existing = authUserMapper.findEmployeeByMerchantAndUser(merchantId, user.getId());
+    MerchantEmployeeRow employeeInAnotherMerchant = authUserMapper.findEmployeeByUserId(user.getId());
+    if (existing == null && employeeInAnotherMerchant != null) {
+      throw new BizException(ErrorCode.DUPLICATE, "an employee account can belong to only one merchant");
+    }
     if (existing == null) {
       long employeeId = idGenerator.next("merchantEmployee");
       authUserMapper.insertEmployee(employeeId, merchantId, user.getId(), request.roleCode(), "ACTIVE", now);
@@ -253,66 +295,50 @@ public class AuthUserService {
     YearMonth month = YearMonth.from(today);
     List<String> monthSignDates = monthSignDates(userId, month);
     return new SignInView(
-        signed(userId, today),
-        continuousSignDays(userId, today),
-        totalDays(userId, monthSignDates.size()),
+        monthSignDates.contains(today.toString()),
+        continuousSignDaysIncluding(userId, today),
+        monthSignDates.size(),
         totalPoints(userId),
         todayRewardPoints,
         monthSignDates);
   }
 
-  private int continuousSignDays(long userId, LocalDate today) {
+  /**
+   * Continuous streak ending at {@code today} (inclusive), computed from the MySQL ledger.
+   * A single rolling query covers the previous ~31 days, so a month boundary does not break
+   * the streak.
+   */
+  private int continuousSignDaysIncluding(long userId, LocalDate today) {
+    Set<String> recent = signKeysSince(userId, today.minusDays(31));
     int days = 0;
-    LocalDate cursor = today;
-    while (signed(userId, cursor)) {
+    LocalDate day = today;
+    while (recent.contains(day.toString())) {
       days++;
-      cursor = cursor.minusDays(1);
+      day = day.minusDays(1);
     }
     return days;
   }
 
   private int rewardPoints(long userId, LocalDate today) {
-    int nextContinuousDays = continuousSignDays(userId, today.minusDays(1)) + 1;
-    return 5 + Math.min(nextContinuousDays, 7);
-  }
-
-  private boolean signed(long userId, LocalDate date) {
-    Boolean value = redisTemplate.opsForValue().getBit(signKey(userId, YearMonth.from(date)),
-        date.getDayOfMonth() - 1L);
-    return Boolean.TRUE.equals(value);
+    // Today is not signed yet when reward is computed: streak including today = current streak + 1.
+    return 5 + Math.min(continuousSignDaysIncluding(userId, today) + 1, 7);
   }
 
   private List<String> monthSignDates(long userId, YearMonth month) {
-    List<String> dates = new ArrayList<>();
-    String key = signKey(userId, month);
-    for (int day = 1; day <= month.lengthOfMonth(); day++) {
-      Boolean signed = redisTemplate.opsForValue().getBit(key, day - 1L);
-      if (Boolean.TRUE.equals(signed)) {
-        dates.add(month.atDay(day).toString());
-      }
-    }
-    return dates;
+    return signKeysSince(userId, month.atDay(1))
+        .stream()
+        .filter(key -> key.startsWith(month.toString()))
+        .toList();
+  }
+
+  private Set<String> signKeysSince(long userId, LocalDate sinceDate) {
+    return authUserMapper.findPointsLedgerKeysSince(userId, SIGN_IN_BIZ_TYPE, sinceDate.atStartOfDay())
+        .stream()
+        .collect(java.util.stream.Collectors.toSet());
   }
 
   private int totalPoints(long userId) {
-    String value = redisTemplate.opsForValue().get(pointsKey(userId));
-    return parseRedisCounter(value, 0);
-  }
-
-  private int totalDays(long userId, int fallback) {
-    String value = redisTemplate.opsForValue().get(daysKey(userId));
-    return parseRedisCounter(value, fallback);
-  }
-
-  private int parseRedisCounter(String value, int fallback) {
-    if (value == null || value.isBlank()) {
-      return fallback;
-    }
-    try {
-      return Integer.parseInt(value);
-    } catch (NumberFormatException ex) {
-      return fallback;
-    }
+    return authUserMapper.findUserPoints(userId);
   }
 
   private String signKey(long userId, YearMonth month) {
@@ -373,10 +399,18 @@ public class AuthUserService {
     return employee;
   }
 
-  private void ensureAddressDefaultColumn() {
-    if (authUserMapper.countAddressColumn("is_default") == 0) {
-      authUserMapper.addAddressDefaultColumn();
+  /** Runs {@code action} after the current transaction commits (immediately when no tx is active). */
+  private void afterCommit(Runnable action) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          action.run();
+        }
+      });
+    } else {
+      action.run();
     }
-    authUserMapper.hydrateSeedDefaultAddresses();
   }
+
 }

@@ -14,10 +14,11 @@ import com.mealflow.catalog.api.SkuView;
 import com.mealflow.catalog.api.StockReservationView;
 import com.mealflow.catalog.api.StockTransitionRequest;
 import com.mealflow.catalog.storage.CatalogImageService;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.api.Result;
+import com.mealflow.common.security.RequestIdentity;
 import jakarta.validation.Valid;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -37,14 +38,9 @@ import org.springframework.web.multipart.MultipartFile;
 public class CatalogController {
   private final CatalogService catalogService;
   private final CatalogImageService catalogImageService;
-  private final long defaultMerchantId;
-
-  public CatalogController(CatalogService catalogService,
-      CatalogImageService catalogImageService,
-      @Value("${mealflow.demo.default-merchant-id:10}") long defaultMerchantId) {
+  public CatalogController(CatalogService catalogService, CatalogImageService catalogImageService) {
     this.catalogService = catalogService;
     this.catalogImageService = catalogImageService;
-    this.defaultMerchantId = defaultMerchantId;
   }
 
   @GetMapping("/merchants/{merchantId}/skus")
@@ -67,14 +63,14 @@ public class CatalogController {
   @GetMapping("/admin/categories")
   public Result<List<CategoryView>> adminCategories(
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
-    return Result.ok(catalogService.adminCategories(merchantId == null ? defaultMerchantId : merchantId));
+    return Result.ok(catalogService.adminCategories(RequestIdentity.requireMerchant(merchantId)));
   }
 
   @PostMapping("/admin/categories")
   public Result<CategoryView> createCategory(
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @Valid @RequestBody CategoryRequest request) {
-    return Result.ok(catalogService.createCategory(merchantId == null ? defaultMerchantId : merchantId, request));
+    return Result.ok(catalogService.createCategory(RequestIdentity.requireMerchant(merchantId), request));
   }
 
   @PutMapping("/admin/categories/{categoryId}")
@@ -82,28 +78,30 @@ public class CatalogController {
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @PathVariable long categoryId,
       @Valid @RequestBody CategoryRequest request) {
-    return Result.ok(catalogService.updateCategory(merchantId == null ? defaultMerchantId : merchantId, categoryId,
+    return Result.ok(catalogService.updateCategory(RequestIdentity.requireMerchant(merchantId), categoryId,
         request));
   }
 
   @GetMapping("/admin/skus")
-  public Result<List<SkuView>> adminSkus(
-      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
-    return Result.ok(catalogService.adminSkus(merchantId == null ? defaultMerchantId : merchantId));
+  public Result<PageResult<SkuView>> adminSkus(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize) {
+    return Result.ok(catalogService.adminSkus(RequestIdentity.requireMerchant(merchantId), page, pageSize));
   }
 
   @PostMapping(value = "/admin/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public Result<ImageUploadView> uploadImage(
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @RequestParam("file") MultipartFile file) {
-    return Result.ok(catalogImageService.upload(merchantId == null ? defaultMerchantId : merchantId, file));
+    return Result.ok(catalogImageService.upload(RequestIdentity.requireMerchant(merchantId), file));
   }
 
   @PostMapping("/admin/skus")
   public Result<SkuView> createSku(
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @Valid @RequestBody SkuAdminRequest request) {
-    return Result.ok(catalogService.createSku(merchantId == null ? defaultMerchantId : merchantId, request));
+    return Result.ok(catalogService.createSku(RequestIdentity.requireMerchant(merchantId), request));
   }
 
   @PutMapping("/admin/skus/{skuId}")
@@ -111,7 +109,7 @@ public class CatalogController {
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @PathVariable long skuId,
       @Valid @RequestBody SkuAdminRequest request) {
-    return Result.ok(catalogService.updateSku(merchantId == null ? defaultMerchantId : merchantId, skuId, request));
+    return Result.ok(catalogService.updateSku(RequestIdentity.requireMerchant(merchantId), skuId, request));
   }
 
   @PutMapping("/admin/skus/{skuId}/status")
@@ -119,7 +117,7 @@ public class CatalogController {
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @PathVariable long skuId,
       @Valid @RequestBody SkuStatusRequest request) {
-    return Result.ok(catalogService.updateSkuStatus(merchantId == null ? defaultMerchantId : merchantId, skuId,
+    return Result.ok(catalogService.updateSkuStatus(RequestIdentity.requireMerchant(merchantId), skuId,
         request.status()));
   }
 
@@ -128,7 +126,7 @@ public class CatalogController {
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @PathVariable long skuId,
       @Valid @RequestBody SkuStockRequest request) {
-    return Result.ok(catalogService.updateSkuStock(merchantId == null ? defaultMerchantId : merchantId, skuId,
+    return Result.ok(catalogService.updateSkuStock(RequestIdentity.requireMerchant(merchantId), skuId,
         request.stock()));
   }
 

@@ -1,8 +1,14 @@
 import { http } from './http';
-import type { OrderStatisticsView, OrderView, SubmitOrderRequest, SubmitOrderResponse } from '@/types/api';
+import type { OrderStatisticsView, OrderView, PageResult, SubmitOrderRequest, SubmitOrderResponse } from '@/types/api';
 
-export function adminOrdersApi(params: { merchantId?: number; userId?: number; status?: string }) {
-  return http.get<unknown, OrderView[]>('/orders/admin', { params });
+export function adminOrdersApi(params: {
+  merchantId?: number;
+  userId?: number;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  return http.get<unknown, PageResult<OrderView>>('/orders/admin', { params });
 }
 
 export function orderStatisticsApi(params: { merchantId?: number }) {

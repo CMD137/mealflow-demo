@@ -13,20 +13,17 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface LocalEventMapper {
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM payment_local_event")
-  long maxEventId();
-
   @Select("SELECT COUNT(*) FROM payment_local_event WHERE status = #{status}")
   long countByStatus(String status);
 
   @Insert("""
       INSERT INTO payment_local_event (
         id, event_key, event_type, event_version, aggregate_type, aggregate_id,
-        payload_json, status, retry_count, last_error, create_time, update_time
+        payload_json, status, retry_count, last_error, next_retry_time, lease_until, create_time, update_time
       )
       VALUES (
         #{id}, #{eventKey}, #{eventType}, #{eventVersion}, #{aggregateType}, #{aggregateId},
-        #{payloadJson}, #{status}, 0, NULL, #{now}, #{now}
+        #{payloadJson}, #{status}, 0, NULL, #{now}, NULL, #{now}, #{now}
       )
       """)
   int insert(@Param("id") long id, @Param("eventKey") String eventKey,
@@ -37,7 +34,7 @@ public interface LocalEventMapper {
 
   @Select("""
       SELECT id, event_key, event_type, event_version, aggregate_type, aggregate_id,
-             payload_json, status, retry_count, last_error, create_time, update_time
+             payload_json, status, retry_count, last_error, next_retry_time, lease_until, create_time, update_time
       FROM payment_local_event
       ORDER BY id
       """)
@@ -52,6 +49,8 @@ public interface LocalEventMapper {
       @Result(column = "status", property = "status"),
       @Result(column = "retry_count", property = "retryCount"),
       @Result(column = "last_error", property = "lastError"),
+      @Result(column = "next_retry_time", property = "nextRetryTime"),
+      @Result(column = "lease_until", property = "leaseUntil"),
       @Result(column = "create_time", property = "createTime"),
       @Result(column = "update_time", property = "updateTime")
   })
@@ -59,18 +58,18 @@ public interface LocalEventMapper {
 
   @Select("""
       SELECT id, event_key, event_type, event_version, aggregate_type, aggregate_id,
-             payload_json, status, retry_count, last_error, create_time, update_time
+             payload_json, status, retry_count, last_error, next_retry_time, lease_until, create_time, update_time
       FROM payment_local_event
-      WHERE status IN ('NEW', 'FAILED')
+      WHERE status IN ('NEW', 'FAILED') AND (next_retry_time IS NULL OR next_retry_time <= #{now})
       ORDER BY id
       LIMIT #{limit}
       """)
   @ResultMap("localEventMap")
-  List<LocalEventRow> findDispatchable(int limit);
+  List<LocalEventRow> findDispatchable(@Param("now") LocalDateTime now, @Param("limit") int limit);
 
   @Select("""
       SELECT id, event_key, event_type, event_version, aggregate_type, aggregate_id,
-             payload_json, status, retry_count, last_error, create_time, update_time
+             payload_json, status, retry_count, last_error, next_retry_time, lease_until, create_time, update_time
       FROM payment_local_event
       WHERE event_key = #{eventKey}
       """)
@@ -79,29 +78,33 @@ public interface LocalEventMapper {
 
   @Update("""
       UPDATE payment_local_event
-      SET status = 'SENDING', retry_count = retry_count + 1, update_time = #{now}
-      WHERE id = #{id} AND status IN ('NEW', 'FAILED')
+      SET status = 'SENDING', retry_count = retry_count + 1, lease_until = #{leaseUntil}, update_time = #{now}
+      WHERE id = #{id} AND status IN ('NEW', 'FAILED') AND (next_retry_time IS NULL OR next_retry_time <= #{now})
       """)
-  int markSending(@Param("id") long id, @Param("now") LocalDateTime now);
+  int markSending(@Param("id") long id, @Param("now") LocalDateTime now, @Param("leaseUntil") LocalDateTime leaseUntil);
 
   @Update("""
       UPDATE payment_local_event
-      SET status = 'FAILED', last_error = 'SENDING_TIMEOUT', update_time = #{now}
-      WHERE status = 'SENDING' AND update_time < #{before}
+      SET status = CASE WHEN retry_count >= #{maxAttempts} THEN 'DEAD' ELSE 'FAILED' END,
+          last_error = 'SENDING_TIMEOUT', next_retry_time = #{nextRetryTime}, lease_until = NULL, update_time = #{now}
+      WHERE status = 'SENDING' AND lease_until < #{now}
       """)
-  int markStaleSendingFailedBefore(@Param("before") LocalDateTime before, @Param("now") LocalDateTime now);
+  int markExpiredLeases(@Param("now") LocalDateTime now, @Param("nextRetryTime") LocalDateTime nextRetryTime,
+      @Param("maxAttempts") int maxAttempts);
 
   @Update("""
       UPDATE payment_local_event
-      SET status = 'SENT', last_error = NULL, update_time = #{now}
+      SET status = 'SENT', last_error = NULL, lease_until = NULL, update_time = #{now}
       WHERE id = #{id} AND status = 'SENDING'
       """)
   int markSent(@Param("id") long id, @Param("now") LocalDateTime now);
 
   @Update("""
       UPDATE payment_local_event
-      SET status = 'FAILED', last_error = #{lastError}, update_time = #{now}
+      SET status = CASE WHEN retry_count >= #{maxAttempts} THEN 'DEAD' ELSE 'FAILED' END,
+          last_error = #{lastError}, next_retry_time = #{nextRetryTime}, lease_until = NULL, update_time = #{now}
       WHERE id = #{id} AND status = 'SENDING'
       """)
-  int markFailed(@Param("id") long id, @Param("lastError") String lastError, @Param("now") LocalDateTime now);
+  int markFailed(@Param("id") long id, @Param("lastError") String lastError, @Param("now") LocalDateTime now,
+      @Param("nextRetryTime") LocalDateTime nextRetryTime, @Param("maxAttempts") int maxAttempts);
 }

@@ -71,6 +71,8 @@ export interface VoucherView {
   discountCent: number;
   stock: number;
   status: string;
+  startTime?: string | null;
+  endTime?: string | null;
 }
 
 export interface UserVoucherView {
@@ -80,8 +82,9 @@ export interface UserVoucherView {
 }
 
 export interface SeckillVoucherResponse {
+  eventKey: string;
   claimId?: number | null;
-  status: 'CLAIMED' | 'DUPLICATE' | 'SOLD_OUT';
+  status: 'PENDING' | 'CLAIMED' | 'DUPLICATE' | 'SOLD_OUT' | 'FAILED' | 'NOT_READY' | 'NOT_FOUND';
   userVoucherId?: number | null;
 }
 
@@ -145,6 +148,21 @@ export interface PaymentView {
   orderId: number;
   amountCent: number;
   status: string;
+}
+
+export interface AddressView {
+  addressId: number;
+  userId: number;
+  contactName: string;
+  phone: string;
+  detail: string;
+  defaultAddress: boolean;
+}
+
+export interface PaymentCheckoutView {
+  payOrderId: number;
+  provider: string;
+  checkoutUrl: string;
 }
 
 export interface MessageView {

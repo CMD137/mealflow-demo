@@ -1,12 +1,9 @@
 package com.mealflow.common.status;
 
 public enum VoucherClaimStatus implements CodeEnum {
-  ACCEPTED(1),
+  PROCESSING(1),
   CLAIMED(2),
-  DUPLICATE(3),
-  FAILED(4),
-  COMPENSATING(5),
-  COMPENSATED(6);
+  SOLD_OUT(3);
 
   private final int code;
 

@@ -5,9 +5,7 @@ services:
     environment:
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
-    ports:
-      - "8848:8848"
-      - "9848:9848"
+    networks: [private]
 
   mysql:
     image: mysql:8.0
@@ -15,8 +13,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: mealflow
       MYSQL_DATABASE: mealflow
-    ports:
-      - "${MYSQL_PORT:-13306}:3306"
+    networks: [private]
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s
@@ -24,33 +21,20 @@ services:
       retries: 20
       start_period: 20s
     volumes:
-      - ./meal-auth-user/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/001-auth-user-schema.sql:ro
-      - ./meal-auth-user/src/main/resources/data.sql:/docker-entrypoint-initdb.d/002-auth-user-data.sql:ro
-      - ./meal-merchant/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/003-merchant-schema.sql:ro
-      - ./meal-merchant/src/main/resources/data.sql:/docker-entrypoint-initdb.d/004-merchant-data.sql:ro
-      - ./meal-cart/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/005-cart-schema.sql:ro
-      - ./meal-catalog/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/010-catalog-schema.sql:ro
-      - ./meal-catalog/src/main/resources/data.sql:/docker-entrypoint-initdb.d/011-catalog-data.sql:ro
-      - ./meal-queue/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/020-queue-schema.sql:ro
-      - ./meal-order/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/025-order-schema.sql:ro
-      - ./meal-promotion/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/026-promotion-schema.sql:ro
-      - ./meal-promotion/src/main/resources/data.sql:/docker-entrypoint-initdb.d/027-promotion-data.sql:ro
-      - ./meal-payment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/030-payment-schema.sql:ro
-      - ./meal-fulfillment/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/035-fulfillment-schema.sql:ro
-      - ./meal-notify/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/040-notify-schema.sql:ro
-
+      - mysql-data:/var/lib/mysql
   redis:
     image: redis:7
     container_name: mealflow-redis
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks: [private]
 
   rocketmq-namesrv:
     image: apache/rocketmq:5.2.0
     container_name: mealflow-rocketmq-namesrv
     command: sh mqnamesrv
-    ports:
-      - "9876:9876"
+    networks: [private]
 
   rocketmq-broker:
     image: apache/rocketmq:5.2.0
@@ -60,12 +44,17 @@ services:
     environment:
       NAMESRV_ADDR: rocketmq-namesrv:9876
     command: sh mqbroker -n rocketmq-namesrv:9876
-    ports:
-      - "10911:10911"
+    networks: [private]
 
   meal-auth-user:
     image: eclipse-temurin:17-jre
     container_name: mealflow-auth-user
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8101 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -80,17 +69,24 @@ services:
       AUTH_USER_DB_USERNAME: root
       AUTH_USER_DB_PASSWORD: mealflow
       AUTH_USER_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      AUTH_OTP_MODE: memory
+      AUTH_OTP_TEST_CODE: "123456"
       REDIS_HOST: redis
       REDIS_PORT: 6379
     volumes:
       - ./meal-auth-user/target/meal-auth-user-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8101:8101"
+    networks: [private]
 
   meal-merchant:
     image: eclipse-temurin:17-jre
     container_name: mealflow-merchant
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8102 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -106,12 +102,18 @@ services:
     volumes:
       - ./meal-merchant/target/meal-merchant-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8102:8102"
+    networks: [private]
 
   meal-catalog:
     image: eclipse-temurin:17-jre
-    container_name: mealflow-catalog
+    # No container_name: this service is the multi-instance demo target (docker compose up --scale
+    # meal-catalog=2) to show Nacos discovery + load balancing; replicas get mealflow-catalog-1/-2.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8103 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -137,12 +139,17 @@ services:
       - ./meal-catalog/target/meal-catalog-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
       - ./uploads/catalog:/app/uploads/catalog
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8103:8103"
+    networks: [private]
 
   meal-cart:
     image: eclipse-temurin:17-jre
     container_name: mealflow-cart
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8104 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -158,12 +165,17 @@ services:
     volumes:
       - ./meal-cart/target/meal-cart-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8104:8104"
+    networks: [private]
 
   meal-order:
     image: eclipse-temurin:17-jre
     container_name: mealflow-order
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8105 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       mysql:
         condition: service_healthy
@@ -184,10 +196,10 @@ services:
       ORDER_DB_USERNAME: root
       ORDER_DB_PASSWORD: mealflow
       ORDER_DB_DRIVER: com.mysql.cj.jdbc.Driver
-      MEAL_CATALOG_URI: http://meal-catalog:8103
-      MEAL_PROMOTION_URI: http://meal-promotion:8107
-      MEAL_QUEUE_URI: http://meal-queue:8106
-      MEAL_PAYMENT_URI: http://meal-payment:8108
+      MEAL_CATALOG_URI: http://meal-catalog
+      MEAL_PROMOTION_URI: http://meal-promotion
+      MEAL_QUEUE_URI: http://meal-queue
+      MEAL_PAYMENT_URI: http://meal-payment
       OUTBOX_PUBLISHER: rocketmq
       OUTBOX_TOPIC: mealflow-order-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
@@ -199,12 +211,17 @@ services:
     volumes:
       - ./meal-order/target/meal-order-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8105:8105"
+    networks: [private]
 
   meal-queue:
     image: eclipse-temurin:17-jre
     container_name: mealflow-queue
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8106 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -227,12 +244,17 @@ services:
     volumes:
       - ./meal-queue/target/meal-queue-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8106:8106"
+    networks: [private]
 
   meal-promotion:
     image: eclipse-temurin:17-jre
     container_name: mealflow-promotion
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8107 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -240,26 +262,39 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      rocketmq-broker:
+        condition: service_started
     environment:
+      TZ: Asia/Hong_Kong
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       PROMOTION_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       PROMOTION_DB_USERNAME: root
       PROMOTION_DB_PASSWORD: mealflow
       PROMOTION_DB_DRIVER: com.mysql.cj.jdbc.Driver
-      PROMOTION_SECKILL_MODE: redis
-      PROMOTION_RECONCILE_ENABLED: "true"
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
+      ROCKETMQ_PRODUCER_GROUP: mealflow-promotion-seckill-producer
+      SECKILL_EVENT_CONSUMER_ENABLED: "true"
+      SECKILL_EVENT_CONSUMER_GROUP: mealflow-promotion-seckill-consumer
+      SECKILL_EVENT_TOPICS: mealflow-seckill-commands
+      SECKILL_EVENT_MAX_RECONSUME_TIMES: 5
+      PROMOTION_PENDING_RECOVERY_ENABLED: "true"
     volumes:
       - ./meal-promotion/target/meal-promotion-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8107:8107"
+    networks: [private]
 
   meal-payment:
     image: eclipse-temurin:17-jre
     container_name: mealflow-payment
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8108 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -278,15 +313,29 @@ services:
       OUTBOX_TOPIC: mealflow-payment-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
       ROCKETMQ_PRODUCER_GROUP: mealflow-payment-producer
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-alipay-sandbox}
+      ALIPAY_APP_ID: ${ALIPAY_APP_ID:-}
+      ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:-}
+      ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:-}
+      NGROK_URL: ${NGROK_URL:-}
+      TZ: Asia/Shanghai
+      # Multi-NIC container: pin the Nacos-registered IP to the private (10.200.x) network so
+      # peer services on the private network can reach this instance via load balancer.
+      SPRING_CLOUD_INETUTILS_PREFERRED_NETWORKS: "10.200"
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8108:8108"
+    networks: [private, edge]
 
   meal-fulfillment:
     image: eclipse-temurin:17-jre
     container_name: mealflow-fulfillment
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8109 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       mysql:
         condition: service_healthy
@@ -303,8 +352,8 @@ services:
       FULFILLMENT_DB_USERNAME: root
       FULFILLMENT_DB_PASSWORD: mealflow
       FULFILLMENT_DB_DRIVER: com.mysql.cj.jdbc.Driver
-      MEAL_ORDER_URI: http://meal-order:8105
-      MEAL_QUEUE_URI: http://meal-queue:8106
+      MEAL_ORDER_URI: http://meal-order
+      MEAL_QUEUE_URI: http://meal-queue
       OUTBOX_PUBLISHER: rocketmq
       OUTBOX_TOPIC: mealflow-fulfillment-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
@@ -312,12 +361,17 @@ services:
     volumes:
       - ./meal-fulfillment/target/meal-fulfillment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8109:8109"
+    networks: [private]
 
   meal-notify:
     image: eclipse-temurin:17-jre
     container_name: mealflow-notify
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8110 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
       nacos:
         condition: service_started
@@ -333,48 +387,141 @@ services:
       NOTIFY_DB_PASSWORD: mealflow
       NOTIFY_DB_DRIVER: com.mysql.cj.jdbc.Driver
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
-      NOTIFY_EVENT_CONSUMER_ENABLED: "false"
+      NOTIFY_EVENT_CONSUMER_ENABLED: "true"
       NOTIFY_EVENT_CONSUMER_GROUP: mealflow-notify-domain-consumer
       NOTIFY_EVENT_TOPICS: mealflow-order-events
       NOTIFY_EVENT_MAX_RECONSUME_TIMES: 5
     volumes:
       - ./meal-notify/target/meal-notify-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
-    ports:
-      - "8110:8110"
+    networks: [private]
+
+  meal-support:
+    image: eclipse-temurin:17-jre
+    container_name: mealflow-support
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8111 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    depends_on:
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+      SUPPORT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      SUPPORT_DB_USERNAME: root
+      SUPPORT_DB_PASSWORD: mealflow
+      SUPPORT_DB_DRIVER: com.mysql.cj.jdbc.Driver
+      MEAL_ORDER_URI: http://meal-order
+      MEAL_QUEUE_URI: http://meal-queue
+      MEAL_PROMOTION_URI: http://meal-promotion
+      MEAL_NOTIFY_URI: http://meal-notify
+      MEAL_MERCHANT_URI: http://meal-merchant
+      MEAL_CATALOG_URI: http://meal-catalog
+      SUPPORT_TOOL_CLIENT_MODE: ${SUPPORT_TOOL_CLIENT_MODE:-mock}
+      SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:-mealflow-local-support-tool-token}
+      AGENT_RUNTIME_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-mealflow-local-agent-token}
+      # Default: the agent runtime runs in the same compose network.
+      # For local-dev (Python on host) override with AGENT_RUNTIME_BASE_URL=http://host.docker.internal:8090.
+      AGENT_RUNTIME_BASE_URL: ${AGENT_RUNTIME_BASE_URL:-http://meal-support-agent-runtime:8090}
+    volumes:
+      - ./meal-support/target/meal-support-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    networks: [private]
+
+  meal-support-agent-runtime:
+    build: ./meal-support-agent-runtime
+    image: mealflow-support-agent-runtime:0.1.0
+    container_name: mealflow-support-agent-runtime
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8090 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    depends_on:
+      redis:
+        condition: service_started
+      meal-support:
+        condition: service_started
+    environment:
+      # The Java bridge is the ONLY outbound exit; both directions use compose DNS names.
+      SUPPORT_BRIDGE_URL: http://meal-support:8111
+      REDIS_URL: redis://redis:6379/0
+      # A4: shared internal tokens - must equal the meal-support side values.
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-mealflow-local-agent-token}
+      SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:-mealflow-local-support-tool-token}
+      # A5: shared HMAC secret for service-to-service signatures (Java side default: mealflow-dev-internal-secret)
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-mealflow-dev-internal-secret}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      HISTORY_MAX_TURNS: ${HISTORY_MAX_TURNS:-10}
+      KNOWLEDGE_DIR: /app/knowledge
+      CHROMA_DIR: /app/knowledge/chroma
+    # private (internal) for bridge/redis; edge for LLM/embedding egress.
+    networks: [private, edge]
 
   meal-gateway:
     image: eclipse-temurin:17-jre
     container_name: mealflow-gateway
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && exec 3>&- || exit 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     depends_on:
-      - meal-auth-user
-      - meal-merchant
-      - meal-catalog
-      - meal-cart
-      - meal-order
-      - meal-queue
-      - meal-promotion
-      - meal-payment
-      - meal-fulfillment
-      - meal-notify
+      meal-auth-user:
+        condition: service_healthy
+      meal-merchant:
+        condition: service_healthy
+      meal-catalog:
+        condition: service_healthy
+      meal-cart:
+        condition: service_healthy
+      meal-order:
+        condition: service_healthy
+      meal-queue:
+        condition: service_healthy
+      meal-promotion:
+        condition: service_healthy
+      meal-payment:
+        condition: service_healthy
+      meal-fulfillment:
+        condition: service_healthy
+      meal-notify:
+        condition: service_healthy
+      meal-support:
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       MEAL_AUTH_USER_URI: http://meal-auth-user:8101
-      MEAL_MERCHANT_URI: http://meal-merchant:8102
-      MEAL_CATALOG_URI: http://meal-catalog:8103
-      MEAL_CART_URI: http://meal-cart:8104
-      MEAL_ORDER_URI: http://meal-order:8105
-      MEAL_QUEUE_URI: http://meal-queue:8106
-      MEAL_PROMOTION_URI: http://meal-promotion:8107
-      MEAL_PAYMENT_URI: http://meal-payment:8108
-      MEAL_FULFILLMENT_URI: http://meal-fulfillment:8109
-      MEAL_NOTIFY_URI: http://meal-notify:8110
     volumes:
       - ./meal-gateway/target/meal-gateway-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
     ports:
       - "8080:8080"
+    networks: [edge, private]
+
+  alipay-ngrok:
+    image: ngrok/ngrok:alpine
+    profiles: [alipay-sandbox]
+    command: http meal-gateway:8080 --url=${NGROK_URL:-}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    depends_on:
+      - meal-gateway
+    networks: [private, edge]
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -391,13 +538,14 @@ services:
       - meal-payment
       - meal-fulfillment
       - meal-notify
+      - meal-support
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-lifecycle
-    ports:
-      - "9090:9090"
+    networks: [private]
 
   grafana:
     image: grafana/grafana:11.2.0
@@ -411,5 +559,20 @@ services:
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    ports:
-      - "3000:3000"
+    networks: [private]
+
+volumes:
+  mysql-data:
+    name: mealflow-mysql-data
+  redis-data:
+
+networks:
+  edge:
+  # Fixed subnet so services on multiple networks (private + edge) can pin their Nacos-registered
+  # IP to the private range via spring.cloud.inetutils.preferred-networks; otherwise a multi-NIC
+  # container may advertise an edge-network IP that peers on the private network cannot reach.
+  private:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.200.0.0/16

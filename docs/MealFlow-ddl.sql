@@ -167,3 +167,25 @@ CREATE TABLE voucher_claim (
 -- 用户券包兜底一人一券。
 -- ALTER TABLE user_voucher
 --   ADD UNIQUE KEY uk_user_voucher(user_id, voucher_id);
+
+-- ============================================================
+-- 智能客服 Agent（meal-support）问答日志表（A2）
+-- 归属：meal-support 独占写入；服务启动时由 schema.sql 幂等创建。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS meal_support_qa_log (
+  id BIGINT PRIMARY KEY,
+  session_id VARCHAR(64) NOT NULL,
+  trace_id VARCHAR(64) NOT NULL,
+  user_id BIGINT NOT NULL,
+  role VARCHAR(32) NOT NULL,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  used_tools VARCHAR(512) NULL,
+  citations VARCHAR(1024) NULL,
+  llm_elapsed_ms BIGINT NULL,
+  tool_elapsed_ms BIGINT NULL,
+  model_name VARCHAR(64) NULL,
+  create_time DATETIME NOT NULL,
+  KEY idx_support_qa_session (session_id),
+  KEY idx_support_qa_user_time (user_id, create_time)
+);

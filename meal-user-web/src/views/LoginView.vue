@@ -2,16 +2,31 @@
 import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { requestLoginCodeApi } from '@/api/auth';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const loading = ref(false);
 const error = ref('');
+const codeLoading = ref(false);
 const form = reactive({
   phone: '13800000001',
   code: '123456'
 });
+
+async function requestCode() {
+  error.value = '';
+  codeLoading.value = true;
+  try {
+    await requestLoginCodeApi(form.phone);
+    error.value = '验证码已发送，请在开发服务日志中查看。';
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '验证码发送失败';
+  } finally {
+    codeLoading.value = false;
+  }
+}
 
 async function submit() {
   error.value = '';
@@ -42,12 +57,17 @@ async function submit() {
       </div>
       <div class="field">
         <label>验证码</label>
-        <input v-model="form.code" />
+        <div class="code-row">
+          <input v-model="form.code" />
+          <button type="button" class="code-button" :disabled="codeLoading" @click="requestCode">
+            {{ codeLoading ? '发送中' : '获取验证码' }}
+          </button>
+        </div>
       </div>
       <button class="primary-button login-button" :disabled="loading">
         {{ loading ? '登录中...' : '登录' }}
       </button>
-      <p class="hint">默认演示账号：13800000001，验证码任意。</p>
+      <p class="hint">开发环境验证码会输出到认证服务日志，五分钟内仅能使用一次。</p>
       <p v-if="error" class="error">{{ error }}</p>
     </form>
   </div>
@@ -102,6 +122,25 @@ async function submit() {
 
 .login-button {
   width: 100%;
+}
+
+.code-row {
+  display: flex;
+  gap: 8px;
+}
+
+.code-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.code-button {
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2937;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 .error {

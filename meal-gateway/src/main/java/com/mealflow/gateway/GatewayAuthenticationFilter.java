@@ -1,6 +1,7 @@
 package com.mealflow.gateway;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.mealflow.common.internal.InternalRequestSigner;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -24,17 +26,31 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
   private static final String ROLE_HEADER = "X-Role";
   private static final String MERCHANT_ID_HEADER = "X-Merchant-Id";
   private static final String PERMISSIONS_HEADER = "X-Permissions";
-  private static final List<String> ALLOWED_ORIGINS = List.of("http://localhost:5173", "http://127.0.0.1:5173");
+  private static final List<String> ALLOWED_ORIGINS = List.of("http://localhost:5173", "http://127.0.0.1:5173",
+      "http://localhost:5174", "http://127.0.0.1:5174");
 
   private final WebClient webClient;
   private final boolean enabled;
   private final Duration timeout;
 
   public GatewayAuthenticationFilter(WebClient.Builder webClientBuilder,
+      InternalRequestSigner internalRequestSigner,
       @Value("${mealflow.gateway.auth.auth-user-uri:http://localhost:8101}") String authUserUri,
       @Value("${mealflow.gateway.auth.enabled:true}") boolean enabled,
       @Value("${mealflow.gateway.auth.timeout-ms:3000}") long timeoutMs) {
-    this.webClient = webClientBuilder.baseUrl(authUserUri).build();
+    this.webClient = webClientBuilder.baseUrl(authUserUri)
+        .filter((request, next) -> {
+          if (!internalRequestSigner.isConfigured()) {
+            return next.exchange(request);
+          }
+          String rawPath = request.url().getRawPath() != null ? request.url().getRawPath() : request.url().getPath();
+          String rawQuery = request.url().getRawQuery();
+          ClientRequest signed = ClientRequest.from(request)
+              .headers(headers -> internalRequestSigner.sign(headers, request.method().name(), rawPath, rawQuery))
+              .build();
+          return next.exchange(signed);
+        })
+        .build();
     this.enabled = enabled;
     this.timeout = Duration.ofMillis(timeoutMs);
   }
@@ -101,10 +117,18 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     HttpMethod method = request.getMethod();
     return path.equals("/ping")
         || path.equals("/auth/login")
+        || path.equals("/auth/codes")
+        || (HttpMethod.POST.equals(method) && path.equals("/payments/alipay/callback"))
         || path.equals("/auth/ping")
         || path.equals("/actuator/health")
         || (HttpMethod.GET.equals(method) && path.endsWith("/ping"))
-        || (HttpMethod.GET.equals(method) && path.startsWith("/catalog/"));
+        || path.equals("/api/support/ping")
+        || (HttpMethod.GET.equals(method) && isPublicCatalogPath(path));
+  }
+
+  private boolean isPublicCatalogPath(String path) {
+    return path.matches("^/catalog/merchants/\\d+/(skus|categories)$")
+        || path.startsWith("/catalog/images/");
   }
 
   private String bearerToken(ServerHttpRequest request) {
@@ -159,6 +183,9 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     String path = request.getURI().getPath();
     HttpMethod method = request.getMethod();
     if (path.contains("/internal/")) {
+      return "INTERNAL_OPERATE";
+    }
+    if (path.matches("^/orders/\\d+/(pay-success|merchant-accept|meal-ready|picked-up|delivered)$")) {
       return "INTERNAL_OPERATE";
     }
     if (path.startsWith("/auth/admin/")) {

@@ -1,6 +1,7 @@
 package com.mealflow.merchant;
 
 import com.mealflow.common.api.Result;
+import com.mealflow.common.security.RequestIdentity;
 import com.mealflow.merchant.api.CapacityConfigRequest;
 import com.mealflow.merchant.api.BusinessStatusRequest;
 import com.mealflow.merchant.api.MerchantView;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,13 +36,17 @@ public class MerchantController {
 
   @PostMapping("/{merchantId}/capacity")
   public Result<MerchantView> updateCapacity(@PathVariable long merchantId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long currentMerchantId,
       @Valid @RequestBody CapacityConfigRequest request) {
+    RequestIdentity.requireMerchant(merchantId, currentMerchantId);
     return Result.ok(merchantService.updateCapacity(merchantId, request));
   }
 
   @PostMapping("/{merchantId}/business-status")
   public Result<MerchantView> updateBusinessStatus(@PathVariable long merchantId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long currentMerchantId,
       @Valid @RequestBody BusinessStatusRequest request) {
+    RequestIdentity.requireMerchant(merchantId, currentMerchantId);
     return Result.ok(merchantService.updateBusinessStatus(merchantId, request));
   }
 }

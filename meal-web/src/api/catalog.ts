@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { CategoryView, ImageUploadView, SkuView } from '@/types/api';
+import type { CategoryView, ImageUploadView, PageResult, SkuView } from '@/types/api';
 
 export function adminCategoriesApi() {
   return http.get<unknown, CategoryView[]>('/catalog/admin/categories');
@@ -12,8 +12,8 @@ export function saveCategoryApi(payload: { name: string; sortOrder: number; stat
   return http.post<unknown, CategoryView>('/catalog/admin/categories', payload);
 }
 
-export function adminSkusApi() {
-  return http.get<unknown, SkuView[]>('/catalog/admin/skus');
+export function adminSkusApi(params?: { page?: number; pageSize?: number }) {
+  return http.get<unknown, PageResult<SkuView>>('/catalog/admin/skus', { params });
 }
 
 export function saveSkuApi(

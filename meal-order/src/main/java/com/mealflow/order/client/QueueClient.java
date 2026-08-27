@@ -32,8 +32,8 @@ public class QueueClient {
   }
 
   public void bindOrder(long capacityTokenId, BindOrderRequest request) {
-    restTemplate.postForObject(endpoints.queue() + "/queue/internal/capacity/" + capacityTokenId + "/bind-order",
-        request, Result.class);
+    requireData(restTemplate.postForObject(endpoints.queue() + "/queue/internal/capacity/" + capacityTokenId
+        + "/bind-order", request, Result.class), "queue bind order failed");
   }
 
   public ReleaseCapacityResponse release(long capacityTokenId, ReleaseCapacityRequest request) {
@@ -57,8 +57,8 @@ public class QueueClient {
   }
 
   public void orderCreated(long ticketId, BindOrderRequest request) {
-    restTemplate.postForObject(endpoints.queue() + "/queue/internal/tickets/" + ticketId + "/order-created",
-        request, Result.class);
+    requireData(restTemplate.postForObject(endpoints.queue() + "/queue/internal/tickets/" + ticketId
+        + "/order-created", request, Result.class), "queue order created failed");
   }
 
   private static <T> T requireData(Result<T> result, String fallback) {
@@ -69,7 +69,8 @@ public class QueueClient {
   }
 
   public record QueueTicketSnapshot(List<Map<String, Object>> items, List<Long> reservationIds, Long voucherLockId,
-                                    int totalAmount, String remark) {
+                                    int totalAmount, String remark, long userId, long merchantId,
+                                    String contactName, String contactPhone, String deliveryAddress) {
   }
 
   public record QueueApplyRequest(String requestId, long userId, long merchantId, QueueTicketSnapshot snapshot,

@@ -18,6 +18,7 @@ public class OutboxDispatchScheduler {
       initialDelayString = "${mealflow.outbox.initial-delay-ms:5000}",
       fixedDelayString = "${mealflow.outbox.fixed-delay-ms:5000}")
   public void dispatch() {
+    fulfillmentService.dispatchMealReadyTasks(100);
     fulfillmentService.dispatchPendingEvents(100);
   }
 }

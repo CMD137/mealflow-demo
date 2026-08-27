@@ -9,6 +9,8 @@ import { formatMoney, statusType } from '@/utils/format';
 const loading = ref(false);
 const dialogVisible = ref(false);
 const rows = ref<SkuView[]>([]);
+const page = ref(1);
+const pageSize = ref(10);
 const categories = ref<CategoryView[]>([]);
 const filters = reactive({ categoryId: '', status: '' });
 const form = reactive({
@@ -30,12 +32,20 @@ const filteredRows = computed(() =>
   })
 );
 
+const pagedRows = computed(() =>
+  filteredRows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value)
+);
+
 async function load() {
   loading.value = true;
   try {
-    const [categoryData, skuData] = await Promise.all([adminCategoriesApi(), adminSkusApi()]);
+    const [categoryData, skuData] = await Promise.all([
+      adminCategoriesApi(),
+      adminSkusApi({ page: 1, pageSize: 100 })
+    ]);
     categories.value = categoryData;
-    rows.value = skuData;
+    rows.value = skuData.items;
+    page.value = 1;
   } finally {
     loading.value = false;
   }
@@ -114,7 +124,7 @@ onMounted(load);
     </div>
 
     <div class="content-panel">
-      <el-table v-loading="loading" :data="filteredRows" row-key="skuId">
+      <el-table v-loading="loading" :data="pagedRows" row-key="skuId">
         <el-table-column prop="skuId" label="ID" width="90" />
         <el-table-column label="图片" width="96">
           <template #default="{ row }">
@@ -147,6 +157,15 @@ onMounted(load);
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-bar">
+        <el-pagination
+          layout="total, prev, pager, next"
+          :total="filteredRows.length"
+          :current-page="page"
+          :page-size="pageSize"
+          @current-change="(next: number) => { page = next }"
+        />
+      </div>
     </div>
 
     <el-dialog v-model="dialogVisible" :title="form.skuId ? '编辑商品' : '新增商品'" width="620px">
@@ -184,6 +203,12 @@ onMounted(load);
 </template>
 
 <style scoped>
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+
 .upload-line {
   display: grid;
   grid-template-columns: 1fr auto;

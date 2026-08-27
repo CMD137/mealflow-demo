@@ -16,3 +16,8 @@ meal-user-web/node_modules/
 meal-user-web/dist/
 .frontend-pids/
 logs/
+meal-support-agent-runtime/knowledge/chroma/
+meal-support-agent-runtime/.env.local
+meal-support-agent-runtime/.venv/
+__pycache__/
+*.pyc

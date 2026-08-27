@@ -11,7 +11,7 @@ spring:
       minimum-idle: ${DB_POOL_MIN_IDLE:1}
   sql:
     init:
-      mode: always
+      mode: ${SPRING_SQL_INIT_MODE:never}
   cloud:
     nacos:
       discovery:
@@ -36,5 +36,10 @@ mealflow:
     initial-delay-ms: ${OUTBOX_INITIAL_DELAY_MS:5000}
     fixed-delay-ms: ${OUTBOX_FIXED_DELAY_MS:5000}
   services:
-    order: ${MEAL_ORDER_URI:http://localhost:8105}
-    queue: ${MEAL_QUEUE_URI:http://localhost:8106}
+    order: ${MEAL_ORDER_URI:http://meal-order}
+    queue: ${MEAL_QUEUE_URI:http://meal-queue}
+  internal:
+    auth:
+      enabled: ${INTERNAL_AUTH_ENABLED:true}
+      secret: ${INTERNAL_SECRET:mealflow-dev-internal-secret}
+      service-name: ${INTERNAL_SERVICE_NAME:meal-fulfillment}

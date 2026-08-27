@@ -8,12 +8,12 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class PromotionBusinessMetrics {
-  private static final List<String> CLAIM_RETRY_STATUSES = List.of("PENDING", "RETRY", "REPAIRED", "DEAD");
+  private static final List<String> CLAIM_RETRY_STATUSES = List.of("RETRY", "RECOVERED", "DEAD");
 
   public PromotionBusinessMetrics(MeterRegistry registry, PromotionMapper promotionMapper) {
     CLAIM_RETRY_STATUSES.forEach(status -> Gauge.builder("mealflow.voucher.claim.retries", promotionMapper,
             mapper -> mapper.countClaimRetryByStatus(status))
-        .description("Voucher claim repair task count by status")
+        .description("Pending seckill republish attempt count by status")
         .tag("service", "promotion")
         .tag("status", status)
         .register(registry));

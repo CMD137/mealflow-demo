@@ -20,7 +20,7 @@ class CatalogImageServiceTest {
     ObjectStorageProperties properties = localProperties();
     CatalogImageService service = new CatalogImageService(properties, new LocalObjectStorageService(properties));
     MockMultipartFile file = new MockMultipartFile("file", "meal.png", "image/png",
-        new byte[] {(byte) 137, 80, 78, 71});
+        new byte[] {(byte) 137, 80, 78, 71, 0x0D, 0x0A, 0x1A, 0x0A});
 
     ImageUploadView uploaded = service.upload(10L, file);
     Resource resource = service.load(uploaded.objectKey());
@@ -43,6 +43,19 @@ class CatalogImageServiceTest {
     assertThatThrownBy(() -> service.upload(10L, file))
         .isInstanceOf(BizException.class)
         .hasMessageContaining("Only jpeg, png, webp and gif images are allowed");
+  }
+
+  @Test
+  void rejectsSpoofedContentTypeWithNonImageMagic() {
+    ObjectStorageProperties properties = localProperties();
+    CatalogImageService service = new CatalogImageService(properties, new LocalObjectStorageService(properties));
+    // Declares image/png but the bytes are a shell script signature; must be rejected by magic sniffing.
+    MockMultipartFile file = new MockMultipartFile("file", "evil.png", "image/png",
+        "#! /bin/bash\ncurl evil".getBytes());
+
+    assertThatThrownBy(() -> service.upload(10L, file))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("Image content does not match an allowed format");
   }
 
   @Test

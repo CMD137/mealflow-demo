@@ -3,7 +3,6 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { adminSkusApi } from '@/api/catalog';
 import { adminOrdersApi, cancelOrderApi, submitOrderApi } from '@/api/orders';
-import { mockPayApi } from '@/api/payments';
 import { useAuthStore } from '@/stores/auth';
 import type { OrderSkuItem, OrderView, SkuView, SubmitOrderResponse } from '@/types/api';
 import { formatMoney, statusType } from '@/utils/format';
@@ -13,6 +12,9 @@ const loading = ref(false);
 const submitLoading = ref(false);
 const dialogVisible = ref(false);
 const rows = ref<OrderView[]>([]);
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(20);
 const skus = ref<SkuView[]>([]);
 const selected = ref<OrderView | null>(null);
 const submitResult = ref<SubmitOrderResponse | null>(null);
@@ -35,15 +37,28 @@ async function load() {
       adminOrdersApi({
         merchantId: filters.merchantId,
         userId: filters.userId,
-        status: filters.status || undefined
+        status: filters.status || undefined,
+        page: page.value,
+        pageSize: pageSize.value
       }),
-      adminSkusApi()
+      adminSkusApi({ page: 1, pageSize: 100 })
     ]);
-    rows.value = orderData;
-    skus.value = skuData;
+    rows.value = orderData.items;
+    total.value = orderData.total;
+    skus.value = skuData.items;
   } finally {
     loading.value = false;
   }
+}
+
+function handlePageChange(nextPage: number) {
+  page.value = nextPage;
+  load();
+}
+
+function handleQuery() {
+  page.value = 1;
+  load();
 }
 
 function openCreate() {
@@ -101,12 +116,6 @@ async function submitDemoOrder() {
   }
 }
 
-async function pay(row: OrderView) {
-  await mockPayApi(row.payOrderId);
-  ElMessage.success('模拟支付完成');
-  load();
-}
-
 async function cancel(row: OrderView) {
   await ElMessageBox.confirm(`确认取消订单 ${row.orderId}？`, '取消订单', { type: 'warning' });
   await cancelOrderApi(row.orderId, '商家后台取消');
@@ -122,7 +131,7 @@ onMounted(load);
     <div class="page-header">
       <div>
         <h2 class="page-title">订单管理</h2>
-        <p class="page-subtitle">查询订单、创建演示订单、处理支付和查看排队关联。</p>
+        <p class="page-subtitle">查询订单、创建演示订单、取消订单和查看排队关联。</p>
       </div>
       <div class="action-bar">
         <el-button @click="load" :loading="loading">刷新</el-button>
@@ -145,7 +154,7 @@ onMounted(load);
           <el-option label="已取消" value="CANCELLED" />
         </el-select>
       </div>
-      <el-button type="primary" @click="load">查询</el-button>
+      <el-button type="primary" @click="handleQuery">查询</el-button>
     </div>
 
     <div class="content-panel">
@@ -166,11 +175,19 @@ onMounted(load);
         <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" @click="selected = row">详情</el-button>
-            <el-button text type="success" :disabled="row.status !== 'PENDING_PAYMENT'" @click="pay(row)">模拟支付</el-button>
             <el-button text type="danger" :disabled="row.status === 'CANCELLED' || row.status === 'DELIVERED'" @click="cancel(row)">取消</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-bar">
+        <el-pagination
+          layout="total, prev, pager, next"
+          :total="total"
+          :current-page="page"
+          :page-size="pageSize"
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
 
     <el-drawer v-model="selected" title="订单详情" size="460px">
@@ -195,7 +212,7 @@ onMounted(load);
 
     <el-dialog v-model="dialogVisible" title="创建演示订单" width="700px">
       <el-alert
-        title="用于演示完整链路：选择已上架商品，提交订单；容量不足时会进入排队，成单后可在列表中模拟支付。"
+        title="用于演示下单与排队链路：选择已上架商品并提交订单；顾客需在用户端跳转支付。"
         type="info"
         :closable="false"
         show-icon
@@ -240,6 +257,12 @@ onMounted(load);
 </template>
 
 <style scoped>
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+
 .order-form {
   margin-top: 16px;
 }

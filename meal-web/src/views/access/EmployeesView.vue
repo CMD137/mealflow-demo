@@ -8,16 +8,30 @@ import { statusType } from '@/utils/format';
 const loading = ref(false);
 const dialogVisible = ref(false);
 const rows = ref<EmployeeView[]>([]);
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(20);
 const roles = ref<RoleView[]>([]);
 const form = reactive({ phone: '', nickname: '', roleCode: 'STORE_STAFF' });
 
 async function load() {
   loading.value = true;
   try {
-    [rows.value, roles.value] = await Promise.all([employeesApi(), rolesApi()]);
+    const [employeeData, roleData] = await Promise.all([
+      employeesApi({ page: page.value, pageSize: pageSize.value }),
+      rolesApi()
+    ]);
+    rows.value = employeeData.items;
+    total.value = employeeData.total;
+    roles.value = roleData;
   } finally {
     loading.value = false;
   }
+}
+
+function handlePageChange(nextPage: number) {
+  page.value = nextPage;
+  load();
 }
 
 async function add() {
@@ -75,6 +89,15 @@ onMounted(load);
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-bar">
+        <el-pagination
+          layout="total, prev, pager, next"
+          :total="total"
+          :current-page="page"
+          :page-size="pageSize"
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
 
     <el-dialog v-model="dialogVisible" title="新增员工" width="460px">
@@ -94,3 +117,11 @@ onMounted(load);
     </el-dialog>
   </section>
 </template>
+
+<style scoped>
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+</style>

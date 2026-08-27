@@ -13,6 +13,8 @@ public class LocalEventRow {
   private String status;
   private Integer retryCount;
   private String lastError;
+  private LocalDateTime nextRetryTime;
+  private LocalDateTime leaseUntil;
   private LocalDateTime createTime;
   private LocalDateTime updateTime;
 
@@ -95,6 +97,11 @@ public class LocalEventRow {
   public void setLastError(String lastError) {
     this.lastError = lastError;
   }
+
+  public LocalDateTime getNextRetryTime() { return nextRetryTime; }
+  public void setNextRetryTime(LocalDateTime nextRetryTime) { this.nextRetryTime = nextRetryTime; }
+  public LocalDateTime getLeaseUntil() { return leaseUntil; }
+  public void setLeaseUntil(LocalDateTime leaseUntil) { this.leaseUntil = leaseUntil; }
 
   public LocalDateTime getCreateTime() {
     return createTime;

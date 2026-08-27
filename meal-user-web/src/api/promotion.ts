@@ -14,3 +14,7 @@ export function claimVoucherApi(voucherId: number) {
     requestId: `h5-voucher-${Date.now()}-${Math.random().toString(16).slice(2)}`
   });
 }
+
+export function claimStatusApi(voucherId: number) {
+  return http.get<unknown, SeckillVoucherResponse>(`/vouchers/${voucherId}/claims/me`);
+}

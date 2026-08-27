@@ -3,11 +3,12 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AppShell from '@/components/AppShell.vue';
 import { walletApi, vouchersApi } from '@/api/promotion';
+import { addressesApi } from '@/api/auth';
 import { submitOrderApi } from '@/api/orders';
 import { useCartStore } from '@/stores/cart';
 import { buildSkuMapByCart } from '@/utils/catalog';
 import { formatMoney } from '@/utils/format';
-import type { UserVoucherView, VoucherView } from '@/types/api';
+import type { AddressView, UserVoucherView, VoucherView } from '@/types/api';
 
 const router = useRouter();
 const cart = useCartStore();
@@ -15,8 +16,10 @@ const loading = ref(false);
 const submitting = ref(false);
 const vouchers = ref<VoucherView[]>([]);
 const wallet = ref<UserVoucherView[]>([]);
+const addresses = ref<AddressView[]>([]);
 const form = reactive({
   userVoucherId: undefined as number | undefined,
+  addressId: undefined as number | undefined,
   remark: ''
 });
 
@@ -33,9 +36,11 @@ async function load() {
   try {
     await cart.load();
     cart.skuMap = await buildSkuMapByCart(cart.items);
-    const [voucherData, walletData] = await Promise.all([vouchersApi(), walletApi()]);
+    const [voucherData, walletData, addressData] = await Promise.all([vouchersApi(), walletApi(), addressesApi()]);
     vouchers.value = voucherData;
     wallet.value = walletData.filter((item) => item.status === 'AVAILABLE');
+    addresses.value = addressData;
+    form.addressId = addressData.find((item) => item.defaultAddress)?.addressId || addressData[0]?.addressId;
   } finally {
     loading.value = false;
   }
@@ -46,12 +51,17 @@ async function submit() {
     window.alert('请先选择要结算的商品');
     return;
   }
+  if (!form.addressId) {
+    window.alert('请先添加并选择配送地址');
+    return;
+  }
   const merchantId = selected.value[0].merchantId;
   submitting.value = true;
   try {
     const result = await submitOrderApi({
       requestId: `h5-order-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       merchantId,
+      addressId: form.addressId,
       items: selected.value.map((item) => ({ skuId: item.skuId, quantity: item.quantity })),
       userVoucherId: form.userVoucherId || null,
       remark: form.remark
@@ -81,6 +91,16 @@ onMounted(load);
         <strong>{{ formatMoney((cart.skuMap[item.skuId]?.priceCent || 0) * item.quantity) }}</strong>
       </div>
       <div v-if="!loading && !selected.length" class="empty small-empty">暂无选中商品</div>
+    </section>
+
+    <section class="card block">
+      <h2>配送地址</h2>
+      <select v-model.number="form.addressId">
+        <option v-if="!addresses.length" :value="undefined" disabled>暂无地址，请先在个人中心添加</option>
+        <option v-for="address in addresses" :key="address.addressId" :value="address.addressId">
+          {{ address.contactName }} {{ address.phone }} · {{ address.detail }}
+        </option>
+      </select>
     </section>
 
     <section class="card block">

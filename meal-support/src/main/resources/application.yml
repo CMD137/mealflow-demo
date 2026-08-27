@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: meal-support
+  datasource:
+    url: ${SUPPORT_DB_URL:jdbc:h2:mem:meal_support;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1}
+    username: ${SUPPORT_DB_USERNAME:sa}
+    password: ${SUPPORT_DB_PASSWORD:}
+    driver-class-name: ${SUPPORT_DB_DRIVER:org.h2.Driver}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:4}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+  sql:
+    init:
+      mode: ${SPRING_SQL_INIT_MODE:never}
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
+server:
+  port: 8111
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+mealflow:
+  support:
+    agent-runtime:
+      base-url: ${AGENT_RUNTIME_BASE_URL:http://localhost:8090}
+      chat-path: ${AGENT_RUNTIME_CHAT_PATH:/agent/chat}
+      stream-path: ${AGENT_RUNTIME_STREAM_PATH:/agent/chat/stream}
+      internal-token: ${AGENT_RUNTIME_INTERNAL_TOKEN:}
+      timeout-ms: ${AGENT_RUNTIME_TIMEOUT_MS:30000}
+    tool-client:
+      mode: ${SUPPORT_TOOL_CLIENT_MODE:mock}
+      order:
+        base-url: ${MEAL_ORDER_URI:http://meal-order}
+      queue:
+        base-url: ${MEAL_QUEUE_URI:http://meal-queue}
+      promotion:
+        base-url: ${MEAL_PROMOTION_URI:http://meal-promotion}
+      notify:
+        base-url: ${MEAL_NOTIFY_URI:http://meal-notify}
+      merchant:
+        base-url: ${MEAL_MERCHANT_URI:http://meal-merchant}
+      catalog:
+        base-url: ${MEAL_CATALOG_URI:http://meal-catalog}
+    internal:
+      tool-token: ${SUPPORT_INTERNAL_TOOL_TOKEN:}
+    session:
+      ttl-seconds: ${SUPPORT_SESSION_TTL_SECONDS:3600}
+  internal:
+    auth:
+      enabled: ${INTERNAL_AUTH_ENABLED:true}
+      secret: ${INTERNAL_SECRET:mealflow-dev-internal-secret}
+      service-name: ${INTERNAL_SERVICE_NAME:meal-support}

@@ -1,6 +1,8 @@
 package com.mealflow.promotion;
 
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.api.Result;
+import com.mealflow.common.security.RequestIdentity;
 import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
@@ -12,9 +14,9 @@ import com.mealflow.promotion.api.VoucherLockResponse;
 import com.mealflow.promotion.api.VoucherLockView;
 import com.mealflow.promotion.api.VoucherTransitionRequest;
 import com.mealflow.promotion.api.VoucherView;
+import com.mealflow.promotion.seckill.VoucherClaimPendingRecoveryScheduler;
 import jakarta.validation.Valid;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,30 +24,37 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/vouchers")
 public class PromotionController {
   private final PromotionService promotionService;
-  private final long defaultUserId;
+  private final VoucherClaimPendingRecoveryScheduler pendingRecoveryScheduler;
 
   public PromotionController(PromotionService promotionService,
-      @Value("${mealflow.demo.default-user-id:100}") long defaultUserId) {
+      VoucherClaimPendingRecoveryScheduler pendingRecoveryScheduler) {
     this.promotionService = promotionService;
-    this.defaultUserId = defaultUserId;
+    this.pendingRecoveryScheduler = pendingRecoveryScheduler;
+  }
+
+  @GetMapping("/{voucherId}/claims/me")
+  public Result<SeckillVoucherResponse> myClaim(@PathVariable long voucherId,
+      @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    return Result.ok(promotionService.claimStatus(RequestIdentity.requireUser(userId), voucherId));
   }
 
   @PostMapping("/{voucherId}/seckill")
   public Result<SeckillVoucherResponse> seckill(@PathVariable long voucherId,
       @RequestHeader(value = "X-User-Id", required = false) Long userId,
       @Valid @RequestBody SeckillVoucherRequest request) {
-    return Result.ok(promotionService.seckill(userId == null ? defaultUserId : userId, voucherId, request.requestId()));
+    return Result.ok(promotionService.seckill(RequestIdentity.requireUser(userId), voucherId, request.requestId()));
   }
 
   @GetMapping("/wallet")
   public Result<List<UserVoucherView>> wallet(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-    return Result.ok(promotionService.wallet(userId == null ? defaultUserId : userId));
+    return Result.ok(promotionService.wallet(RequestIdentity.requireUser(userId)));
   }
 
   @GetMapping
@@ -54,8 +63,9 @@ public class PromotionController {
   }
 
   @GetMapping("/admin")
-  public Result<List<VoucherView>> vouchers() {
-    return Result.ok(promotionService.vouchers());
+  public Result<PageResult<VoucherView>> vouchers(@RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize) {
+    return Result.ok(promotionService.vouchers(page, pageSize));
   }
 
   @PostMapping("/admin")
@@ -98,7 +108,7 @@ public class PromotionController {
 
   @PostMapping("/internal/claims/retries/retry")
   public Result<Integer> retryClaimRetries() {
-    return Result.ok(promotionService.retryClaimRetries(100));
+    return Result.ok(pendingRecoveryScheduler.recoverPending());
   }
 
   @GetMapping("/internal/locks")
@@ -106,8 +116,4 @@ public class PromotionController {
     return Result.ok(promotionService.locks());
   }
 
-  @PostMapping("/internal/claims/reconcile")
-  public Result<Integer> reconcileClaims() {
-    return Result.ok(promotionService.reconcileRedisClaims());
-  }
 }

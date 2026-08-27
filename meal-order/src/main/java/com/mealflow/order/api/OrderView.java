@@ -11,6 +11,9 @@ public record OrderView(
     long capacityTokenId,
     long payOrderId,
     int amountCent,
-    List<OrderItemSnapshot> items
+    List<OrderItemSnapshot> items,
+    String contactName,
+    String contactPhone,
+    String deliveryAddress
 ) {
 }

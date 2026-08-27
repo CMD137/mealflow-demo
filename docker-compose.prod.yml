@@ -1,0 +1,88 @@
+# Production-like demo overlay: sandbox payment and local/demo credentials, not a real production deployment.
+services:
+  nacos:
+    environment:
+      NACOS_AUTH_ENABLE: "false"
+
+  mysql:
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required in production}
+
+  meal-auth-user:
+    environment:
+      AUTH_OTP_MODE: redis
+      AUTH_OTP_TEST_CODE: "123456"
+      AUTH_OTP_LOG_CODE: "false"
+      AUTH_OTP_PEPPER: ${AUTH_OTP_PEPPER:?AUTH_OTP_PEPPER is required in production}
+      AUTH_SESSION_PEPPER: ${AUTH_SESSION_PEPPER:?AUTH_SESSION_PEPPER is required in production}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-merchant:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-catalog:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-cart:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-order:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-queue:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-promotion:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-payment:
+    environment:
+      PAYMENT_PROVIDER: alipay-sandbox
+      ALIPAY_APP_ID: ${ALIPAY_APP_ID:?ALIPAY_APP_ID is required in production}
+      ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:?ALIPAY_PRIVATE_KEY is required in production}
+      ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:?ALIPAY_PUBLIC_KEY is required in production}
+      NGROK_URL: ${NGROK_URL:?NGROK_URL is required in production}
+      ALIPAY_NOTIFY_URL: https://${NGROK_URL:?NGROK_URL is required in production}/payments/alipay/callback
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+    networks: [private, edge]
+
+  meal-fulfillment:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-notify:
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-support:
+    environment:
+      SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:?SUPPORT_INTERNAL_TOOL_TOKEN is required in production}
+      AGENT_RUNTIME_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?AGENT_INTERNAL_TOKEN is required in production}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-support-agent-runtime:
+    environment:
+      SUPPORT_INTERNAL_TOOL_TOKEN: ${SUPPORT_INTERNAL_TOOL_TOKEN:?SUPPORT_INTERNAL_TOOL_TOKEN is required in production}
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?AGENT_INTERNAL_TOKEN is required in production}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  meal-gateway:
+    environment:
+      GATEWAY_AUTH_ENABLED: "true"
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required in production}
+
+  alipay-ngrok:
+    image: ngrok/ngrok:alpine
+    profiles: [alipay-sandbox]
+    command: http meal-gateway:8080 --url=${NGROK_URL:?NGROK_URL is required for alipay-sandbox}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?NGROK_AUTHTOKEN is required for alipay-sandbox}
+    depends_on:
+      - meal-gateway
+    networks: [private, edge]

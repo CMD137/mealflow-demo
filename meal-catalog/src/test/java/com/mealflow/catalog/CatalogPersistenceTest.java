@@ -57,7 +57,7 @@ class CatalogPersistenceTest {
     assertThat(sku.categoryName()).isEqualTo("面食");
     assertThat(catalogService.adminCategories(10L)).extracting("name").contains("面食");
     assertThat(catalogService.listCategories(10L)).extracting("name").contains("面食");
-    assertThat(catalogService.adminSkus(10L)).extracting("name").contains("番茄牛肉面");
+    assertThat(catalogService.adminSkus(10L, 1, 100).items()).extracting("name").contains("番茄牛肉面");
     assertThat(catalogService.listByMerchant(10L)).extracting("skuId").contains(sku.skuId());
 
     SkuView stocked = catalogService.updateSkuStock(10L, sku.skuId(), 5);
@@ -69,5 +69,19 @@ class CatalogPersistenceTest {
     assertThatThrownBy(() -> catalogService.buildSnapshots(10L, List.of(new OrderSkuItem(sku.skuId(), 1))))
         .isInstanceOf(BizException.class)
         .hasMessageContaining("SKU is not on shelf");
+  }
+
+  @Test
+  void releasesExpiredReservationWithAStatusCondition() {
+    ReserveStockResponse response = catalogService.reserve(new ReserveStockRequest("catalog-expire-1", 1L, 10L,
+        null, null, List.of(new OrderSkuItem(1L, 1)), LocalDateTime.now().minusMinutes(1)));
+
+    catalogService.expireReservations();
+
+    assertThat(catalogService.reservations())
+        .filteredOn(reservation -> reservation.reservationId() == response.reservationIds().get(0))
+        .singleElement()
+        .extracting(reservation -> reservation.status())
+        .isEqualTo("EXPIRED");
   }
 }

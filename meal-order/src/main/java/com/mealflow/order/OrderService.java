@@ -4,14 +4,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.ConsumerRecordStatus;
 import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.OrderStatus;
 import com.mealflow.infra.consumer.PersistentConsumerRecordTemplate;
 import com.mealflow.infra.event.EventKey;
-import com.mealflow.infra.id.IdGenerator;
-import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.order.api.AdminOrderQuery;
 import com.mealflow.order.api.LocalEventView;
 import com.mealflow.order.api.OrderItemSnapshot;
@@ -21,6 +20,7 @@ import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
 import com.mealflow.order.client.CatalogClient;
+import com.mealflow.order.client.AuthUserClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
@@ -32,7 +32,6 @@ import com.mealflow.order.mapper.OrderMapper;
 import com.mealflow.order.mapper.OrderRow;
 import com.mealflow.order.mapper.StatusCountRow;
 import com.mealflow.order.outbox.OutboxEventPublisher;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -53,6 +52,7 @@ public class OrderService {
   };
 
   private final CatalogClient catalogClient;
+  private final AuthUserClient authUserClient;
   private final PromotionClient promotionClient;
   private final QueueClient queueClient;
   private final PaymentClient paymentClient;
@@ -62,46 +62,41 @@ public class OrderService {
   private final PersistentConsumerRecordTemplate consumerRecordTemplate;
   private final OutboxEventPublisher outboxEventPublisher;
   private final ObjectMapper objectMapper;
-  private final IdGenerator idGenerator = new IdGenerator();
-  private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
+  private final DatabaseIdGenerator idGenerator;
+  private final OrderIdempotencyService idempotencyService;
+  private final OrderSagaCoordinator sagaCoordinator;
 
-  public OrderService(CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
+  public OrderService(CatalogClient catalogClient, AuthUserClient authUserClient, PromotionClient promotionClient, QueueClient queueClient,
       PaymentClient paymentClient, OrderMapper orderMapper, LocalEventMapper localEventMapper,
-      ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper) {
+      ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper,
+      DatabaseIdGenerator idGenerator, OrderIdempotencyService idempotencyService,
+      OrderSagaCoordinator sagaCoordinator) {
     this.catalogClient = catalogClient;
+    this.authUserClient = authUserClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
     this.paymentClient = paymentClient;
     this.orderMapper = orderMapper;
     this.localEventMapper = localEventMapper;
     this.consumerRecordMapper = consumerRecordMapper;
-    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper);
+    this.consumerRecordTemplate = new PersistentConsumerRecordTemplate(consumerRecordMapper,
+        () -> idGenerator.next("order_consumer_record"));
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
-  }
-
-  @PostConstruct
-  void initializeIdGenerator() {
-    ensureConsumerRecordPayloadColumns();
-    idGenerator.ensureAtLeast("order", orderMapper.maxOrderId());
-    idGenerator.ensureAtLeast("localEvent", localEventMapper.maxEventId());
-    consumerRecordTemplate.ensureIdAtLeast(consumerRecordMapper.maxRecordId());
-  }
-
-  private void ensureConsumerRecordPayloadColumns() {
-    if (consumerRecordMapper.countColumn("event_type") == 0) {
-      consumerRecordMapper.addEventTypeColumn();
-    }
-    if (consumerRecordMapper.countColumn("payload_json") == 0) {
-      consumerRecordMapper.addPayloadJsonColumn();
-    }
+    this.idGenerator = idGenerator;
+    this.idempotencyService = idempotencyService;
+    this.sagaCoordinator = sagaCoordinator;
   }
 
   @Transactional
   public SubmitOrderResponse submit(long userId, SubmitOrderRequest request) {
-    return idempotentTemplate.execute("order:submit:" + userId + ":" + request.requestId(), () -> {
+    return idempotencyService.execute(userId, request.requestId(), request, () -> {
       LocalDateTime expireTime = LocalDateTime.now().plusMinutes(15);
       List<OrderSkuItem> items = normalizeItems(request);
+      if (request.addressId() == null) {
+        throw new BizException(ErrorCode.BAD_REQUEST, "delivery address is required");
+      }
+      AuthUserClient.AddressView address = authUserClient.address(userId, request.addressId());
       List<OrderItemSnapshot> snapshots = catalogClient.snapshots(request.merchantId(), items);
       int originAmount = snapshots.stream().mapToInt(OrderItemSnapshot::subtotalCent).sum();
       CatalogClient.ReserveStockResponse reservation = catalogClient.reserve(new CatalogClient.ReserveStockRequest(
@@ -115,7 +110,8 @@ public class OrderService {
               "skuName", item.skuName(),
               "priceCent", item.priceCent(),
               "quantity", item.quantity())).toList(),
-          reservation.reservationIds(), voucherLock.voucherLockId(), finalAmount, request.remark());
+          reservation.reservationIds(), voucherLock.voucherLockId(), finalAmount, request.remark(), userId,
+          request.merchantId(), address.contactName(), address.phone(), address.detail());
       QueueClient.QueueApplyResponse queue = queueClient.apply(new QueueClient.QueueApplyRequest(
           "queue-apply:" + request.requestId(), userId, request.merchantId(), snapshot, expireTime, 0));
       if ("QUEUED".equals(queue.result())) {
@@ -134,22 +130,21 @@ public class OrderService {
       return existing.get();
     }
     QueueClient.QueueTicketSnapshot snapshot = queueClient.markProcessing(ticketId);
-    OrderRecord order = createOrder(0L, 10L, ticketId, capacityTokenId, snapshot);
+    if (snapshot.userId() <= 0 || snapshot.merchantId() <= 0) {
+      throw new IllegalStateException("queue ticket snapshot is missing its original principal");
+    }
+    // Ticket promotion must preserve the original customer and merchant; it is never a system-owned order.
+    OrderRecord order = createOrder(snapshot.userId(), snapshot.merchantId(), ticketId, capacityTokenId, snapshot);
     queueClient.orderCreated(ticketId, new QueueClient.BindOrderRequest("queue-order-created:" + ticketId + ":" + order.id,
         order.id));
     return order;
   }
 
-  @Transactional
   public synchronized void markPaid(long orderId) {
     OrderRecord order = requireOrder(orderId);
     if (order.status == OrderStatus.PENDING_PAYMENT) {
-      updateStatus(orderId, OrderStatus.WAIT_MERCHANT_ACCEPT);
-      catalogClient.confirm(new CatalogClient.StockTransitionRequest("stock-confirm:" + orderId, order.reservationIds,
-          orderId, "PAYMENT_SUCCESS"));
-      promotionClient.confirm(new PromotionClient.VoucherTransitionRequest("voucher-confirm:" + orderId,
-          order.voucherLockId, orderId, "PAYMENT_SUCCESS"));
-      appendOrderEvent("OrderPaid", order.withStatus(OrderStatus.WAIT_MERCHANT_ACCEPT));
+      sagaCoordinator.enqueuePaymentSuccess(orderMapper.findById(orderId));
+      sagaCoordinator.processReadyForOrder(orderId);
     }
   }
 
@@ -178,40 +173,52 @@ public class OrderService {
     return consumePaymentPaid(eventKey, consumerGroup, row.getPayloadJson());
   }
 
-  @Transactional
   public synchronized void cancel(long orderId, String reason) {
     OrderRecord order = requireOrder(orderId);
-    if (order.status != OrderStatus.PENDING_PAYMENT && order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
-      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be cancelled");
+    sagaCoordinator.enqueueCancellation(orderMapper.findById(orderId), reason);
+    sagaCoordinator.processReadyForOrder(orderId);
+  }
+
+  /** Uses the same cancellation saga as a user cancellation, so every remote release remains idempotent. */
+  public int expirePendingPayments(int limit) {
+    int expired = 0;
+    for (OrderRow row : orderMapper.findExpiredPendingPayments(LocalDateTime.now(), Math.max(1, limit))) {
+      try {
+        cancel(row.getId(), "PAYMENT_TIMEOUT");
+        expired++;
+      } catch (BizException ex) {
+        // A concurrent payment/cancellation wins through status conditions; a later scan need not retry it.
+        if (ex.errorCode() != ErrorCode.ILLEGAL_STATUS) {
+          throw ex;
+        }
+      }
     }
-    updateStatus(orderId, OrderStatus.CANCELLED);
-    catalogClient.release(new CatalogClient.StockTransitionRequest("stock-release:" + orderId, order.reservationIds,
-        orderId, reason));
-    promotionClient.release(new PromotionClient.VoucherTransitionRequest("voucher-release:" + orderId,
-        order.voucherLockId, orderId, reason));
-    paymentClient.close(order.payOrderId, new PaymentClient.ClosePaymentRequest("payment-close:" + orderId, reason));
-    queueClient.release(order.capacityTokenId, new QueueClient.ReleaseCapacityRequest("capacity-release:" + orderId,
-        "ORDER_CANCELLED"));
-    appendOrderEvent("OrderCancelled", order.withStatus(OrderStatus.CANCELLED));
+    return expired;
   }
 
   @Transactional
   public synchronized void merchantAccept(long orderId) {
     OrderRecord order = requireOrder(orderId);
+    if (sagaCoordinator.hasIncompleteCancellation(orderId)) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cancellation is in progress");
+    }
     if (order.status != OrderStatus.WAIT_MERCHANT_ACCEPT) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order is not waiting merchant accept");
     }
-    updateStatus(orderId, OrderStatus.MERCHANT_ACCEPTED);
+    updateStatus(orderId, order.status, OrderStatus.MERCHANT_ACCEPTED);
     appendOrderEvent("OrderMerchantAccepted", order.withStatus(OrderStatus.MERCHANT_ACCEPTED));
   }
 
   @Transactional
   public synchronized void mealReady(long orderId) {
     OrderRecord order = requireOrder(orderId);
+    if (order.status == OrderStatus.WAIT_RIDER_PICKUP) {
+      return;
+    }
     if (order.status != OrderStatus.MERCHANT_ACCEPTED && order.status != OrderStatus.COOKING) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be marked meal ready");
     }
-    updateStatus(orderId, OrderStatus.WAIT_RIDER_PICKUP);
+    updateStatus(orderId, order.status, OrderStatus.WAIT_RIDER_PICKUP);
     appendOrderEvent("OrderMealReady", order.withStatus(OrderStatus.WAIT_RIDER_PICKUP));
   }
 
@@ -221,7 +228,7 @@ public class OrderService {
     if (order.status != OrderStatus.WAIT_RIDER_PICKUP) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be picked up");
     }
-    updateStatus(orderId, OrderStatus.DELIVERING);
+    updateStatus(orderId, order.status, OrderStatus.DELIVERING);
     appendOrderEvent("OrderPickedUp", order.withStatus(OrderStatus.DELIVERING));
   }
 
@@ -231,7 +238,7 @@ public class OrderService {
     if (order.status != OrderStatus.DELIVERING) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "order cannot be delivered");
     }
-    updateStatus(orderId, OrderStatus.COMPLETED);
+    updateStatus(orderId, order.status, OrderStatus.COMPLETED);
     appendOrderEvent("OrderDelivered", order.withStatus(OrderStatus.COMPLETED));
   }
 
@@ -243,9 +250,19 @@ public class OrderService {
     return orderMapper.findAll().stream().map(this::mapOrder).map(this::view).toList();
   }
 
-  public List<OrderView> adminOrders(AdminOrderQuery query) {
-    return orderMapper.findAdminOrders(query.merchantId(), query.userId(), query.status(), query.beginTime(),
-        query.endTime()).stream().map(this::mapOrder).map(this::view).toList();
+  public List<OrderView> listByUser(long userId) {
+    return orderMapper.findByUserId(userId).stream().map(this::mapOrder).map(this::view).toList();
+  }
+
+  public PageResult<OrderView> adminOrders(AdminOrderQuery query) {
+    long total = orderMapper.countAdminOrders(query.merchantId(), query.userId(), query.status(), query.beginTime(),
+        query.endTime());
+    List<OrderView> items = orderMapper.findAdminOrders(query.merchantId(), query.userId(), query.status(),
+        query.beginTime(), query.endTime(), query.pageSize(), query.offset()).stream()
+        .map(this::mapOrder)
+        .map(this::view)
+        .toList();
+    return PageResult.of(items, total, query.page(), query.pageSize());
   }
 
   public OrderStatisticsView adminStatistics(AdminOrderQuery query) {
@@ -295,22 +312,43 @@ public class OrderService {
       QueueClient.QueueTicketSnapshot snapshot) {
     long orderId = idGenerator.next("order");
     PaymentClient.PaymentView payment = paymentClient.create(new PaymentClient.CreatePaymentRequest(
-        "payment-create:" + orderId, orderId, snapshot.totalAmount()));
+        "payment-create:" + orderId, orderId, userId, snapshot.totalAmount()));
     List<OrderItemSnapshot> items = snapshot.items().stream().map(this::toOrderItemSnapshot).toList();
+    LocalDateTime paymentExpireTime = LocalDateTime.now().plusMinutes(15);
     OrderRecord order = new OrderRecord(orderId, userId, merchantId, OrderStatus.PENDING_PAYMENT, ticketId,
         capacityTokenId, payment.payOrderId(), snapshot.reservationIds(), snapshot.voucherLockId(), items,
-        snapshot.totalAmount());
+        snapshot.totalAmount(), snapshot.contactName(), snapshot.contactPhone(), snapshot.deliveryAddress(),
+        paymentExpireTime);
     LocalDateTime now = LocalDateTime.now();
-    orderMapper.insert(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
-        order.capacityTokenId, order.payOrderId, toJson(order.reservationIds), order.voucherLockId,
-        toJson(order.items), order.amountCent, now);
-    queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
+    try {
+      orderMapper.insert(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
+          order.capacityTokenId, order.payOrderId, toJson(order.reservationIds), order.voucherLockId,
+          toJson(order.items), order.amountCent, order.contactName, order.contactPhone, order.deliveryAddress,
+          order.paymentExpireTime, now);
+      queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
+    } catch (RuntimeException failure) {
+      // The payment service is outside this transaction; close it before the local order insert rolls back.
+      try {
+        paymentClient.close(payment.payOrderId(), new PaymentClient.ClosePaymentRequest(
+            "payment-close-orphan:" + orderId, "ORDER_CREATE_FAILED"));
+      } catch (RuntimeException closeFailure) {
+        failure.addSuppressed(closeFailure);
+        try {
+          sagaCoordinator.enqueueOrphanPayment(orderId, payment.payOrderId());
+        } catch (RuntimeException recoveryFailure) {
+          failure.addSuppressed(recoveryFailure);
+        }
+      }
+      throw failure;
+    }
     appendOrderEvent("OrderCreated", order);
     return order;
   }
 
-  private void updateStatus(long orderId, OrderStatus status) {
-    orderMapper.updateStatus(orderId, status.name(), LocalDateTime.now());
+  private void updateStatus(long orderId, OrderStatus expected, OrderStatus target) {
+    if (orderMapper.updateStatusIfCurrent(orderId, expected.name(), target.name(), LocalDateTime.now()) != 1) {
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "order status changed concurrently");
+    }
   }
 
   private OrderItemSnapshot toOrderItemSnapshot(Map<String, Object> item) {
@@ -366,17 +404,19 @@ public class OrderService {
     return new OrderRecord(row.getId(), row.getUserId(), row.getMerchantId(),
         OrderStatus.valueOf(row.getStatus()), row.getQueueTicketId(), row.getCapacityTokenId(),
         row.getPayOrderId(), fromJson(row.getReservationIdsJson(), LONG_LIST), row.getVoucherLockId(),
-        fromJson(row.getItemsJson(), ITEM_LIST), row.getAmountCent());
+        fromJson(row.getItemsJson(), ITEM_LIST), row.getAmountCent(), row.getContactName(), row.getContactPhone(),
+        row.getDeliveryAddress(), row.getPaymentExpireTime());
   }
 
   private OrderView view(OrderRecord order) {
     return new OrderView(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
-        order.capacityTokenId, order.payOrderId, order.amountCent, order.items);
+        order.capacityTokenId, order.payOrderId, order.amountCent, order.items, order.contactName,
+        order.contactPhone, order.deliveryAddress);
   }
 
   private void appendOrderEvent(String eventType, OrderRecord order) {
     int version = 1;
-    localEventMapper.insert(idGenerator.next("localEvent"),
+    localEventMapper.insert(idGenerator.next("order_local_event"),
         EventKey.of("order", eventType, order.id, version),
         eventType,
         version,
@@ -439,10 +479,15 @@ public class OrderService {
     final Long voucherLockId;
     final List<OrderItemSnapshot> items;
     final int amountCent;
+    final String contactName;
+    final String contactPhone;
+    final String deliveryAddress;
+    final LocalDateTime paymentExpireTime;
 
     OrderRecord(long id, long userId, long merchantId, OrderStatus status, Long queueTicketId,
         long capacityTokenId, long payOrderId, List<Long> reservationIds, Long voucherLockId,
-        List<OrderItemSnapshot> items, int amountCent) {
+        List<OrderItemSnapshot> items, int amountCent, String contactName, String contactPhone,
+        String deliveryAddress, LocalDateTime paymentExpireTime) {
       this.id = id;
       this.userId = userId;
       this.merchantId = merchantId;
@@ -454,11 +499,16 @@ public class OrderService {
       this.voucherLockId = voucherLockId;
       this.items = items;
       this.amountCent = amountCent;
+      this.contactName = contactName;
+      this.contactPhone = contactPhone;
+      this.deliveryAddress = deliveryAddress;
+      this.paymentExpireTime = paymentExpireTime;
     }
 
     OrderRecord withStatus(OrderStatus nextStatus) {
       return new OrderRecord(id, userId, merchantId, nextStatus, queueTicketId, capacityTokenId, payOrderId,
-          reservationIds, voucherLockId, items, amountCent);
+          reservationIds, voucherLockId, items, amountCent, contactName, contactPhone, deliveryAddress,
+          paymentExpireTime);
     }
   }
 }

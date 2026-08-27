@@ -1,4 +1,7 @@
 package com.mealflow.promotion.api;
 
-public record VoucherView(long voucherId, String name, String type, int discountCent, int stock, String status) {
+import java.time.LocalDateTime;
+
+public record VoucherView(long voucherId, String name, String type, int discountCent, int stock, String status,
+    LocalDateTime startTime, LocalDateTime endTime) {
 }

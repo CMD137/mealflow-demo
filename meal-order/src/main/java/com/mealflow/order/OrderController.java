@@ -1,6 +1,10 @@
 package com.mealflow.order;
 
+import com.mealflow.common.api.PageResult;
 import com.mealflow.common.api.Result;
+import com.mealflow.common.api.ErrorCode;
+import com.mealflow.common.exception.BizException;
+import com.mealflow.common.security.RequestIdentity;
 import com.mealflow.order.api.AdminOrderQuery;
 import com.mealflow.order.api.CancelOrderRequest;
 import com.mealflow.order.api.LocalEventView;
@@ -11,7 +15,6 @@ import com.mealflow.order.api.SubmitOrderResponse;
 import jakarta.validation.Valid;
 import java.time.LocalDateTime;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,17 +29,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/orders")
 public class OrderController {
   private final OrderService orderService;
-  private final long defaultUserId;
-
-  public OrderController(OrderService orderService, @Value("${mealflow.demo.default-user-id:100}") long defaultUserId) {
+  public OrderController(OrderService orderService) {
     this.orderService = orderService;
-    this.defaultUserId = defaultUserId;
   }
 
   @PostMapping("/submit")
   public Result<SubmitOrderResponse> submit(@RequestHeader(value = "X-User-Id", required = false) Long userId,
       @Valid @RequestBody SubmitOrderRequest request) {
-    return Result.ok(orderService.submit(userId == null ? defaultUserId : userId, request));
+    return Result.ok(orderService.submit(RequestIdentity.requireUser(userId), request));
   }
 
   @PostMapping("/internal/from-ticket/{ticketId}/{capacityTokenId}")
@@ -51,53 +51,69 @@ public class OrderController {
   }
 
   @PostMapping("/{orderId}/cancel")
-  public Result<Void> cancel(@PathVariable long orderId, @Valid @RequestBody CancelOrderRequest request) {
+  public Result<Void> cancel(@PathVariable long orderId,
+      @RequestHeader(value = "X-User-Id", required = false) Long userId,
+      @Valid @RequestBody CancelOrderRequest request) {
+    requireUserOrder(orderId, RequestIdentity.requireUser(userId));
     orderService.cancel(orderId, request.reason());
     return Result.ok();
   }
 
   @PostMapping("/{orderId}/merchant-accept")
-  public Result<OrderView> merchantAccept(@PathVariable long orderId) {
+  public Result<OrderView> merchantAccept(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
     orderService.merchantAccept(orderId);
     return Result.ok(orderService.get(orderId));
   }
 
   @PostMapping("/{orderId}/meal-ready")
-  public Result<OrderView> mealReady(@PathVariable long orderId) {
+  public Result<OrderView> mealReady(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
     orderService.mealReady(orderId);
     return Result.ok(orderService.get(orderId));
   }
 
   @PostMapping("/{orderId}/picked-up")
-  public Result<OrderView> pickedUp(@PathVariable long orderId) {
+  public Result<OrderView> pickedUp(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
     orderService.pickedUp(orderId);
     return Result.ok(orderService.get(orderId));
   }
 
   @PostMapping("/{orderId}/delivered")
-  public Result<OrderView> delivered(@PathVariable long orderId) {
+  public Result<OrderView> delivered(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
     orderService.delivered(orderId);
     return Result.ok(orderService.get(orderId));
   }
 
   @GetMapping("/{orderId}")
-  public Result<OrderView> get(@PathVariable long orderId) {
-    return Result.ok(orderService.get(orderId));
+  public Result<OrderView> get(@PathVariable long orderId,
+      @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    return Result.ok(requireUserOrder(orderId, RequestIdentity.requireUser(userId)));
   }
 
   @GetMapping
-  public Result<List<OrderView>> list() {
-    return Result.ok(orderService.list());
+  public Result<List<OrderView>> list(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    long currentUserId = RequestIdentity.requireUser(userId);
+    return Result.ok(orderService.listByUser(currentUserId));
   }
 
   @GetMapping("/admin")
-  public Result<List<OrderView>> adminOrders(
+  public Result<PageResult<OrderView>> adminOrders(
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @RequestParam(required = false) Long userId,
       @RequestParam(required = false) String status,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beginTime,
-      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
-    return Result.ok(orderService.adminOrders(new AdminOrderQuery(merchantId, userId, status, beginTime, endTime)));
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize) {
+    return Result.ok(orderService.adminOrders(new AdminOrderQuery(RequestIdentity.requireMerchant(merchantId), userId,
+        status, beginTime, endTime, page, pageSize)));
   }
 
   @GetMapping("/admin/statistics")
@@ -105,7 +121,8 @@ public class OrderController {
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beginTime,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
-    return Result.ok(orderService.adminStatistics(new AdminOrderQuery(merchantId, null, null, beginTime, endTime)));
+    return Result.ok(orderService.adminStatistics(new AdminOrderQuery(RequestIdentity.requireMerchant(merchantId), null, null,
+        beginTime, endTime, 1, 1)));
   }
 
   @GetMapping("/internal/events")
@@ -126,5 +143,21 @@ public class OrderController {
   @PostMapping("/internal/consumer-records/{eventKey}/groups/{consumerGroup}/replay")
   public Result<Boolean> replayConsumerRecord(@PathVariable String eventKey, @PathVariable String consumerGroup) {
     return Result.ok(orderService.replayPaymentConsumerRecord(eventKey, consumerGroup));
+  }
+
+  private OrderView requireUserOrder(long orderId, long userId) {
+    OrderView order = orderService.get(orderId);
+    if (order.userId() != userId) {
+      throw new BizException(ErrorCode.FORBIDDEN, "order does not belong to current user");
+    }
+    return order;
+  }
+
+  private OrderView requireMerchantOrder(long orderId, long merchantId) {
+    OrderView order = orderService.get(orderId);
+    if (order.merchantId() != merchantId) {
+      throw new BizException(ErrorCode.FORBIDDEN, "order does not belong to current merchant");
+    }
+    return order;
   }
 }

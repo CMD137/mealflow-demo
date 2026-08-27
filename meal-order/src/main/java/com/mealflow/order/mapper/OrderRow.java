@@ -1,5 +1,7 @@
 package com.mealflow.order.mapper;
 
+import java.time.LocalDateTime;
+
 public class OrderRow {
   private long id;
   private long userId;
@@ -12,6 +14,10 @@ public class OrderRow {
   private Long voucherLockId;
   private String itemsJson;
   private int amountCent;
+  private String contactName;
+  private String contactPhone;
+  private String deliveryAddress;
+  private LocalDateTime paymentExpireTime;
 
   public long getId() {
     return id;
@@ -100,4 +106,13 @@ public class OrderRow {
   public void setAmountCent(int amountCent) {
     this.amountCent = amountCent;
   }
+
+  public String getContactName() { return contactName; }
+  public void setContactName(String contactName) { this.contactName = contactName; }
+  public String getContactPhone() { return contactPhone; }
+  public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
+  public String getDeliveryAddress() { return deliveryAddress; }
+  public void setDeliveryAddress(String deliveryAddress) { this.deliveryAddress = deliveryAddress; }
+  public LocalDateTime getPaymentExpireTime() { return paymentExpireTime; }
+  public void setPaymentExpireTime(LocalDateTime paymentExpireTime) { this.paymentExpireTime = paymentExpireTime; }
 }

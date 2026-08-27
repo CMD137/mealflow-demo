@@ -4,11 +4,11 @@ import java.time.LocalDateTime;
 
 public class VoucherClaimRetryRow {
   private long id;
+  private String eventKey;
   private long userId;
   private long voucherId;
   private String status;
   private int retryCount;
-  private int maxRetries;
   private String lastError;
   private LocalDateTime nextRetryTime;
 
@@ -18,6 +18,14 @@ public class VoucherClaimRetryRow {
 
   public void setId(long id) {
     this.id = id;
+  }
+
+  public String getEventKey() {
+    return eventKey;
+  }
+
+  public void setEventKey(String eventKey) {
+    this.eventKey = eventKey;
   }
 
   public long getUserId() {
@@ -50,14 +58,6 @@ public class VoucherClaimRetryRow {
 
   public void setRetryCount(int retryCount) {
     this.retryCount = retryCount;
-  }
-
-  public int getMaxRetries() {
-    return maxRetries;
-  }
-
-  public void setMaxRetries(int maxRetries) {
-    this.maxRetries = maxRetries;
   }
 
   public String getLastError() {

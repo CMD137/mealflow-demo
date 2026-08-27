@@ -14,7 +14,8 @@ import org.springframework.boot.test.context.SpringBootTest;
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {
         "spring.cloud.nacos.discovery.enabled=false",
-        "mealflow.outbox.scheduler-enabled=false"
+        "mealflow.outbox.scheduler-enabled=false",
+        "mealflow.payment.provider=mock-wechat"
     }
 )
 class PaymentPersistenceTest {
@@ -26,7 +27,7 @@ class PaymentPersistenceTest {
 
   @Test
   void createsAndPaysOrderInDatabase() {
-    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-1", 2001L, 3200));
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-1", 2001L, 101L, 3200));
 
     assertThat(created.status()).isEqualTo("UNPAID");
 
@@ -61,7 +62,7 @@ class PaymentPersistenceTest {
 
   @Test
   void recoversStaleSendingOutboxEvent() {
-    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-stale-sending", 2002L, 1800));
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-stale-sending", 2002L, 101L, 1800));
     paymentService.mockPay(created.payOrderId());
     String eventKey = "payment:PaymentPaid:" + created.payOrderId() + ":1";
     long eventId = paymentService.events().stream()
@@ -69,7 +70,7 @@ class PaymentPersistenceTest {
         .findFirst()
         .orElseThrow()
         .id();
-    localEventMapper.markSending(eventId, LocalDateTime.now().minusMinutes(2));
+    localEventMapper.markSending(eventId, LocalDateTime.now(), LocalDateTime.now().minusMinutes(1));
 
     int sent = paymentService.dispatchPendingEvents(10);
 
@@ -80,5 +81,16 @@ class PaymentPersistenceTest {
           assertThat(event.status()).isEqualTo("SENT");
           assertThat(event.retryCount()).isEqualTo(2);
         });
+  }
+
+  @Test
+  void callsProviderAndPersistsRefundResult() {
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-refund", 2003L, 101L, 990));
+    paymentService.mockPay(created.payOrderId());
+
+    PaymentView refunded = paymentService.refund(created.payOrderId());
+
+    assertThat(refunded.status()).isEqualTo("REFUNDED");
+    assertThat(paymentService.refund(created.payOrderId()).status()).isEqualTo("REFUNDED");
   }
 }

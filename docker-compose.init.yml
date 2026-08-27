@@ -1,0 +1,24 @@
+# Explicit first-run database bootstrap overlay. Do not use it with an existing database.
+services:
+  meal-auth-user:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-merchant:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-catalog:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-cart:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-order:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-queue:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-promotion:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-payment:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-fulfillment:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-notify:
+    environment: { SPRING_SQL_INIT_MODE: always }
+  meal-support:
+    environment: { SPRING_SQL_INIT_MODE: always }

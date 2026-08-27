@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Shared logback configuration shipped in meal-common so every MealFlow service logs the
+     current X-Trace-Id (MDC key "traceId") on each line. Combined with the gateway's
+     trace-id propagation this makes one request correlate across all services:
+     `docker logs mealflow-order | grep <traceId>` shows the full downstream trail. -->
+<configuration>
+  <property name="CONSOLE_LOG_PATTERN"
+            value="%d{${LOG_DATEFORMAT_PATTERN:-yyyy-MM-dd HH:mm:ss.SSS}} ${LOG_LEVEL_PATTERN:-%5p} ${PID:- } --- [%thread] [%X{traceId:-}] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"/>
+
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

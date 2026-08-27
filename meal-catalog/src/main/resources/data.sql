@@ -3,8 +3,9 @@ VALUES
   (1, 10, '盖饭', 10, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   (2, 10, '饮品', 20, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
-INSERT IGNORE INTO sku(id, merchant_id, name, price_cent, stock)
+INSERT IGNORE INTO sku(id, merchant_id, category_id, name, description, image_url, price_cent, stock, status)
 VALUES
-  (1, 10, '招牌牛肉饭', 2800, 50),
-  (2, 10, '香煎鸡腿饭', 2600, 50),
-  (3, 10, '冰柠檬茶', 800, 100);
+  (1, 10, 1, '招牌牛肉饭', '午高峰招牌牛肉饭', '', 2800, 50, 'ON_SHELF'),
+  (2, 10, 1, '香煎鸡腿饭', '香煎鸡腿盖饭', '', 2600, 50, 'ON_SHELF'),
+  (3, 10, 2, '冰柠檬茶', '冰爽柠檬茶', '', 800, 100, 'ON_SHELF'),
+  (4, 10, 2, '支付宝沙箱测试商品', '仅用于支付宝沙箱支付、退款与查询联调', '', 1, 10000, 'ON_SHELF');

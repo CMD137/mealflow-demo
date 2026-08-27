@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import AppShell from '@/components/AppShell.vue';
 import { cancelOrderApi, orderApi } from '@/api/orders';
-import { mockPayApi, paymentApi } from '@/api/payments';
+import { checkoutApi, paymentApi } from '@/api/payments';
 import { formatMoney, orderStatusText, statusClass } from '@/utils/format';
 import type { OrderView, PaymentView } from '@/types/api';
 
@@ -27,8 +27,8 @@ async function load() {
 
 async function pay() {
   if (!order.value?.payOrderId) return;
-  await mockPayApi(order.value.payOrderId);
-  await load();
+  const checkout = await checkoutApi(order.value.payOrderId);
+  window.location.assign(checkout.checkoutUrl);
 }
 
 async function cancel() {
@@ -70,7 +70,7 @@ onMounted(load);
       </div>
 
       <div class="actions">
-        <button v-if="order.status === 'PENDING_PAYMENT'" class="primary-button" @click="pay">模拟支付</button>
+        <button v-if="order.status === 'PENDING_PAYMENT'" class="primary-button" @click="pay">前往支付宝支付</button>
         <button v-if="!['CANCELLED', 'COMPLETED', 'DELIVERED'].includes(order.status)" class="danger-button" @click="cancel">取消订单</button>
         <RouterLink class="ghost-button" to="/orders">返回订单</RouterLink>
       </div>

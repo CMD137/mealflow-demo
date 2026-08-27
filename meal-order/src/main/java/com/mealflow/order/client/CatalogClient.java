@@ -43,11 +43,13 @@ public class CatalogClient {
   }
 
   public void confirm(StockTransitionRequest request) {
-    restTemplate.postForObject(endpoints.catalog() + "/catalog/internal/stocks/confirm", request, Result.class);
+    requireData(restTemplate.postForObject(endpoints.catalog() + "/catalog/internal/stocks/confirm", request,
+        Result.class));
   }
 
   public void release(StockTransitionRequest request) {
-    restTemplate.postForObject(endpoints.catalog() + "/catalog/internal/stocks/release", request, Result.class);
+    requireData(restTemplate.postForObject(endpoints.catalog() + "/catalog/internal/stocks/release", request,
+        Result.class));
   }
 
   private static <T> T requireData(Result<T> result) {

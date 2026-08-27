@@ -2,119 +2,265 @@ package com.mealflow.promotion;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.mealflow.common.exception.BizException;
-import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
+import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.VoucherAdminRequest;
-import com.mealflow.promotion.api.VoucherLockResponse;
 import com.mealflow.promotion.api.VoucherView;
 import com.mealflow.promotion.mapper.PromotionMapper;
+import com.mealflow.promotion.mq.SeckillClaimPublisher;
+import com.mealflow.promotion.mq.SeckillClaimRocketMqConsumer;
+import com.mealflow.promotion.seckill.ClaimSettlementResult;
+import com.mealflow.promotion.seckill.SeckillClaimCommand;
+import com.mealflow.promotion.seckill.VoucherClaimSettlementService;
+import com.mealflow.promotion.seckill.VoucherClaimPendingRecoveryScheduler;
+import com.mealflow.promotion.seckill.VoucherSeckillGuard;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = "spring.cloud.nacos.discovery.enabled=false"
-)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
+    "spring.cloud.nacos.discovery.enabled=false",
+    "mealflow.mq.seckill-consumer.enabled=false",
+    "mealflow.promotion.pending-recovery.enabled=false"
+})
 class PromotionPersistenceTest {
   @Autowired
   private PromotionService promotionService;
 
   @Autowired
+  private VoucherClaimSettlementService settlementService;
+
+  @Autowired
   private PromotionMapper promotionMapper;
 
+  @Autowired
+  private ObjectMapper objectMapper;
+
+  @Autowired
+  private VoucherClaimPendingRecoveryScheduler recoveryScheduler;
+
+  @MockBean
+  private VoucherSeckillGuard seckillGuard;
+
+  @MockBean
+  private SeckillClaimPublisher claimPublisher;
+
   @Test
-  void claimsLocksAndConfirmsVoucherInDatabase() {
-    SeckillVoucherResponse claim = promotionService.seckill(201L, 1000L, "promotion-test-claim");
+  void acceptsRedisReservationAndReturnsPending() {
+    when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong()))
+        .thenReturn(VoucherSeckillGuard.ClaimResult.ACCEPTED);
 
-    assertThat(claim.status()).isEqualTo("CLAIMED");
-    assertThat(claim.userVoucherId()).isNotNull();
+    SeckillVoucherResponse response = promotionService.seckill(201L, 1000L, "request-is-not-the-event-key");
 
-    VoucherLockResponse lock = promotionService.lock(new LockVoucherRequest("promotion-test-lock", 201L,
-        claim.userVoucherId(), null, null, LocalDateTime.now().plusMinutes(10)));
-
-    assertThat(lock.status()).isEqualTo("LOCKED");
-    assertThat(lock.discountAmount()).isEqualTo(500);
-
-    promotionService.confirm(lock.voucherLockId(), 10001L);
-
-    assertThat(promotionService.wallet(201L))
-        .anySatisfy(voucher -> assertThat(voucher.status()).isEqualTo("USED"));
-    assertThat(promotionService.locks())
-        .anySatisfy(voucherLock -> {
-          assertThat(voucherLock.voucherLockId()).isEqualTo(lock.voucherLockId());
-          assertThat(voucherLock.status()).isEqualTo("CONFIRMED");
-          assertThat(voucherLock.orderId()).isEqualTo(10001L);
-        });
+    assertThat(response.eventKey()).isEqualTo("seckill:1000:201");
+    assertThat(response.status()).isEqualTo("PENDING");
+    verify(claimPublisher).publish(SeckillClaimCommand.of(1000L, 201L));
   }
 
   @Test
-  void rejectsDuplicateVoucherClaimForSameUser() {
-    SeckillVoucherResponse first = promotionService.seckill(202L, 1000L, "promotion-test-duplicate-1");
-    SeckillVoucherResponse duplicate = promotionService.seckill(202L, 1000L, "promotion-test-duplicate-2");
+  void repeatedMessageOnlyDeductsMysqlStockOnce() {
+    VoucherView voucher = newVoucher(3);
+    SeckillClaimCommand command = SeckillClaimCommand.of(voucher.voucherId(), 202L);
+
+    ClaimSettlementResult first = settlementService.settle(command);
+    ClaimSettlementResult duplicate = settlementService.settle(command);
 
     assertThat(first.status()).isEqualTo("CLAIMED");
-    assertThat(duplicate.status()).isEqualTo("DUPLICATE");
-    assertThat(promotionService.wallet(202L))
-        .filteredOn(voucher -> voucher.voucherId() == 1000L)
-        .hasSize(1);
+    assertThat(duplicate).isEqualTo(first);
+    assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isEqualTo(2);
+    assertThat(promotionMapper.countUserVoucher(202L, voucher.voucherId())).isEqualTo(1);
   }
 
   @Test
-  void managesMarketingVouchersForBackOffice() {
-    VoucherView created = promotionService.createVoucher(
-        new VoucherAdminRequest("新客秒杀券", "SECKILL", 300, 10, "ACTIVE"));
+  void releasesAnExpiredVoucherLockWithAStatusCondition() {
+    VoucherView voucher = newVoucher(1);
+    ClaimSettlementResult claim = settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), 20_201L));
+    promotionService.lock(new LockVoucherRequest("voucher-lock-expire-1", 20_201L, claim.userVoucherId(), null,
+        null, LocalDateTime.now().minusMinutes(1)));
 
-    assertThat(created.voucherId()).isGreaterThan(1000L);
-    assertThat(created.status()).isEqualTo("ACTIVE");
-    assertThat(promotionService.vouchers()).extracting("name").contains("新客秒杀券");
+    promotionService.expireLocks();
 
-    VoucherView disabled = promotionService.updateVoucher(created.voucherId(),
-        new VoucherAdminRequest("新客秒杀券", "SECKILL", 300, 10, "DISABLED"));
-    assertThat(disabled.status()).isEqualTo("DISABLED");
-    assertThatThrownBy(() -> promotionService.seckill(205L, created.voucherId(), "promotion-disabled-voucher"))
+    assertThat(promotionService.locks()).anySatisfy(lock -> assertThat(lock.status()).isEqualTo("EXPIRED"));
+    assertThat(promotionService.wallet(20_201L)).singleElement().extracting("status").isEqualTo("AVAILABLE");
+  }
+
+  @Test
+  void oneHundredUsersCanOnlySettleTenClaims() {
+    VoucherView voucher = newVoucher(10);
+    ExecutorService executor = Executors.newFixedThreadPool(16);
+    try {
+      List<CompletableFuture<ClaimSettlementResult>> futures = new ArrayList<>();
+      for (long userId = 10_000; userId < 10_100; userId++) {
+        long currentUser = userId;
+        futures.add(CompletableFuture.supplyAsync(
+            () -> settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), currentUser)), executor));
+      }
+      List<ClaimSettlementResult> results = futures.stream().map(CompletableFuture::join).toList();
+
+      assertThat(results).filteredOn(result -> "CLAIMED".equals(result.status())).hasSize(10);
+      assertThat(results).filteredOn(result -> "SOLD_OUT".equals(result.status())).hasSize(90);
+      assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isZero();
+      assertThat(promotionMapper.countVoucherClaimsByStatus(voucher.voucherId(), "CLAIMED")).isEqualTo(10);
+      assertThat(promotionMapper.countUserVouchersByVoucher(voucher.voucherId())).isEqualTo(10);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void concurrentDuplicateMessagesCreateOneVoucherForOneUser() {
+    VoucherView voucher = newVoucher(10);
+    SeckillClaimCommand command = SeckillClaimCommand.of(voucher.voucherId(), 20_000L);
+    ExecutorService executor = Executors.newFixedThreadPool(10);
+    try {
+      List<CompletableFuture<ClaimSettlementResult>> futures = new ArrayList<>();
+      for (int attempt = 0; attempt < 20; attempt++) {
+        futures.add(CompletableFuture.supplyAsync(() -> {
+          try {
+            return settlementService.settle(command);
+          } catch (IllegalStateException ex) {
+            return null; // RocketMQ would redeliver while the winning transaction is still PROCESSING.
+          }
+        }, executor));
+      }
+      futures.forEach(CompletableFuture::join);
+      assertThat(settlementService.settle(command).status()).isEqualTo("CLAIMED");
+      assertThat(promotionMapper.countUserVoucher(20_000L, voucher.voucherId())).isEqualTo(1);
+      assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isEqualTo(9);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void mysqlSoldOutIsRecordedForRedisCompensation() {
+    VoucherView voucher = newVoucher(0);
+
+    ClaimSettlementResult result = settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), 203L));
+
+    assertThat(result.status()).isEqualTo("SOLD_OUT");
+    assertThat(promotionMapper.countUserVoucher(203L, voucher.voucherId())).isZero();
+  }
+
+  @Test
+  void consumerCompensatesRedisWhenMysqlHasNoStock() {
+    VoucherView voucher = newVoucher(0);
+    SeckillClaimCommand command = SeckillClaimCommand.of(voucher.voucherId(), 209L);
+
+    ClaimSettlementResult result = consumer().consume(command);
+
+    assertThat(result.status()).isEqualTo("SOLD_OUT");
+    verify(seckillGuard).compensate(209L, voucher.voucherId());
+  }
+
+  @Test
+  void repeatedMessageCleansPendingAfterFirstCleanupFailure() {
+    VoucherView voucher = newVoucher(1);
+    SeckillClaimCommand command = SeckillClaimCommand.of(voucher.voucherId(), 210L);
+    doThrow(new IllegalStateException("redis unavailable")).doNothing()
+        .when(seckillGuard).complete(210L, voucher.voucherId());
+
+    assertThatThrownBy(() -> consumer().consume(command)).isInstanceOf(IllegalStateException.class);
+    ClaimSettlementResult retried = consumer().consume(command);
+
+    assertThat(retried.status()).isEqualTo("CLAIMED");
+    assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isZero();
+    assertThat(promotionMapper.countUserVoucher(210L, voucher.voucherId())).isEqualTo(1);
+  }
+
+  @Test
+  void failedFirstPublishKeepsAndDelaysPendingReservation() {
+    when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong()))
+        .thenReturn(VoucherSeckillGuard.ClaimResult.ACCEPTED);
+    doThrow(new IllegalStateException("broker unavailable")).when(claimPublisher).publish(any());
+
+    SeckillVoucherResponse response = promotionService.seckill(204L, 1000L, "first-send-fails");
+
+    assertThat(response.status()).isEqualTo("PENDING");
+    verify(seckillGuard).delayPending(org.mockito.ArgumentMatchers.eq(204L),
+        org.mockito.ArgumentMatchers.eq(1000L), anyLong());
+    verify(seckillGuard, never()).compensate(anyLong(), anyLong());
+  }
+
+  @Test
+  void validatesActivityWindowBeforeRedis() {
+    VoucherView future = newVoucher(2, LocalDateTime.now().plusHours(1), LocalDateTime.now().plusHours(2));
+    VoucherView ended = newVoucher(2, LocalDateTime.now().minusHours(2), LocalDateTime.now().minusHours(1));
+
+    assertThat(promotionService.seckill(205L, future.voucherId(), "future").status()).isEqualTo("NOT_READY");
+    assertThat(promotionService.seckill(206L, ended.voucherId(), "ended").status()).isEqualTo("FAILED");
+    verify(seckillGuard, never()).tryClaim(anyLong(), anyLong(), anyLong());
+  }
+
+  @Test
+  void missingRedisStockKeyReturnsNotReady() {
+    when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong()))
+        .thenReturn(VoucherSeckillGuard.ClaimResult.NOT_READY);
+
+    assertThat(promotionService.seckill(207L, 1000L, "missing-key").status()).isEqualTo("NOT_READY");
+  }
+
+  @Test
+  void stockCanOnlyChangeBeforeStartAndBeforeClaims() {
+    LocalDateTime start = LocalDateTime.now().plusHours(2);
+    VoucherView voucher = newVoucher(4, start, start.plusHours(1));
+    VoucherAdminRequest legal = request(5, start, start.plusHours(1));
+
+    assertThat(promotionService.updateVoucher(voucher.voucherId(), legal).stock()).isEqualTo(5);
+    settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), 208L));
+
+    assertThatThrownBy(() -> promotionService.updateVoucher(voucher.voucherId(), request(6, start, start.plusHours(1))))
         .isInstanceOf(BizException.class)
-        .hasMessageContaining("voucher is not active");
+        .hasMessageContaining("不能直接修改库存");
   }
 
   @Test
-  void repairsPendingVoucherClaimRetry() {
-    LocalDateTime now = LocalDateTime.now();
-    promotionMapper.insertClaimRetry(promotionMapper.maxVoucherClaimRetryId() + 100,
-        203L, 1000L, "PENDING", 0, 3, "REDIS_ACCEPTED_DB_MISSING", now.minusSeconds(1), now);
+  void duePendingOnlyRepublishesTheSameBusinessEvent() {
+    VoucherView voucher = newVoucher(1);
+    when(seckillGuard.findDuePending(org.mockito.ArgumentMatchers.eq(voucher.voucherId()), anyLong(),
+        any(Integer.class)))
+        .thenReturn(Set.of(211L));
 
-    int repaired = promotionService.retryClaimRetries(10);
+    int recovered = recoveryScheduler.recoverPending();
 
-    assertThat(repaired).isEqualTo(1);
-    assertThat(promotionService.wallet(203L))
-        .filteredOn(voucher -> voucher.voucherId() == 1000L)
-        .singleElement()
-        .satisfies(voucher -> assertThat(voucher.status()).isEqualTo("AVAILABLE"));
-    assertThat(promotionService.claimRetries())
-        .filteredOn(retry -> retry.userId() == 203L && retry.voucherId() == 1000L)
-        .singleElement()
-        .satisfies(retry -> assertThat(retry.status()).isEqualTo("REPAIRED"));
+    assertThat(recovered).isEqualTo(1);
+    verify(claimPublisher).publish(SeckillClaimCommand.of(voucher.voucherId(), 211L));
+    assertThat(promotionMapper.findClaimRetry("seckill:" + voucher.voucherId() + ":211").getStatus())
+        .isEqualTo("RECOVERED");
+    assertThat(promotionMapper.countUserVoucher(211L, voucher.voucherId())).isZero();
   }
 
-  @Test
-  void movesClaimRetryToDeadAfterMaxAttempts() {
-    LocalDateTime now = LocalDateTime.now();
-    promotionMapper.insertClaimRetry(promotionMapper.maxVoucherClaimRetryId() + 200,
-        204L, 999999L, "RETRY", 2, 3, "previous failure", now.minusSeconds(1), now);
+  private SeckillClaimRocketMqConsumer consumer() {
+    return new SeckillClaimRocketMqConsumer(objectMapper, settlementService, seckillGuard, recoveryScheduler,
+        "localhost:9876", "test-seckill-consumer", "test-seckill-topic", 5);
+  }
 
-    int repaired = promotionService.retryClaimRetries(10);
+  private VoucherView newVoucher(int stock) {
+    return newVoucher(stock, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().plusHours(1));
+  }
 
-    assertThat(repaired).isZero();
-    assertThat(promotionService.claimRetries())
-        .filteredOn(retry -> retry.userId() == 204L && retry.voucherId() == 999999L)
-        .singleElement()
-        .satisfies(retry -> {
-          assertThat(retry.status()).isEqualTo("DEAD");
-          assertThat(retry.retryCount()).isEqualTo(3);
-          assertThat(retry.lastError()).contains("voucher not found");
-        });
+  private VoucherView newVoucher(int stock, LocalDateTime start, LocalDateTime end) {
+    return promotionService.createVoucher(request(stock, start, end));
+  }
+
+  private VoucherAdminRequest request(int stock, LocalDateTime start, LocalDateTime end) {
+    return new VoucherAdminRequest("测试秒杀券", "SECKILL", 300, stock, "ACTIVE", start, end);
   }
 }

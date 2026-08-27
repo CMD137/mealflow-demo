@@ -6,7 +6,6 @@ import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.CapacityTokenStatus;
 import com.mealflow.common.status.QueueTicketStatus;
-import com.mealflow.infra.id.IdGenerator;
 import com.mealflow.infra.idempotent.IdempotentTemplate;
 import com.mealflow.queue.api.CapacityTokenView;
 import com.mealflow.queue.api.QueueApplyRequest;
@@ -40,7 +39,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class QueueService {
   private static final int AVG_PREPARE_SECONDS = 180;
 
-  private final IdGenerator idGenerator = new IdGenerator();
+  private final QueueDatabaseIdGenerator idGenerator;
   private final IdempotentTemplate idempotentTemplate = new IdempotentTemplate();
   private final WaitingQueueStore waitingQueueStore;
   private final CapacityInflightCounter capacityInflightCounter;
@@ -48,11 +47,13 @@ public class QueueService {
   private final ObjectMapper objectMapper;
   private final boolean capacityInflightReconcileEnabled;
 
-  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper, WaitingQueueStore waitingQueueStore,
+  public QueueService(QueueMapper queueMapper, ObjectMapper objectMapper, QueueDatabaseIdGenerator idGenerator,
+      WaitingQueueStore waitingQueueStore,
       CapacityInflightCounter capacityInflightCounter,
       @Value("${mealflow.queue.inflight-reconcile.enabled:false}") boolean capacityInflightReconcileEnabled) {
     this.queueMapper = queueMapper;
     this.objectMapper = objectMapper;
+    this.idGenerator = idGenerator;
     this.waitingQueueStore = waitingQueueStore;
     this.capacityInflightCounter = capacityInflightCounter;
     this.capacityInflightReconcileEnabled = capacityInflightReconcileEnabled;
@@ -60,8 +61,6 @@ public class QueueService {
 
   @PostConstruct
   void rebuildRuntimeIndexes() {
-    idGenerator.ensureAtLeast("queueTicket", queueMapper.maxTicketId());
-    idGenerator.ensureAtLeast("capacityToken", queueMapper.maxTokenId());
     waitingQueueStore.rebuild(queueMapper.findWaitingTickets(QueueTicketStatus.WAITING.name(), LocalDateTime.now())
         .stream()
         .map(ticket -> new WaitingTicketEntry(ticket.getMerchantId(), ticket.getId(), ticket.getTicketNo(),
@@ -78,11 +77,34 @@ public class QueueService {
     }
   }
 
+  /** Releases abandoned queue resources. Order-bound tokens are released by the order timeout saga. */
+  @Scheduled(initialDelayString = "${mealflow.queue.expire.initial-delay-ms:30000}",
+      fixedDelayString = "${mealflow.queue.expire.fixed-delay-ms:30000}")
+  @Transactional
+  public synchronized void expireStaleResources() {
+    LocalDateTime now = LocalDateTime.now();
+    for (QueueTicketRow row : queueMapper.findExpiredTickets(now)) {
+      QueueTicket ticket = mapTicket(row);
+      if (queueMapper.expireTicket(ticket.id, ticket.status.name(), QueueTicketStatus.TIMEOUT.name(), now) != 1) {
+        continue;
+      }
+      if (ticket.status == QueueTicketStatus.WAITING) {
+        waitingQueueStore.remove(ticket.merchantId,
+            new WaitingTicketEntry(ticket.merchantId, ticket.id, ticket.ticketNo, ticket.score));
+      }
+      findTokenByTicket(ticket.id).ifPresent(token -> releaseCapacity(token.id, "TICKET_TIMEOUT"));
+    }
+    for (CapacityTokenRow row : queueMapper.findExpiredUnboundTokens(now, CapacityTokenStatus.HELD.name())) {
+      releaseCapacity(row.getId(), "CAPACITY_TIMEOUT");
+    }
+  }
+
   @Transactional
   public QueueApplyResponse apply(QueueApplyRequest request) {
     return idempotentTemplate.execute("queue:apply:" + request.userId() + ":" + request.requestId(), () -> {
-      synchronized (this) {
-        if (heldCount(request.merchantId()) < limit(request.merchantId())) {
+      {
+        queueMapper.ensureMerchantLimit(request.merchantId(), LocalDateTime.now());
+        if (queueMapper.tryAcquireCapacity(request.merchantId()) == 1) {
           CapacityToken token = createToken(request.requestId(), request.merchantId(), null, request.expireTime());
           return QueueApplyResponse.ready(token.id);
         }
@@ -107,7 +129,7 @@ public class QueueService {
   public synchronized ReleaseCapacityResponse releaseCapacity(long capacityTokenId, String reason) {
     CapacityToken token = requireToken(capacityTokenId);
     if (token.status != CapacityTokenStatus.HELD) {
-      return new ReleaseCapacityResponse(false, null);
+      return previousReleaseResult(token);
     }
     if (!releaseHeldToken(capacityTokenId, reason, token.merchantId)) {
       return new ReleaseCapacityResponse(false, null);
@@ -137,10 +159,22 @@ public class QueueService {
           ticket.expireTime);
       LocalDateTime readyTime = LocalDateTime.now();
       updateTicketStatus(ticket.id, QueueTicketStatus.READY, null, readyTime, null);
+      queueMapper.recordReleaseResult(capacityTokenId, ticket.id, nextToken.id, LocalDateTime.now());
       return new ReleaseCapacityResponse(true,
           new QueueReadyTicket(ticket.id, ticket.ticketNo, nextToken.id, ticket.snapshot));
     }
+    queueMapper.recordReleaseResult(capacityTokenId, null, null, LocalDateTime.now());
     return new ReleaseCapacityResponse(true, null);
+  }
+
+  private ReleaseCapacityResponse previousReleaseResult(CapacityToken token) {
+    if (token.status != CapacityTokenStatus.RELEASED || token.releasedTicketId == null
+        || token.releasedCapacityTokenId == null) {
+      return new ReleaseCapacityResponse(false, null);
+    }
+    QueueTicket ticket = requireTicket(token.releasedTicketId);
+    return new ReleaseCapacityResponse(false, new QueueReadyTicket(ticket.id, ticket.ticketNo,
+        token.releasedCapacityTokenId, ticket.snapshot));
   }
 
   @Transactional
@@ -189,12 +223,22 @@ public class QueueService {
     throw new BizException(ErrorCode.ILLEGAL_STATUS, "ticket cannot be cancelled");
   }
 
+  @Transactional
+  public synchronized void cancelTicket(long ticketId, long userId) {
+    QueueTicket ticket = requireTicket(ticketId);
+    requireTicketOwner(ticket, userId);
+    cancelTicket(ticketId);
+  }
+
   public synchronized QueueTicketView getTicket(long ticketId) {
     QueueTicket ticket = requireTicket(ticketId);
-    int ahead = ticket.status == QueueTicketStatus.WAITING ? aheadCount(ticket) : 0;
-    return new QueueTicketView(ticket.id, ticket.ticketNo, ticket.status.name(), ahead,
-        estimateWaitSeconds(ahead, ticket.merchantId), ticket.expireTime,
-        ticket.status == QueueTicketStatus.WAITING || ticket.status == QueueTicketStatus.READY);
+    return ticketView(ticket);
+  }
+
+  public synchronized QueueTicketView getTicket(long ticketId, long userId) {
+    QueueTicket ticket = requireTicket(ticketId);
+    requireTicketOwner(ticket, userId);
+    return ticketView(ticket);
   }
 
   public List<QueueTicketView> tickets() {
@@ -221,6 +265,11 @@ public class QueueService {
     }
   }
 
+  public synchronized void setMerchantLimit(long currentMerchantId, long merchantId, int limit) {
+    requireMerchantOwnership(currentMerchantId, merchantId);
+    setMerchantLimit(merchantId, limit);
+  }
+
   public Map<String, Object> metrics(long merchantId) {
     Map<String, Object> metrics = new HashMap<>();
     metrics.put("merchantId", merchantId);
@@ -228,6 +277,11 @@ public class QueueService {
     metrics.put("held", heldCount(merchantId));
     metrics.put("waiting", waitingQueueStore.size(merchantId));
     return metrics;
+  }
+
+  public Map<String, Object> metrics(long currentMerchantId, long merchantId) {
+    requireMerchantOwnership(currentMerchantId, merchantId);
+    return metrics(merchantId);
   }
 
   private void insertTicket(QueueTicket ticket) {
@@ -251,6 +305,7 @@ public class QueueService {
     if (updated == 0) {
       return false;
     }
+    queueMapper.releaseCapacity(merchantId);
     afterCommitOrNow(() -> capacityInflightCounter.decrement(merchantId));
     return true;
   }
@@ -263,6 +318,25 @@ public class QueueService {
   private QueueTicket requireTicket(long ticketId) {
     return findTicket(ticketId)
         .orElseThrow(() -> new BizException(ErrorCode.NOT_FOUND, "queue ticket not found"));
+  }
+
+  private void requireTicketOwner(QueueTicket ticket, long userId) {
+    if (ticket.userId != userId) {
+      throw new BizException(ErrorCode.FORBIDDEN, "queue ticket does not belong to current user");
+    }
+  }
+
+  private void requireMerchantOwnership(long currentMerchantId, long merchantId) {
+    if (currentMerchantId != merchantId) {
+      throw new BizException(ErrorCode.FORBIDDEN, "merchant resource does not belong to current merchant");
+    }
+  }
+
+  private QueueTicketView ticketView(QueueTicket ticket) {
+    int ahead = ticket.status == QueueTicketStatus.WAITING ? aheadCount(ticket) : 0;
+    return new QueueTicketView(ticket.id, ticket.ticketNo, ticket.status.name(), ahead,
+        estimateWaitSeconds(ahead, ticket.merchantId), ticket.expireTime,
+        ticket.status == QueueTicketStatus.WAITING || ticket.status == QueueTicketStatus.READY);
   }
 
   private Optional<QueueTicket> findTicket(long ticketId) {
@@ -334,7 +408,7 @@ public class QueueService {
   private CapacityToken mapToken(CapacityTokenRow row) {
     return new CapacityToken(row.getId(), row.getRequestId(), row.getMerchantId(), row.getTicketId(),
         row.getOrderId(), CapacityTokenStatus.valueOf(row.getStatus()), row.getExpireTime(),
-        row.getReleaseReason());
+        row.getReleaseReason(), row.getReleasedTicketId(), row.getReleasedCapacityTokenId());
   }
 
   private String toJson(QueueTicketSnapshot snapshot) {
@@ -398,9 +472,17 @@ public class QueueService {
     CapacityTokenStatus status;
     final LocalDateTime expireTime;
     String releaseReason;
+    final Long releasedTicketId;
+    final Long releasedCapacityTokenId;
 
     CapacityToken(long id, String requestId, long merchantId, Long ticketId, Long orderId,
         CapacityTokenStatus status, LocalDateTime expireTime, String releaseReason) {
+      this(id, requestId, merchantId, ticketId, orderId, status, expireTime, releaseReason, null, null);
+    }
+
+    CapacityToken(long id, String requestId, long merchantId, Long ticketId, Long orderId,
+        CapacityTokenStatus status, LocalDateTime expireTime, String releaseReason,
+        Long releasedTicketId, Long releasedCapacityTokenId) {
       this.id = id;
       this.requestId = requestId;
       this.merchantId = merchantId;
@@ -409,6 +491,8 @@ public class QueueService {
       this.status = status;
       this.expireTime = expireTime;
       this.releaseReason = releaseReason;
+      this.releasedTicketId = releasedTicketId;
+      this.releasedCapacityTokenId = releasedCapacityTokenId;
     }
   }
 }

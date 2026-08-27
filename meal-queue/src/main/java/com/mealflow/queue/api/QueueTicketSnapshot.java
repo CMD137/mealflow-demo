@@ -8,6 +8,11 @@ public record QueueTicketSnapshot(
     List<Long> reservationIds,
     Long voucherLockId,
     int totalAmount,
-    String remark
+    String remark,
+    long userId,
+    long merchantId,
+    String contactName,
+    String contactPhone,
+    String deliveryAddress
 ) {
 }

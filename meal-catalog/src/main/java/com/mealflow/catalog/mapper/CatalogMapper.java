@@ -13,58 +13,6 @@ import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface CatalogMapper {
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM stock_reservation")
-  long maxReservationId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM sku")
-  long maxSkuId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM category")
-  long maxCategoryId();
-
-  @Select("""
-      SELECT COUNT(*)
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE UPPER(TABLE_NAME) = UPPER('sku') AND UPPER(COLUMN_NAME) = UPPER(#{columnName})
-      """)
-  int countSkuColumn(String columnName);
-
-  @Update("ALTER TABLE sku ADD COLUMN category_id BIGINT NULL")
-  int addSkuCategoryIdColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN description VARCHAR(255) NOT NULL DEFAULT ''")
-  int addSkuDescriptionColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN image_url VARCHAR(255) NOT NULL DEFAULT ''")
-  int addSkuImageUrlColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'ON_SHELF'")
-  int addSkuStatusColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
-  int addSkuCreateTimeColumn();
-
-  @Update("ALTER TABLE sku ADD COLUMN update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
-  int addSkuUpdateTimeColumn();
-
-  @Update("""
-      UPDATE sku
-      SET category_id = CASE
-            WHEN category_id IS NULL AND id IN (1, 2) THEN 1
-            WHEN category_id IS NULL AND id = 3 THEN 2
-            ELSE category_id
-          END,
-          description = CASE
-            WHEN description = '' AND id = 1 THEN '午高峰招牌牛肉饭'
-            WHEN description = '' AND id = 2 THEN '香煎鸡腿盖饭'
-            WHEN description = '' AND id = 3 THEN '冰爽柠檬茶'
-            ELSE description
-          END,
-          update_time = CURRENT_TIMESTAMP
-      WHERE merchant_id = 10 AND id IN (1, 2, 3)
-      """)
-  int hydrateSeedSkuMetadata();
-
   @Select("""
       SELECT s.id, s.merchant_id, s.category_id, c.name AS category_name, s.name, s.description,
              s.image_url, s.price_cent, s.stock, s.status
@@ -94,9 +42,14 @@ public interface CatalogMapper {
       LEFT JOIN category c ON c.id = s.category_id
       WHERE s.merchant_id = #{merchantId}
       ORDER BY COALESCE(c.sort_order, 999999), s.id
+      LIMIT #{limit} OFFSET #{offset}
       """)
   @ResultMap("skuMap")
-  List<SkuRow> findAdminSkusByMerchant(long merchantId);
+  List<SkuRow> findAdminSkusByMerchantPage(@Param("merchantId") long merchantId, @Param("limit") int limit,
+      @Param("offset") int offset);
+
+  @Select("SELECT COUNT(*) FROM sku WHERE merchant_id = #{merchantId}")
+  long countAdminSkusByMerchant(long merchantId);
 
   @Select("""
       SELECT s.id, s.merchant_id, s.category_id, c.name AS category_name, s.name, s.description,
@@ -235,6 +188,10 @@ public interface CatalogMapper {
   int releaseReservation(@Param("id") long id, @Param("status") int status,
       @Param("expectedStatus") int expectedStatus, @Param("now") LocalDateTime now);
 
+  @Update("UPDATE stock_reservation SET status = #{status}, update_time = #{now} WHERE id = #{id} AND status = #{expectedStatus}")
+  int expireReservation(@Param("id") long id, @Param("status") int status,
+      @Param("expectedStatus") int expectedStatus, @Param("now") LocalDateTime now);
+
   @Select("SELECT id, sku_id, quantity, status, ticket_id, order_id FROM stock_reservation WHERE id = #{id}")
   @Results(id = "reservationMap", value = {
       @Result(column = "id", property = "id"),
@@ -249,4 +206,15 @@ public interface CatalogMapper {
   @Select("SELECT id, sku_id, quantity, status, ticket_id, order_id FROM stock_reservation ORDER BY id")
   @ResultMap("reservationMap")
   List<StockReservationRow> findReservations();
+
+  @Select("""
+      SELECT id, sku_id, quantity, status, ticket_id, order_id
+      FROM stock_reservation
+      WHERE status = #{status} AND expire_time <= #{now}
+      ORDER BY id
+      LIMIT #{limit}
+      """)
+  @ResultMap("reservationMap")
+  List<StockReservationRow> findExpiredReservations(@Param("status") int status, @Param("now") LocalDateTime now,
+      @Param("limit") int limit);
 }

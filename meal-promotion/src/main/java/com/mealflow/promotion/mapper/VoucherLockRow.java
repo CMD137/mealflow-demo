@@ -1,11 +1,14 @@
 package com.mealflow.promotion.mapper;
 
+import java.time.LocalDateTime;
+
 public class VoucherLockRow {
   private long id;
   private long userVoucherId;
   private String status;
   private Long ticketId;
   private Long orderId;
+  private LocalDateTime expireTime;
 
   public long getId() {
     return id;
@@ -46,4 +49,7 @@ public class VoucherLockRow {
   public void setOrderId(Long orderId) {
     this.orderId = orderId;
   }
+
+  public LocalDateTime getExpireTime() { return expireTime; }
+  public void setExpireTime(LocalDateTime expireTime) { this.expireTime = expireTime; }
 }

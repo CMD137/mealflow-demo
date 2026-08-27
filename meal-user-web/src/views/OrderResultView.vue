@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import AppShell from '@/components/AppShell.vue';
-import { mockPayApi } from '@/api/payments';
+import { checkoutApi } from '@/api/payments';
 import { formatWait } from '@/utils/format';
 import type { SubmitOrderResponse } from '@/types/api';
 
@@ -12,8 +12,8 @@ const result = computed<SubmitOrderResponse | null>(() => {
 
 async function pay() {
   if (!result.value?.payOrderId) return;
-  await mockPayApi(result.value.payOrderId);
-  window.alert('支付完成');
+  const checkout = await checkoutApi(result.value.payOrderId);
+  window.location.assign(checkout.checkoutUrl);
 }
 </script>
 
@@ -28,7 +28,7 @@ async function pay() {
       <p v-else>
         排队号 {{ result.ticketNo }}，前方 {{ result.aheadCount }} 单，预计等待 {{ formatWait(result.estimatedWaitSeconds) }}。
       </p>
-      <button v-if="result.payOrderId" class="primary-button" @click="pay">模拟支付</button>
+      <button v-if="result.payOrderId" class="primary-button" @click="pay">前往支付宝支付</button>
       <RouterLink v-if="result.orderId" class="ghost-button" :to="`/orders/${result.orderId}`">查看订单</RouterLink>
       <RouterLink class="ghost-button" to="/orders">订单列表</RouterLink>
     </section>

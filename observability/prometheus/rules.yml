@@ -1,0 +1,53 @@
+# MealFlow alert rules (evaluated by Prometheus every 10s).
+#
+# Alertmanager integration is intentionally left as a deployment concern: rules are defined and
+# visible in Prometheus (status page / API) so the project can demonstrate "SLO-style" reliability
+# monitoring; wiring a notification channel (email/webhook) happens at the infrastructure layer.
+
+groups:
+  - name: mealflow-reliability
+    rules:
+      - alert: MealflowServiceDown
+        expr: up{job="mealflow-services"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MealFlow 服务不可达: {{ $labels.instance }}"
+          description: "{{ $labels.instance }} 已连续 5 分钟无法被 Prometheus 抓取。"
+
+      - alert: MealflowOutboxStuck
+        expr: mealflow_outbox_events{status=~"FAILED|SENDING"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox 事件积压/失败: {{ $labels.service }}"
+          description: "服务 {{ $labels.service }} 存在 FAILED/SENDING 状态的 Outbox 事件,可能阻塞可靠消息投递。"
+
+      - alert: MealflowConsumerRecordsFailing
+        expr: mealflow_consumer_records{status=~"FAILED|TIMEOUT"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "消费记录失败/超时: {{ $labels.service }}"
+          description: "服务 {{ $labels.service }} 存在 FAILED/TIMEOUT 消费记录,重复消息可能未被正确处理。"
+
+      - alert: MealflowVoucherClaimRetryDead
+        expr: mealflow_voucher_claim_retries{status="DEAD"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "秒杀领取修复任务进入 DEAD"
+          description: "存在 DEAD 状态的秒杀领取修复任务,需要人工介入(查看 /vouchers/internal/claims/retries)。"
+
+      - alert: MealflowHighHttp5xxRate
+        expr: sum by (instance) (rate(http_server_requests_seconds_count{status=~"5.."}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP 5xx 比例过高: {{ $labels.instance }}"
+          description: "{{ $labels.instance }} 最近 5 分钟 5xx 请求占比超过 5%,请结合 X-Trace-Id 排查全链路日志。"

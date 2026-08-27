@@ -14,32 +14,6 @@ import org.apache.ibatis.annotations.Delete;
 
 @Mapper
 public interface AuthUserMapper {
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM user_account")
-  long maxUserId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM user_address")
-  long maxAddressId();
-
-  @Select("SELECT COALESCE(MAX(id), 10000) FROM merchant_employee")
-  long maxEmployeeId();
-
-  @Select("""
-      SELECT COUNT(*)
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE UPPER(TABLE_NAME) = UPPER('user_address') AND UPPER(COLUMN_NAME) = UPPER(#{columnName})
-      """)
-  int countAddressColumn(String columnName);
-
-  @Update("ALTER TABLE user_address ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT FALSE")
-  int addAddressDefaultColumn();
-
-  @Update("""
-      UPDATE user_address
-      SET is_default = TRUE, update_time = CURRENT_TIMESTAMP
-      WHERE id IN (20, 21) AND is_default = FALSE
-      """)
-  int hydrateSeedDefaultAddresses();
-
   @Select("SELECT id, phone, nickname, status FROM user_account WHERE id = #{id}")
   @Results(id = "userMap", value = {
       @Result(column = "id", property = "id"),
@@ -52,6 +26,39 @@ public interface AuthUserMapper {
   @Select("SELECT id, phone, nickname, status FROM user_account WHERE phone = #{phone}")
   @ResultMap("userMap")
   UserAccountRow findUserByPhone(String phone);
+
+  @Select("SELECT COALESCE(points, 0) FROM user_account WHERE id = #{userId}")
+  int findUserPoints(long userId);
+
+  @Update("""
+      UPDATE user_account
+      SET points = points + #{delta}, update_time = #{now}
+      WHERE id = #{userId}
+      """)
+  int addUserPoints(@Param("userId") long userId, @Param("delta") int delta, @Param("now") LocalDateTime now);
+
+  @Select("""
+      SELECT id FROM points_ledger
+      WHERE user_id = #{userId} AND biz_type = #{bizType} AND biz_key = #{bizKey}
+      """)
+  Long findPointsLedger(@Param("userId") long userId, @Param("bizType") String bizType,
+      @Param("bizKey") String bizKey);
+
+  @Select("""
+      SELECT biz_key FROM points_ledger
+      WHERE user_id = #{userId} AND biz_type = #{bizType} AND create_time >= #{since}
+      ORDER BY biz_key
+      """)
+  List<String> findPointsLedgerKeysSince(@Param("userId") long userId, @Param("bizType") String bizType,
+      @Param("since") LocalDateTime since);
+
+  @Insert("""
+      INSERT INTO points_ledger (id, user_id, biz_type, biz_key, delta, balance_after, create_time)
+      VALUES (#{id}, #{userId}, #{bizType}, #{bizKey}, #{delta}, #{balanceAfter}, #{now})
+      """)
+  int insertPointsLedger(@Param("id") long id, @Param("userId") long userId, @Param("bizType") String bizType,
+      @Param("bizKey") String bizKey, @Param("delta") int delta, @Param("balanceAfter") int balanceAfter,
+      @Param("now") LocalDateTime now);
 
   @Insert("""
       INSERT INTO user_account (id, phone, nickname, status, create_time, update_time)
@@ -142,6 +149,14 @@ public interface AuthUserMapper {
   MerchantEmployeeRow findActiveEmployeeByUserId(long userId);
 
   @Select("""
+      SELECT id, merchant_id, user_id, role_code, status
+      FROM merchant_employee
+      WHERE user_id = #{userId}
+      """)
+  @ResultMap("employeeMap")
+  MerchantEmployeeRow findEmployeeByUserId(long userId);
+
+  @Select("""
       SELECT permission_code
       FROM role_permission
       WHERE role_code = #{roleCode}
@@ -230,6 +245,7 @@ public interface AuthUserMapper {
       LEFT JOIN merchant_role r ON r.role_code = e.role_code
       WHERE e.merchant_id = #{merchantId}
       ORDER BY e.id
+      LIMIT #{limit} OFFSET #{offset}
       """)
   @Results(id = "employeeDetailMap", value = {
       @Result(column = "employee_id", property = "employeeId"),
@@ -241,7 +257,11 @@ public interface AuthUserMapper {
       @Result(column = "role_name", property = "roleName"),
       @Result(column = "status", property = "status")
   })
-  List<EmployeeDetailRow> findEmployees(long merchantId);
+  List<EmployeeDetailRow> findEmployeesPage(@Param("merchantId") long merchantId, @Param("limit") int limit,
+      @Param("offset") int offset);
+
+  @Select("SELECT COUNT(*) FROM merchant_employee WHERE merchant_id = #{merchantId}")
+  long countEmployees(long merchantId);
 
   @Select("""
       SELECT e.id AS employee_id, e.merchant_id, e.user_id, u.phone, u.nickname,

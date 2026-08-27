@@ -81,7 +81,7 @@ onMounted(load);
           {{ merchant?.businessStatus === 'OPEN' ? '营业中' : '休息中' }}
         </span>
         <h2>{{ merchant?.name || '加载中' }}</h2>
-        <p>高峰期会根据产能进入排队，成单后可模拟支付。</p>
+        <p>高峰期会根据产能进入排队，成单后可跳转支付宝完成支付。</p>
       </div>
     </section>
 

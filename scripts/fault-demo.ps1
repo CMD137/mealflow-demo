@@ -35,9 +35,10 @@ function New-AuthHeaders {
 }
 
 function Get-AdminHeaders {
+  Invoke-MealFlow -Method POST -Path "/auth/codes" -Body @{ phone = "13800000000" } | Out-Null
   $login = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
     phone = "13800000000"
-    password = "123456"
+    code = "123456"
   }).data
   New-AuthHeaders -Token $login.token
 }

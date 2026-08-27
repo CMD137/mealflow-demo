@@ -87,21 +87,31 @@ $skus = (Invoke-MealFlow -Method GET -Path "/catalog/merchants/10/skus").data
 Assert-True ($skus.Count -ge 2) "Expected seeded SKUs for merchant 10"
 
 Step "logging in users through auth service"
+$seckillPhone = "139{0:D8}" -f ($stamp % 100000000)
+$loginPhones = @(
+  "13800000000",
+  "13800000001",
+  "13800000002",
+  $seckillPhone
+)
+$loginPhones | ForEach-Object {
+  Invoke-MealFlow -Method POST -Path "/auth/codes" -Body @{ phone = $_ } | Out-Null
+}
 $adminLogin = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
   phone = "13800000000"
-  password = "123456"
+  code = "123456"
 }).data
 $firstUserLogin = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
   phone = "13800000001"
-  password = "123456"
+  code = "123456"
 }).data
 $secondUserLogin = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
   phone = "13800000002"
-  password = "123456"
+  code = "123456"
 }).data
 $seckillLogin = (Invoke-MealFlow -Method POST -Path "/auth/login" -Body @{
-  phone = "139$($stamp % 100000000)"
-  password = "123456"
+  phone = $seckillPhone
+  code = "123456"
 }).data
 $adminHeaders = New-AuthHeaders -Token $adminLogin.token
 $firstUserHeaders = New-AuthHeaders -Token $firstUserLogin.token
@@ -109,13 +119,33 @@ $secondUserHeaders = New-AuthHeaders -Token $secondUserLogin.token
 $seckillHeaders = New-AuthHeaders -Token $seckillLogin.token
 Assert-True ($adminLogin.roleCode -eq "MERCHANT_ADMIN") "Expected demo admin to have merchant admin role"
 
+Step "creating an isolated seckill voucher"
+$testVoucher = (Invoke-MealFlow -Method POST -Path "/vouchers/admin" -Headers $adminHeaders -Body @{
+  name = "E2E秒杀券-$stamp"
+  type = "SECKILL"
+  discountCent = 500
+  stock = 10
+  status = "ACTIVE"
+  startTime = (Get-Date).AddMinutes(-1).ToString("yyyy-MM-ddTHH:mm:ss")
+  endTime = (Get-Date).AddHours(1).ToString("yyyy-MM-ddTHH:mm:ss")
+}).data
+$testVoucherId = $testVoucher.voucherId
+
 Step "claiming seckill voucher through promotion service"
-$seckill = (Invoke-MealFlow -Method POST -Path "/vouchers/1000/seckill" -Body @{
+$seckill = (Invoke-MealFlow -Method POST -Path "/vouchers/$testVoucherId/seckill" -Body @{
   requestId = "e2e-seckill-$stamp"
 } -Headers $seckillHeaders).data
-Assert-True ($seckill.status -eq "CLAIMED") "Expected seckill voucher to be claimed"
+Assert-True ($seckill.status -eq "PENDING" -or $seckill.status -eq "DUPLICATE") "Expected seckill request to be accepted"
+for ($claimAttempt = 1; $claimAttempt -le 20; $claimAttempt++) {
+  $seckill = (Invoke-MealFlow -Method GET -Path "/vouchers/$testVoucherId/claims/me" -Headers $seckillHeaders).data
+  if ($seckill.status -eq "CLAIMED") {
+    break
+  }
+  Start-Sleep -Seconds 1
+}
+Assert-True ($seckill.status -eq "CLAIMED") "Expected pending seckill claim to settle"
 $wallet = (Invoke-MealFlow -Method GET -Path "/vouchers/wallet" -Headers $seckillHeaders).data
-$claimedVoucher = @($wallet | Where-Object { $_.voucherId -eq 1000 -and $_.status -eq "AVAILABLE" })
+$claimedVoucher = @($wallet | Where-Object { $_.voucherId -eq $testVoucherId -and $_.status -eq "AVAILABLE" })
 Assert-True ($claimedVoucher.Count -ge 1) "Claimed voucher was not found in wallet"
 
 Step "forcing merchant 10 capacity to 1"
@@ -172,7 +202,7 @@ Assert-True ($secondSubmit.mode -eq "QUEUED") "Second order should be queued"
 Assert-True ($null -ne $secondSubmit.ticketId) "Queued ticketId is missing"
 
 Step "mocking payment and waiting for payment event consumption"
-Invoke-MealFlow -Method POST -Path "/payments/$($firstSubmit.payOrderId)/mock-pay" -Headers $firstUserHeaders | Out-Null
+Invoke-MealFlow -Method POST -Path "/payments/internal/$($firstSubmit.payOrderId)/mock-pay" -Headers $adminHeaders | Out-Null
 Invoke-MealFlow -Method POST -Path "/payments/internal/events/dispatch" -Headers $adminHeaders | Out-Null
 for ($paidAttempt = 1; $paidAttempt -le 24; $paidAttempt++) {
   $paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)" -Headers $firstUserHeaders).data

@@ -1,3 +1,9 @@
+CREATE TABLE IF NOT EXISTS business_sequence (namespace VARCHAR(64) PRIMARY KEY, next_value BIGINT NOT NULL);
+INSERT INTO business_sequence (namespace, next_value) VALUES ('fulfillmentOperation', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+INSERT INTO business_sequence (namespace, next_value) VALUES ('fulfillmentLocalEvent', 10000)
+ON DUPLICATE KEY UPDATE next_value = next_value;
+
 CREATE TABLE IF NOT EXISTS fulfillment_operation_log (
   id BIGINT PRIMARY KEY,
   request_id VARCHAR(128) NOT NULL,
@@ -27,3 +33,27 @@ CREATE TABLE IF NOT EXISTS fulfillment_local_event (
   INDEX idx_fulfillment_local_event_status (status),
   INDEX idx_fulfillment_local_event_aggregate (aggregate_type, aggregate_id)
 );
+
+CREATE TABLE IF NOT EXISTS fulfillment_meal_ready_task (
+  request_id VARCHAR(128) PRIMARY KEY,
+  order_id BIGINT NOT NULL,
+  capacity_token_id BIGINT NOT NULL,
+  order_json TEXT NOT NULL,
+  release_done BOOLEAN NOT NULL DEFAULT FALSE,
+  ready_ticket_id BIGINT NULL,
+  ready_capacity_token_id BIGINT NULL,
+  promote_done BOOLEAN NOT NULL DEFAULT FALSE,
+  status VARCHAR(32) NOT NULL,
+  retry_count INT NOT NULL DEFAULT 0,
+  next_retry_time TIMESTAMP NULL,
+  lease_until TIMESTAMP NULL,
+  last_error VARCHAR(512) NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  INDEX idx_fulfillment_task_dispatch (status, next_retry_time)
+);
+
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 10000) FROM fulfillment_operation_log)
+WHERE namespace = 'fulfillmentOperation' AND next_value < (SELECT COALESCE(MAX(id), 10000) FROM fulfillment_operation_log);
+UPDATE business_sequence SET next_value = (SELECT COALESCE(MAX(id), 10000) FROM fulfillment_local_event)
+WHERE namespace = 'fulfillmentLocalEvent' AND next_value < (SELECT COALESCE(MAX(id), 10000) FROM fulfillment_local_event);

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
@@ -15,13 +16,16 @@ import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
 import com.mealflow.order.client.CatalogClient;
+import com.mealflow.order.client.AuthUserClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
 import com.mealflow.order.mapper.ConsumerRecordMapper;
+import com.mealflow.order.mapper.OrderSagaMapper;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -40,8 +44,17 @@ class OrderPersistenceTest {
   @Autowired
   private ConsumerRecordMapper consumerRecordMapper;
 
+  @Autowired
+  private OrderSagaMapper orderSagaMapper;
+
+  @Autowired
+  private OrderSagaCoordinator orderSagaCoordinator;
+
   @MockBean
   private CatalogClient catalogClient;
+
+  @MockBean
+  private AuthUserClient authUserClient;
 
   @MockBean
   private PromotionClient promotionClient;
@@ -51,6 +64,12 @@ class OrderPersistenceTest {
 
   @MockBean
   private PaymentClient paymentClient;
+
+  @BeforeEach
+  void mockAddress() {
+    when(authUserClient.address(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong()))
+        .thenReturn(new AuthUserClient.AddressView(20L, 101L, "Test User", "13800000000", "Test Road 1", true));
+  }
 
   @Test
   void createsAndUpdatesOrderInDatabase() {
@@ -63,7 +82,7 @@ class OrderPersistenceTest {
     when(queueClient.apply(any()))
         .thenReturn(new QueueClient.QueueApplyResponse("READY", 6001L, null, null, 0, 0, null));
     when(paymentClient.create(any()))
-        .thenReturn(new PaymentClient.PaymentView(5001L, 10001L, 1700, "UNPAID"));
+        .thenReturn(new PaymentClient.PaymentView(5001L, 10001L, 101L, 1700, "UNPAID"));
 
     SubmitOrderResponse response = orderService.submit(101L,
         new SubmitOrderRequest("order-test-1", 10L, 20L, null,
@@ -75,6 +94,8 @@ class OrderPersistenceTest {
     OrderView created = orderService.get(response.orderId());
     assertThat(created.amountCent()).isEqualTo(1700);
     assertThat(created.items()).hasSize(1);
+    assertThat(created.contactName()).isEqualTo("Test User");
+    assertThat(created.deliveryAddress()).isEqualTo("Test Road 1");
     assertThat(orderService.events())
         .singleElement()
         .satisfies(event -> {
@@ -88,10 +109,9 @@ class OrderPersistenceTest {
     orderService.markPaid(response.orderId());
 
     assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
-    assertThat(orderService.adminOrders(new AdminOrderQuery(10L, 101L, "WAIT_MERCHANT_ACCEPT", null, null)))
-        .extracting("orderId")
-        .contains(response.orderId());
-    OrderStatisticsView statistics = orderService.adminStatistics(new AdminOrderQuery(10L, null, null, null, null));
+    assertThat(orderService.adminOrders(new AdminOrderQuery(10L, 101L, "WAIT_MERCHANT_ACCEPT", null, null, 1, 20))
+        .items()).extracting("orderId").contains(response.orderId());
+    OrderStatisticsView statistics = orderService.adminStatistics(new AdminOrderQuery(10L, null, null, null, null, 1, 1));
     assertThat(statistics.totalCount()).isGreaterThanOrEqualTo(1);
     assertThat(statistics.waitingAcceptCount()).isGreaterThanOrEqualTo(1);
     assertThat(orderService.events())
@@ -130,10 +150,10 @@ class OrderPersistenceTest {
     when(queueClient.apply(any()))
         .thenReturn(new QueueClient.QueueApplyResponse("READY", 6101L, null, null, 0, 0, null));
     when(paymentClient.create(any()))
-        .thenReturn(new PaymentClient.PaymentView(5101L, 10101L, 1000, "UNPAID"));
+        .thenReturn(new PaymentClient.PaymentView(5101L, 10101L, 101L, 1000, "UNPAID"));
 
     SubmitOrderResponse response = orderService.submit(101L,
-        new SubmitOrderRequest("order-replay-1", 10L, null, null,
+        new SubmitOrderRequest("order-replay-1", 10L, 20L, null,
             List.of(new OrderSkuItem(1L, 1)), null, "replay"));
     String eventKey = "payment:PaymentPaid:" + response.payOrderId() + ":1";
     String consumerGroup = "mealflow-order-payment-consumer-replay";
@@ -151,5 +171,37 @@ class OrderPersistenceTest {
           assertThat(record.getEventType()).isEqualTo("PaymentPaid");
           assertThat(record.getPayloadJson()).isEqualTo(payload);
         });
+  }
+
+  @Test
+  void resumesPaymentSagaAfterACompletedRemoteStep() {
+    when(catalogClient.snapshots(eq(10L), anyList()))
+        .thenReturn(List.of(new OrderItemSnapshot(1L, "恢复盖饭", 1200, 1)));
+    when(catalogClient.reserve(any()))
+        .thenReturn(new CatalogClient.ReserveStockResponse(List.of(8201L), "RESERVED"));
+    when(promotionClient.lock(any()))
+        .thenReturn(new PromotionClient.VoucherLockResponse(7201L, "LOCKED", 0));
+    when(queueClient.apply(any()))
+        .thenReturn(new QueueClient.QueueApplyResponse("READY", 6201L, null, null, 0, 0, null));
+    when(paymentClient.create(any()))
+        .thenReturn(new PaymentClient.PaymentView(5201L, 10201L, 101L, 1200, "UNPAID"));
+    doThrow(new IllegalStateException("catalog unavailable")).doNothing().when(catalogClient).confirm(any());
+
+    SubmitOrderResponse response = orderService.submit(101L,
+        new SubmitOrderRequest("order-saga-retry", 10L, 20L, null,
+            List.of(new OrderSkuItem(1L, 1)), null, "retry"));
+
+    orderService.markPaid(response.orderId());
+
+    assertThat(orderService.get(response.orderId()).status()).isEqualTo("PENDING_PAYMENT");
+    assertThat(orderSagaMapper.findByOrderId(response.orderId()))
+        .extracting("status").containsExactly("FAILED", "NEW", "NEW");
+
+    orderSagaMapper.retryNow(response.orderId(), LocalDateTime.now());
+    orderSagaCoordinator.processReadyForOrder(response.orderId());
+
+    assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
+    assertThat(orderSagaMapper.findByOrderId(response.orderId()))
+        .extracting("status").containsOnly("SUCCESS");
   }
 }
