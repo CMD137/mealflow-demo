@@ -215,22 +215,9 @@ public class AuthUserService {
 
   @Transactional
   public RoleView saveRole(RoleRequest request) {
-    LocalDateTime now = LocalDateTime.now();
-    MerchantRoleRow role = authUserMapper.findRole(request.roleCode());
-    String description = request.description() == null ? "" : request.description();
-    if (role == null) {
-      authUserMapper.insertRole(request.roleCode(), request.roleName(), description, false, now);
-    } else {
-      authUserMapper.updateRole(request.roleCode(), request.roleName(), description, now);
-    }
-    authUserMapper.deleteRolePermissions(request.roleCode());
-    for (String permission : request.permissions()) {
-      if (permission == null || permission.isBlank()) {
-        throw new BizException(ErrorCode.BAD_REQUEST, "permission must not be blank");
-      }
-      authUserMapper.insertRolePermission(request.roleCode(), permission, now);
-    }
-    return roleView(authUserMapper.findRole(request.roleCode()));
+    // Roles are platform-defined shared data in this school-project model. Letting one merchant
+    // administrator edit them would change permissions for every merchant, so the UI is read-only.
+    throw new BizException(ErrorCode.FORBIDDEN, "built-in roles are read-only");
   }
 
   public PageResult<EmployeeView> employees(long merchantId, int page, int pageSize) {
@@ -256,6 +243,10 @@ public class AuthUserService {
     }
 
     MerchantEmployeeRow existing = authUserMapper.findEmployeeByMerchantAndUser(merchantId, user.getId());
+    MerchantEmployeeRow employeeInAnotherMerchant = authUserMapper.findEmployeeByUserId(user.getId());
+    if (existing == null && employeeInAnotherMerchant != null) {
+      throw new BizException(ErrorCode.DUPLICATE, "an employee account can belong to only one merchant");
+    }
     if (existing == null) {
       long employeeId = idGenerator.next("merchantEmployee");
       authUserMapper.insertEmployee(employeeId, merchantId, user.getId(), request.roleCode(), "ACTIVE", now);

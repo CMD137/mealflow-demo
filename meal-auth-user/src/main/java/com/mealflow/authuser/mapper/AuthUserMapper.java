@@ -149,6 +149,14 @@ public interface AuthUserMapper {
   MerchantEmployeeRow findActiveEmployeeByUserId(long userId);
 
   @Select("""
+      SELECT id, merchant_id, user_id, role_code, status
+      FROM merchant_employee
+      WHERE user_id = #{userId}
+      """)
+  @ResultMap("employeeMap")
+  MerchantEmployeeRow findEmployeeByUserId(long userId);
+
+  @Select("""
       SELECT permission_code
       FROM role_permission
       WHERE role_code = #{roleCode}

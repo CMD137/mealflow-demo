@@ -21,9 +21,6 @@ export function rolesApi() {
   return http.get<unknown, RoleView[]>('/auth/admin/roles');
 }
 
-export function saveRoleApi(payload: { roleCode: string; roleName: string; description?: string; permissions: string[] }) {
-  return http.post<unknown, RoleView>('/auth/admin/roles', payload);
-}
 
 export function employeesApi(params?: { page?: number; pageSize?: number }) {
   return http.get<unknown, PageResult<EmployeeView>>('/auth/admin/employees', { params });

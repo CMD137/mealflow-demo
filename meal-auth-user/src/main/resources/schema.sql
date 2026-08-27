@@ -70,8 +70,8 @@ CREATE TABLE IF NOT EXISTS merchant_employee (
   status VARCHAR(32) NOT NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
-  UNIQUE KEY uk_merchant_employee_user (merchant_id, user_id),
-  INDEX idx_merchant_employee_user_id (user_id)
+  UNIQUE KEY uk_merchant_employee_user_id (user_id),
+  INDEX idx_merchant_employee_merchant_id (merchant_id)
 );
 
 CREATE TABLE IF NOT EXISTS merchant_role (

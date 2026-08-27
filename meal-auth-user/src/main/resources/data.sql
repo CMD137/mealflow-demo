@@ -25,9 +25,6 @@ VALUES
   (2, NULL, 'merchant', 'Merchant Settings', '/admin/merchant', 'MERCHANT_MANAGE', 20, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   (3, NULL, 'catalog', 'Catalog Management', '/admin/catalog', 'CATALOG_MANAGE', 30, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   (4, NULL, 'fulfillment', 'Fulfillment Workbench', '/admin/fulfillment', 'FULFILLMENT_OPERATE', 40, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  (5, NULL, 'operations', 'Operations Console', '/admin/operations', 'INTERNAL_OPERATE', 50, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  (6, 5, 'outbox', 'Outbox Events', '/admin/operations/outbox', 'INTERNAL_OPERATE', 51, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  (7, 5, 'consumer-records', 'Consumer Records', '/admin/operations/consumer-records', 'INTERNAL_OPERATE', 52, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   (8, NULL, 'notify', 'Notifications', '/admin/notify', 'NOTIFY_READ', 60, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 INSERT IGNORE INTO role_permission (role_code, permission_code, create_time)
@@ -47,7 +44,6 @@ VALUES
   ('MERCHANT_ADMIN', 'MERCHANT_MANAGE', CURRENT_TIMESTAMP),
   ('MERCHANT_ADMIN', 'CATALOG_MANAGE', CURRENT_TIMESTAMP),
   ('MERCHANT_ADMIN', 'FULFILLMENT_OPERATE', CURRENT_TIMESTAMP),
-  ('MERCHANT_ADMIN', 'INTERNAL_OPERATE', CURRENT_TIMESTAMP),
   ('STORE_STAFF', 'USER_READ', CURRENT_TIMESTAMP),
   ('STORE_STAFF', 'ORDER_WRITE', CURRENT_TIMESTAMP),
   ('STORE_STAFF', 'CATALOG_MANAGE', CURRENT_TIMESTAMP),
