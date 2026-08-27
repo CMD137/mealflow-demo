@@ -162,22 +162,22 @@ public interface PromotionMapper {
   long countClaimRetryByStatus(String status);
 
   @Insert("""
-      INSERT INTO voucher_lock (user_voucher_id, status, ticket_id, order_id, create_time, update_time)
-      VALUES (#{userVoucherId}, #{status}, #{ticketId}, #{orderId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO voucher_lock (user_voucher_id, status, ticket_id, order_id, expire_time, create_time, update_time)
+      VALUES (#{userVoucherId}, #{status}, #{ticketId}, #{orderId}, #{expireTime}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       """)
   @Options(useGeneratedKeys = true, keyProperty = "id")
   int insertLock(VoucherLockRow lock);
 
-  @Select("SELECT id, user_voucher_id, status, ticket_id, order_id FROM voucher_lock WHERE id = #{id}")
+  @Select("SELECT id, user_voucher_id, status, ticket_id, order_id, expire_time FROM voucher_lock WHERE id = #{id}")
   @Results(id = "lockMap", value = {
       @Result(column = "id", property = "id"), @Result(column = "user_voucher_id", property = "userVoucherId"),
       @Result(column = "status", property = "status"), @Result(column = "ticket_id", property = "ticketId"),
-      @Result(column = "order_id", property = "orderId")
+      @Result(column = "order_id", property = "orderId"), @Result(column = "expire_time", property = "expireTime")
   })
   VoucherLockRow findLock(long id);
 
   @Select("""
-      SELECT id, user_voucher_id, status, ticket_id, order_id FROM voucher_lock
+      SELECT id, user_voucher_id, status, ticket_id, order_id, expire_time FROM voucher_lock
       WHERE user_voucher_id = #{userVoucherId} AND status = 'LOCKED' ORDER BY id DESC LIMIT 1
       """)
   @ResultMap("lockMap")
@@ -191,7 +191,20 @@ public interface PromotionMapper {
   int releaseLock(@Param("id") long id, @Param("status") String status,
       @Param("expectedStatus") String expectedStatus, @Param("now") LocalDateTime now);
 
-  @Select("SELECT id, user_voucher_id, status, ticket_id, order_id FROM voucher_lock ORDER BY id")
+  @Select("""
+      SELECT id, user_voucher_id, status, ticket_id, order_id, expire_time
+      FROM voucher_lock
+      WHERE status = 'LOCKED' AND expire_time <= #{now}
+      ORDER BY id
+      LIMIT #{limit}
+      """)
+  @ResultMap("lockMap")
+  List<VoucherLockRow> findExpiredLocks(@Param("now") LocalDateTime now, @Param("limit") int limit);
+
+  @Update("UPDATE voucher_lock SET status = #{status}, update_time = #{now} WHERE id = #{id} AND status = 'LOCKED'")
+  int expireLock(@Param("id") long id, @Param("status") String status, @Param("now") LocalDateTime now);
+
+  @Select("SELECT id, user_voucher_id, status, ticket_id, order_id, expire_time FROM voucher_lock ORDER BY id")
   @ResultMap("lockMap")
   List<VoucherLockRow> findLocks();
 

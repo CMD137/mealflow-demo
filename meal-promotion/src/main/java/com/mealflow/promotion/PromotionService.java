@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -144,6 +145,7 @@ public class PromotionService {
       lock.setStatus(VoucherLockStatus.LOCKED.name());
       lock.setTicketId(request.ticketId());
       lock.setOrderId(request.orderId());
+      lock.setExpireTime(request.lockExpireTime() == null ? LocalDateTime.now().plusMinutes(15) : request.lockExpireTime());
       promotionMapper.insertLock(lock);
       return new VoucherLockResponse(lock.getId(), VoucherLockStatus.LOCKED.name(), voucher.getDiscountCent());
   }
@@ -237,6 +239,19 @@ public class PromotionService {
     return promotionMapper.findLocks().stream()
         .map(lock -> new VoucherLockView(lock.getId(), lock.getUserVoucherId(), lock.getStatus(), lock.getTicketId(),
             lock.getOrderId())).toList();
+  }
+
+  @Scheduled(initialDelayString = "${mealflow.promotion.lock-expire.initial-delay-ms:30000}",
+      fixedDelayString = "${mealflow.promotion.lock-expire.fixed-delay-ms:30000}")
+  @Transactional
+  public void expireLocks() {
+    LocalDateTime now = LocalDateTime.now();
+    for (VoucherLockRow lock : promotionMapper.findExpiredLocks(now, 100)) {
+      if (promotionMapper.expireLock(lock.getId(), VoucherLockStatus.EXPIRED.name(), now) == 1) {
+        promotionMapper.updateUserVoucherStatusIfCurrent(lock.getUserVoucherId(), UserVoucherStatus.AVAILABLE.name(),
+            UserVoucherStatus.LOCKED.name(), now);
+      }
+    }
   }
 
   private VoucherRow requireVoucher(long voucherId) {

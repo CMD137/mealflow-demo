@@ -60,9 +60,11 @@ CREATE TABLE IF NOT EXISTS voucher_lock (
   status VARCHAR(32) NOT NULL,
   ticket_id BIGINT NULL,
   order_id BIGINT NULL,
+  expire_time TIMESTAMP NOT NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   INDEX idx_voucher_lock_user_voucher_id (user_voucher_id),
   INDEX idx_voucher_lock_status (status),
+  INDEX idx_voucher_lock_status_expire (status, expire_time),
   INDEX idx_voucher_lock_order_id (order_id)
 );

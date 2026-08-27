@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.mealflow.common.exception.BizException;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
+import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.VoucherAdminRequest;
 import com.mealflow.promotion.api.VoucherView;
 import com.mealflow.promotion.mapper.PromotionMapper;
@@ -85,6 +86,19 @@ class PromotionPersistenceTest {
     assertThat(duplicate).isEqualTo(first);
     assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isEqualTo(2);
     assertThat(promotionMapper.countUserVoucher(202L, voucher.voucherId())).isEqualTo(1);
+  }
+
+  @Test
+  void releasesAnExpiredVoucherLockWithAStatusCondition() {
+    VoucherView voucher = newVoucher(1);
+    ClaimSettlementResult claim = settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), 20_201L));
+    promotionService.lock(new LockVoucherRequest("voucher-lock-expire-1", 20_201L, claim.userVoucherId(), null,
+        null, LocalDateTime.now().minusMinutes(1)));
+
+    promotionService.expireLocks();
+
+    assertThat(promotionService.locks()).anySatisfy(lock -> assertThat(lock.status()).isEqualTo("EXPIRED"));
+    assertThat(promotionService.wallet(20_201L)).singleElement().extracting("status").isEqualTo("AVAILABLE");
   }
 
   @Test
