@@ -97,26 +97,28 @@ onMounted(load);
       </button>
     </div>
 
-    <article v-for="sku in visibleSkus" :key="sku.skuId" class="sku-row card">
-      <div class="sku-image">
-        <img v-if="sku.imageUrl" :src="assetUrl(sku.imageUrl)" :alt="sku.name" />
-        <span v-else>{{ sku.name.slice(0, 1) }}</span>
-      </div>
-      <div class="sku-info">
-        <h3>{{ sku.name }}</h3>
-        <p>{{ sku.description || sku.categoryName || '现做餐品' }}</p>
-        <span class="muted">库存 {{ sku.stock }}</span>
-        <div class="sku-bottom">
-          <strong class="price">{{ formatMoney(sku.priceCent) }}</strong>
-          <QuantityStepper
-            :quantity="cart.itemForSku(sku.skuId)?.quantity || 0"
-            :disabled="merchant?.businessStatus !== 'OPEN' || sku.stock <= 0"
-            @increase="addSku(sku)"
-            @decrease="decreaseSku(sku)"
-          />
+    <section class="sku-list">
+      <article v-for="sku in visibleSkus" :key="sku.skuId" class="sku-row card">
+        <div class="sku-image">
+          <img v-if="sku.imageUrl" :src="assetUrl(sku.imageUrl)" :alt="sku.name" />
+          <span v-else>{{ sku.name.slice(0, 1) }}</span>
         </div>
-      </div>
-    </article>
+        <div class="sku-info">
+          <h3>{{ sku.name }}</h3>
+          <p>{{ sku.description || sku.categoryName || '现做餐品' }}</p>
+          <span class="muted">库存 {{ sku.stock }}</span>
+          <div class="sku-bottom">
+            <strong class="price">{{ formatMoney(sku.priceCent) }}</strong>
+            <QuantityStepper
+              :quantity="cart.itemForSku(sku.skuId)?.quantity || 0"
+              :disabled="merchant?.businessStatus !== 'OPEN' || sku.stock <= 0"
+              @increase="addSku(sku)"
+              @decrease="decreaseSku(sku)"
+            />
+          </div>
+        </div>
+      </article>
+    </section>
 
     <div v-if="!loading && !visibleSkus.length" class="empty">当前类目暂无可售商品</div>
 
@@ -178,6 +180,10 @@ onMounted(load);
   gap: 12px;
   margin-bottom: 10px;
   padding: 12px;
+}
+
+.sku-list {
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
 
 .sku-image {

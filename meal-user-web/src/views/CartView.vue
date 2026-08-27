@@ -40,30 +40,32 @@ onMounted(load);
       <button class="danger-button" :disabled="!cart.items.length" @click="cart.clear()">清空</button>
     </div>
 
-    <section v-for="item in cart.items" :key="item.cartItemId" class="cart-item card">
-      <label class="check">
-        <input type="checkbox" :checked="item.selected" @change="cart.select(item.cartItemId, !item.selected)" />
-      </label>
-      <div class="thumb">
-        <img
-          v-if="cart.skuMap[item.skuId]?.imageUrl"
-          :src="assetUrl(cart.skuMap[item.skuId]?.imageUrl)"
-          :alt="cart.skuMap[item.skuId]?.name || '商品'"
-        />
-        <span v-else>{{ cart.skuMap[item.skuId]?.name?.slice(0, 1) || '餐' }}</span>
-      </div>
-      <div>
-        <h3>{{ cart.skuMap[item.skuId]?.name || `商品 ${item.skuId}` }}</h3>
-        <p>{{ cart.skuMap[item.skuId]?.categoryName || `商家 ${item.merchantId}` }}</p>
-        <div class="item-bottom">
-          <strong class="price">{{ formatMoney(cart.skuMap[item.skuId]?.priceCent) }}</strong>
-          <QuantityStepper
-            :quantity="item.quantity"
-            @increase="cart.update(item.cartItemId, item.quantity + 1)"
-            @decrease="cart.update(item.cartItemId, item.quantity - 1)"
+    <section class="cart-list">
+      <section v-for="item in cart.items" :key="item.cartItemId" class="cart-item card">
+        <label class="check">
+          <input type="checkbox" :checked="item.selected" @change="cart.select(item.cartItemId, !item.selected)" />
+        </label>
+        <div class="thumb">
+          <img
+            v-if="cart.skuMap[item.skuId]?.imageUrl"
+            :src="assetUrl(cart.skuMap[item.skuId]?.imageUrl)"
+            :alt="cart.skuMap[item.skuId]?.name || '商品'"
           />
+          <span v-else>{{ cart.skuMap[item.skuId]?.name?.slice(0, 1) || '餐' }}</span>
         </div>
-      </div>
+        <div>
+          <h3>{{ cart.skuMap[item.skuId]?.name || `商品 ${item.skuId}` }}</h3>
+          <p>{{ cart.skuMap[item.skuId]?.categoryName || `商家 ${item.merchantId}` }}</p>
+          <div class="item-bottom">
+            <strong class="price">{{ formatMoney(cart.skuMap[item.skuId]?.priceCent) }}</strong>
+            <QuantityStepper
+              :quantity="item.quantity"
+              @increase="cart.update(item.cartItemId, item.quantity + 1)"
+              @decrease="cart.update(item.cartItemId, item.quantity - 1)"
+            />
+          </div>
+        </div>
+      </section>
     </section>
 
     <div v-if="!loading && !cart.items.length" class="empty">购物车还是空的</div>
@@ -92,6 +94,10 @@ onMounted(load);
   align-items: center;
   margin-bottom: 10px;
   padding: 12px;
+}
+
+.cart-list {
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
 
 .check {
