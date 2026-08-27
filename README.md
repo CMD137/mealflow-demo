@@ -7,7 +7,7 @@ MealFlow 是一个面向外卖点餐、午晚高峰排队和商家履约的微�
 - 后端微服务主线已完成核心闭环。
 - 管理后台已实现，目录为 `meal-web`，默认端口 `5173`。
 - 用户端移动 H5 已实现，目录为 `meal-user-web`，默认端口 `5174`。
-- Docker Compose 已覆盖 MySQL、Redis、RocketMQ、Nacos、Prometheus、Grafana、网关和所有业务服务。
+- Docker Compose 已覆盖 MySQL、Redis、RocketMQ、Nacos、Prometheus、Grafana、网关和所有业务服务。`docker-compose.prod.yml` 是支付宝沙箱的 production-like 演示覆盖，不是实际生产部署方案。
 - 最新验收记录见 [docs/MealFlow-delivery-checklist.md](docs/MealFlow-delivery-checklist.md)。
 
 ## 已覆盖业务
@@ -86,14 +86,14 @@ GET http://localhost:8080/catalog/ping
 
 ```text
 手机号：13800000000
-验证码：demo 或任意值
+验证码：123456（先调用登录页发送验证码；本地演示会写入日志）
 ```
 
 用户端：
 
 ```text
 手机号：13800000001
-验证码：任意值
+验证码：123456（先调用登录页发送验证码；本地演示会写入日志）
 ```
 
 ## 验收命令

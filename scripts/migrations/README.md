@@ -16,6 +16,8 @@
 | `20260825-promotion-seckill-v2.sql` | 秒杀券旧同步领取 schema | 旧 `voucher_claim`/`voucher_claim_retry` 归档重建为新事实表,回填 event_key |
 | `20260826-queue-capacity-inflight.sql` | 只有 `merchant_id/limit_value/create_time/update_time` 的旧 `merchant_queue_limit` | 补 `inflight_count` 列并按 HELD token 回填派生计数 |
 | `20260901-order-admin-index.sql` | 订单/Outbox 查询性能优化前的旧库 | `customer_order` 加 `(merchant_id,status,create_time)` 复合索引;`order_local_event` 加 `(status,id)` 复合索引 |
+| `20260827-order-expiry-and-address.sql` | 未保存订单地址快照、支付/券锁无到期字段的旧库 | 补地址快照、订单支付到期和券锁到期字段 |
+| `20260827-auth-single-merchant.sql` | 允许同一员工账号关联多个商户的旧库 | 人工确认无冲突后，增加 `user_id` 全局唯一约束并移除内部运维权限 |
 
 ## 已知仍需按实际库结构人工补的差异
 
