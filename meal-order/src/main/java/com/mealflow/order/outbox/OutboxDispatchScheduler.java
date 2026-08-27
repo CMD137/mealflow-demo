@@ -21,6 +21,7 @@ public class OutboxDispatchScheduler {
       initialDelayString = "${mealflow.outbox.initial-delay-ms:5000}",
       fixedDelayString = "${mealflow.outbox.fixed-delay-ms:5000}")
   public void dispatch() {
+    orderService.expirePendingPayments(100);
     sagaCoordinator.dispatchReady(100);
     orderService.dispatchPendingEvents(100);
   }

@@ -132,6 +132,10 @@ public class AuthUserService {
     return authUserMapper.findAddresses(userId).stream().map(this::addressView).toList();
   }
 
+  public AddressView address(long userId, long addressId) {
+    return addressView(requireAddress(userId, addressId));
+  }
+
   public SignInView signInfo(long userId) {
     get(userId);
     return signView(userId, LocalDate.now(), 0);

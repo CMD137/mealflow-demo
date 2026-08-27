@@ -16,6 +16,7 @@ import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
 import com.mealflow.order.client.CatalogClient;
+import com.mealflow.order.client.AuthUserClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
@@ -24,6 +25,7 @@ import com.mealflow.order.mapper.OrderSagaMapper;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -52,6 +54,9 @@ class OrderPersistenceTest {
   private CatalogClient catalogClient;
 
   @MockBean
+  private AuthUserClient authUserClient;
+
+  @MockBean
   private PromotionClient promotionClient;
 
   @MockBean
@@ -59,6 +64,12 @@ class OrderPersistenceTest {
 
   @MockBean
   private PaymentClient paymentClient;
+
+  @BeforeEach
+  void mockAddress() {
+    when(authUserClient.address(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong()))
+        .thenReturn(new AuthUserClient.AddressView(20L, 101L, "Test User", "13800000000", "Test Road 1", true));
+  }
 
   @Test
   void createsAndUpdatesOrderInDatabase() {
@@ -83,6 +94,8 @@ class OrderPersistenceTest {
     OrderView created = orderService.get(response.orderId());
     assertThat(created.amountCent()).isEqualTo(1700);
     assertThat(created.items()).hasSize(1);
+    assertThat(created.contactName()).isEqualTo("Test User");
+    assertThat(created.deliveryAddress()).isEqualTo("Test Road 1");
     assertThat(orderService.events())
         .singleElement()
         .satisfies(event -> {
@@ -140,7 +153,7 @@ class OrderPersistenceTest {
         .thenReturn(new PaymentClient.PaymentView(5101L, 10101L, 101L, 1000, "UNPAID"));
 
     SubmitOrderResponse response = orderService.submit(101L,
-        new SubmitOrderRequest("order-replay-1", 10L, null, null,
+        new SubmitOrderRequest("order-replay-1", 10L, 20L, null,
             List.of(new OrderSkuItem(1L, 1)), null, "replay"));
     String eventKey = "payment:PaymentPaid:" + response.payOrderId() + ":1";
     String consumerGroup = "mealflow-order-payment-consumer-replay";
@@ -175,7 +188,7 @@ class OrderPersistenceTest {
     doThrow(new IllegalStateException("catalog unavailable")).doNothing().when(catalogClient).confirm(any());
 
     SubmitOrderResponse response = orderService.submit(101L,
-        new SubmitOrderRequest("order-saga-retry", 10L, null, null,
+        new SubmitOrderRequest("order-saga-retry", 10L, 20L, null,
             List.of(new OrderSkuItem(1L, 1)), null, "retry"));
 
     orderService.markPaid(response.orderId());

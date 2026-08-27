@@ -30,7 +30,10 @@ class QueuePersistenceTest {
         2800,
         "test",
         1L,
-        10L
+        10L,
+        "Queue User",
+        "13800000001",
+        "Queue Road 1"
     );
     QueueApplyResponse first = queueService.apply(new QueueApplyRequest("queue-test-1", 1L, 10L, snapshot,
         LocalDateTime.now().plusMinutes(10), 0));

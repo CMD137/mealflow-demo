@@ -70,6 +70,11 @@ public class AuthUserController {
     return Result.ok(authUserService.addresses(RequestIdentity.requireUser(userId)));
   }
 
+  @GetMapping("/auth/internal/users/{userId}/addresses/{addressId}")
+  public Result<AddressView> address(@PathVariable long userId, @PathVariable long addressId) {
+    return Result.ok(authUserService.address(userId, addressId));
+  }
+
   @GetMapping("/users/sign")
   public Result<SignInView> signInfo(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
     return Result.ok(authUserService.signInfo(RequestIdentity.requireUser(userId)));

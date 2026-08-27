@@ -10,6 +10,9 @@ public record QueueTicketSnapshot(
     int totalAmount,
     String remark,
     long userId,
-    long merchantId
+    long merchantId,
+    String contactName,
+    String contactPhone,
+    String deliveryAddress
 ) {
 }

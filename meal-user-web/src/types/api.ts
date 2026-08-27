@@ -150,6 +150,15 @@ export interface PaymentView {
   status: string;
 }
 
+export interface AddressView {
+  addressId: number;
+  userId: number;
+  contactName: string;
+  phone: string;
+  detail: string;
+  defaultAddress: boolean;
+}
+
 export interface PaymentCheckoutView {
   payOrderId: number;
   provider: string;

@@ -34,10 +34,15 @@ CREATE TABLE IF NOT EXISTS customer_order (
   voucher_lock_id BIGINT NULL,
   items_json TEXT NOT NULL,
   amount_cent INT NOT NULL,
+  contact_name VARCHAR(64) NOT NULL,
+  contact_phone VARCHAR(32) NOT NULL,
+  delivery_address VARCHAR(255) NOT NULL,
+  payment_expire_time TIMESTAMP NOT NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   INDEX idx_customer_order_user_id (user_id),
   INDEX idx_customer_order_status (status),
+  INDEX idx_customer_order_payment_expire (status, payment_expire_time),
   INDEX idx_customer_order_merchant_status_time (merchant_id, status, create_time),
   INDEX idx_customer_order_queue_ticket_id (queue_ticket_id)
 );

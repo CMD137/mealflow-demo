@@ -15,7 +15,8 @@ import org.apache.ibatis.annotations.Update;
 public interface OrderMapper {
   String ORDER_COLUMNS = """
       id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
-      reservation_ids_json, voucher_lock_id, items_json, amount_cent
+      reservation_ids_json, voucher_lock_id, items_json, amount_cent, contact_name, contact_phone,
+      delivery_address, payment_expire_time
       """;
 
   @Select("SELECT COALESCE(MAX(id), 10000) FROM customer_order")
@@ -24,11 +25,13 @@ public interface OrderMapper {
   @Insert("""
       INSERT INTO customer_order (
         id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
-        reservation_ids_json, voucher_lock_id, items_json, amount_cent, create_time, update_time
+        reservation_ids_json, voucher_lock_id, items_json, amount_cent, contact_name, contact_phone,
+        delivery_address, payment_expire_time, create_time, update_time
       )
       VALUES (
         #{id}, #{userId}, #{merchantId}, #{status}, #{queueTicketId}, #{capacityTokenId}, #{payOrderId},
-        #{reservationIdsJson}, #{voucherLockId}, #{itemsJson}, #{amountCent}, #{now}, #{now}
+        #{reservationIdsJson}, #{voucherLockId}, #{itemsJson}, #{amountCent}, #{contactName}, #{contactPhone},
+        #{deliveryAddress}, #{paymentExpireTime}, #{now}, #{now}
       )
       """)
   int insert(@Param("id") long id, @Param("userId") long userId, @Param("merchantId") long merchantId,
@@ -36,6 +39,8 @@ public interface OrderMapper {
       @Param("capacityTokenId") long capacityTokenId, @Param("payOrderId") long payOrderId,
       @Param("reservationIdsJson") String reservationIdsJson, @Param("voucherLockId") Long voucherLockId,
       @Param("itemsJson") String itemsJson, @Param("amountCent") int amountCent,
+      @Param("contactName") String contactName, @Param("contactPhone") String contactPhone,
+      @Param("deliveryAddress") String deliveryAddress, @Param("paymentExpireTime") LocalDateTime paymentExpireTime,
       @Param("now") LocalDateTime now);
 
   @Update("""
@@ -58,13 +63,21 @@ public interface OrderMapper {
       @Result(column = "reservation_ids_json", property = "reservationIdsJson"),
       @Result(column = "voucher_lock_id", property = "voucherLockId"),
       @Result(column = "items_json", property = "itemsJson"),
-      @Result(column = "amount_cent", property = "amountCent")
+      @Result(column = "amount_cent", property = "amountCent"),
+      @Result(column = "contact_name", property = "contactName"),
+      @Result(column = "contact_phone", property = "contactPhone"),
+      @Result(column = "delivery_address", property = "deliveryAddress"),
+      @Result(column = "payment_expire_time", property = "paymentExpireTime")
   })
   OrderRow findById(long id);
 
   @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order WHERE queue_ticket_id = #{ticketId} ORDER BY id DESC LIMIT 1")
   @ResultMap("orderMap")
   OrderRow findByTicketId(long ticketId);
+
+  @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order WHERE status = 'PENDING_PAYMENT' AND payment_expire_time <= #{now} ORDER BY id LIMIT #{limit}")
+  @ResultMap("orderMap")
+  List<OrderRow> findExpiredPendingPayments(@Param("now") LocalDateTime now, @Param("limit") int limit);
 
   @Select("SELECT " + ORDER_COLUMNS + " FROM customer_order ORDER BY id")
   @ResultMap("orderMap")
