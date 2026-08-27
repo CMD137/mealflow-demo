@@ -41,7 +41,8 @@ docker compose ps
 $env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
 $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 mvn '-Dmaven.repo.local=.m2repo' -q -DskipTests package
-docker compose up -d --build
+# 首次新建数据库时显式初始化；已有数据库不要附加 init 文件。
+docker compose -f docker-compose.yml -f docker-compose.init.yml up -d --build
 ```
 
 后端网关：

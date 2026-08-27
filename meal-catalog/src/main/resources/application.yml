@@ -15,7 +15,7 @@ spring:
       minimum-idle: ${DB_POOL_MIN_IDLE:1}
   sql:
     init:
-      mode: always
+      mode: ${SPRING_SQL_INIT_MODE:never}
   cloud:
     nacos:
       discovery:

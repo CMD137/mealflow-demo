@@ -1,7 +1,6 @@
 # 旧库升级兼容脚本清单
 
-项目不使用 Flyway/Liquibase(见 `docs/MealFlow-production-remediation-guide.md` 第 5.1 节):
-新库由各服务幂等的 `schema.sql` / `data.sql` 在启动时初始化;**已有数据库**的结构升级由人工审核、备份后执行本目录下的一次性兼容 SQL。
+项目不使用 Flyway/Liquibase：新库首次初始化时，使用 `docker-compose.init.yml` 覆盖启动服务；完成初始化后只使用常规 Compose。服务不会再默认启动即修改数据库。**已有数据库**的结构升级由人工审核、备份后执行本目录下的一次性兼容 SQL。
 
 ## 执行原则
 

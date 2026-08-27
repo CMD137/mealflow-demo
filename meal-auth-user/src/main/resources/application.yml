@@ -15,7 +15,7 @@ spring:
       port: ${REDIS_PORT:6379}
   sql:
     init:
-      mode: always
+      mode: ${SPRING_SQL_INIT_MODE:never}
   cloud:
     nacos:
       discovery:
