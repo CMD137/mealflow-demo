@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -177,6 +178,20 @@ public class CatalogService {
         .map(row -> new StockReservationView(row.getId(), row.getSkuId(), row.getQuantity(),
             statusName(row.getStatus()), row.getTicketId(), row.getOrderId()))
         .toList();
+  }
+
+  @Scheduled(initialDelayString = "${mealflow.catalog.reservation-expire.initial-delay-ms:30000}",
+      fixedDelayString = "${mealflow.catalog.reservation-expire.fixed-delay-ms:30000}")
+  @Transactional
+  public void expireReservations() {
+    LocalDateTime now = LocalDateTime.now();
+    for (StockReservationRow reservation : catalogMapper.findExpiredReservations(
+        StockReservationStatus.RESERVED.code(), now, 100)) {
+      if (catalogMapper.expireReservation(reservation.getId(), StockReservationStatus.EXPIRED.code(),
+          StockReservationStatus.RESERVED.code(), now) == 1) {
+        catalogMapper.restoreStock(reservation.getSkuId(), reservation.getQuantity());
+      }
+    }
   }
 
   private SkuView findSku(long skuId) {

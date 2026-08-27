@@ -70,4 +70,18 @@ class CatalogPersistenceTest {
         .isInstanceOf(BizException.class)
         .hasMessageContaining("SKU is not on shelf");
   }
+
+  @Test
+  void releasesExpiredReservationWithAStatusCondition() {
+    ReserveStockResponse response = catalogService.reserve(new ReserveStockRequest("catalog-expire-1", 1L, 10L,
+        null, null, List.of(new OrderSkuItem(1L, 1)), LocalDateTime.now().minusMinutes(1)));
+
+    catalogService.expireReservations();
+
+    assertThat(catalogService.reservations())
+        .filteredOn(reservation -> reservation.reservationId() == response.reservationIds().get(0))
+        .singleElement()
+        .extracting(reservation -> reservation.status())
+        .isEqualTo("EXPIRED");
+  }
 }

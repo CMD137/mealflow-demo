@@ -188,6 +188,10 @@ public interface CatalogMapper {
   int releaseReservation(@Param("id") long id, @Param("status") int status,
       @Param("expectedStatus") int expectedStatus, @Param("now") LocalDateTime now);
 
+  @Update("UPDATE stock_reservation SET status = #{status}, update_time = #{now} WHERE id = #{id} AND status = #{expectedStatus}")
+  int expireReservation(@Param("id") long id, @Param("status") int status,
+      @Param("expectedStatus") int expectedStatus, @Param("now") LocalDateTime now);
+
   @Select("SELECT id, sku_id, quantity, status, ticket_id, order_id FROM stock_reservation WHERE id = #{id}")
   @Results(id = "reservationMap", value = {
       @Result(column = "id", property = "id"),
@@ -202,4 +206,15 @@ public interface CatalogMapper {
   @Select("SELECT id, sku_id, quantity, status, ticket_id, order_id FROM stock_reservation ORDER BY id")
   @ResultMap("reservationMap")
   List<StockReservationRow> findReservations();
+
+  @Select("""
+      SELECT id, sku_id, quantity, status, ticket_id, order_id
+      FROM stock_reservation
+      WHERE status = #{status} AND expire_time <= #{now}
+      ORDER BY id
+      LIMIT #{limit}
+      """)
+  @ResultMap("reservationMap")
+  List<StockReservationRow> findExpiredReservations(@Param("status") int status, @Param("now") LocalDateTime now,
+      @Param("limit") int limit);
 }
