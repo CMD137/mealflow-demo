@@ -210,11 +210,22 @@ class PromotionPersistenceTest {
   }
 
   @Test
-  void missingRedisStockKeyReturnsNotReady() {
+  void restoresMissingRedisStockBeforeReturningNotReady() {
     when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong()))
-        .thenReturn(VoucherSeckillGuard.ClaimResult.NOT_READY);
+        .thenReturn(VoucherSeckillGuard.ClaimResult.NOT_READY, VoucherSeckillGuard.ClaimResult.NOT_READY);
 
     assertThat(promotionService.seckill(207L, 1000L, "missing-key").status()).isEqualTo("NOT_READY");
+    verify(seckillGuard).syncStockIfAbsent(1000L, 100);
+  }
+
+  @Test
+  void retriesClaimAfterRestoringMissingRedisStock() {
+    when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong()))
+        .thenReturn(VoucherSeckillGuard.ClaimResult.NOT_READY, VoucherSeckillGuard.ClaimResult.ACCEPTED);
+
+    assertThat(promotionService.seckill(208L, 1000L, "restore-and-claim").status()).isEqualTo("PENDING");
+    verify(seckillGuard).syncStockIfAbsent(1000L, 100);
+    verify(claimPublisher).publish(SeckillClaimCommand.of(1000L, 208L));
   }
 
   @Test

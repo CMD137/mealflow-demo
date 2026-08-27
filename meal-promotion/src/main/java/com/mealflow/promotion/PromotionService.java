@@ -65,6 +65,13 @@ public class PromotionService {
     try {
       claimResult = seckillGuard.tryClaim(userId, voucherId,
           System.currentTimeMillis() + pendingInitialTimeoutMs);
+      // Redis is a derived inventory cache. If its key was evicted or Redis restarted,
+      // restore the remaining MySQL stock once and retry the reservation.
+      if (claimResult == ClaimResult.NOT_READY) {
+        seckillGuard.syncStockIfAbsent(voucherId, voucher.getStock());
+        claimResult = seckillGuard.tryClaim(userId, voucherId,
+            System.currentTimeMillis() + pendingInitialTimeoutMs);
+      }
     } catch (DataAccessException ex) {
       throw new BizException(ErrorCode.SYSTEM_ERROR, "秒杀服务暂不可用，请稍后重试");
     }

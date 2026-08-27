@@ -21,13 +21,14 @@ public class VoucherRedisStockInitializer {
   }
 
   @EventListener(ApplicationReadyEvent.class)
-  public void initializeUnclaimedVoucherStock() {
+  public void initializeVoucherStock() {
     try {
       promotionMapper.findVouchers().stream()
-          .filter(voucher -> promotionMapper.countVoucherClaims(voucher.getId()) == 0)
+          // MySQL stock is the remaining stock after settled claims. setIfAbsent preserves a
+          // live Redis counter but restores it after cache loss, including for claimed vouchers.
           .forEach(voucher -> seckillGuard.syncStockIfAbsent(voucher.getId(), voucher.getStock()));
     } catch (DataAccessException ex) {
-      log.warn("Redis unavailable while initializing unclaimed voucher stock; seckill will return NOT_READY", ex);
+      log.warn("Redis unavailable while initializing voucher stock; seckill will retry when Redis recovers", ex);
     }
   }
 }

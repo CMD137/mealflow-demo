@@ -47,7 +47,9 @@ async function claim(voucher: VoucherView) {
     } else if (result.status === 'SOLD_OUT') {
       message.value = `来晚了，券已抢完`;
     } else if (result.status === 'NOT_READY') {
-      message.value = '活动尚未开始，请稍后再来';
+      message.value = voucher.startTime && new Date(voucher.startTime).getTime() > Date.now()
+        ? '活动尚未开始，请稍后再来'
+        : '秒杀库存正在同步，请稍后刷新重试';
     } else {
       message.value = '活动已结束或暂不可领取';
     }
