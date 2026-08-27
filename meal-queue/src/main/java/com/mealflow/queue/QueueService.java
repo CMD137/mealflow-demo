@@ -77,6 +77,28 @@ public class QueueService {
     }
   }
 
+  /** Releases abandoned queue resources. Order-bound tokens are released by the order timeout saga. */
+  @Scheduled(initialDelayString = "${mealflow.queue.expire.initial-delay-ms:30000}",
+      fixedDelayString = "${mealflow.queue.expire.fixed-delay-ms:30000}")
+  @Transactional
+  public synchronized void expireStaleResources() {
+    LocalDateTime now = LocalDateTime.now();
+    for (QueueTicketRow row : queueMapper.findExpiredTickets(now)) {
+      QueueTicket ticket = mapTicket(row);
+      if (queueMapper.expireTicket(ticket.id, ticket.status.name(), QueueTicketStatus.TIMEOUT.name(), now) != 1) {
+        continue;
+      }
+      if (ticket.status == QueueTicketStatus.WAITING) {
+        waitingQueueStore.remove(ticket.merchantId,
+            new WaitingTicketEntry(ticket.merchantId, ticket.id, ticket.ticketNo, ticket.score));
+      }
+      findTokenByTicket(ticket.id).ifPresent(token -> releaseCapacity(token.id, "TICKET_TIMEOUT"));
+    }
+    for (CapacityTokenRow row : queueMapper.findExpiredUnboundTokens(now, CapacityTokenStatus.HELD.name())) {
+      releaseCapacity(row.getId(), "CAPACITY_TIMEOUT");
+    }
+  }
+
   @Transactional
   public QueueApplyResponse apply(QueueApplyRequest request) {
     return idempotentTemplate.execute("queue:apply:" + request.userId() + ":" + request.requestId(), () -> {
@@ -201,12 +223,22 @@ public class QueueService {
     throw new BizException(ErrorCode.ILLEGAL_STATUS, "ticket cannot be cancelled");
   }
 
+  @Transactional
+  public synchronized void cancelTicket(long ticketId, long userId) {
+    QueueTicket ticket = requireTicket(ticketId);
+    requireTicketOwner(ticket, userId);
+    cancelTicket(ticketId);
+  }
+
   public synchronized QueueTicketView getTicket(long ticketId) {
     QueueTicket ticket = requireTicket(ticketId);
-    int ahead = ticket.status == QueueTicketStatus.WAITING ? aheadCount(ticket) : 0;
-    return new QueueTicketView(ticket.id, ticket.ticketNo, ticket.status.name(), ahead,
-        estimateWaitSeconds(ahead, ticket.merchantId), ticket.expireTime,
-        ticket.status == QueueTicketStatus.WAITING || ticket.status == QueueTicketStatus.READY);
+    return ticketView(ticket);
+  }
+
+  public synchronized QueueTicketView getTicket(long ticketId, long userId) {
+    QueueTicket ticket = requireTicket(ticketId);
+    requireTicketOwner(ticket, userId);
+    return ticketView(ticket);
   }
 
   public List<QueueTicketView> tickets() {
@@ -233,6 +265,11 @@ public class QueueService {
     }
   }
 
+  public synchronized void setMerchantLimit(long currentMerchantId, long merchantId, int limit) {
+    requireMerchantOwnership(currentMerchantId, merchantId);
+    setMerchantLimit(merchantId, limit);
+  }
+
   public Map<String, Object> metrics(long merchantId) {
     Map<String, Object> metrics = new HashMap<>();
     metrics.put("merchantId", merchantId);
@@ -240,6 +277,11 @@ public class QueueService {
     metrics.put("held", heldCount(merchantId));
     metrics.put("waiting", waitingQueueStore.size(merchantId));
     return metrics;
+  }
+
+  public Map<String, Object> metrics(long currentMerchantId, long merchantId) {
+    requireMerchantOwnership(currentMerchantId, merchantId);
+    return metrics(merchantId);
   }
 
   private void insertTicket(QueueTicket ticket) {
@@ -276,6 +318,25 @@ public class QueueService {
   private QueueTicket requireTicket(long ticketId) {
     return findTicket(ticketId)
         .orElseThrow(() -> new BizException(ErrorCode.NOT_FOUND, "queue ticket not found"));
+  }
+
+  private void requireTicketOwner(QueueTicket ticket, long userId) {
+    if (ticket.userId != userId) {
+      throw new BizException(ErrorCode.FORBIDDEN, "queue ticket does not belong to current user");
+    }
+  }
+
+  private void requireMerchantOwnership(long currentMerchantId, long merchantId) {
+    if (currentMerchantId != merchantId) {
+      throw new BizException(ErrorCode.FORBIDDEN, "merchant resource does not belong to current merchant");
+    }
+  }
+
+  private QueueTicketView ticketView(QueueTicket ticket) {
+    int ahead = ticket.status == QueueTicketStatus.WAITING ? aheadCount(ticket) : 0;
+    return new QueueTicketView(ticket.id, ticket.ticketNo, ticket.status.name(), ahead,
+        estimateWaitSeconds(ahead, ticket.merchantId), ticket.expireTime,
+        ticket.status == QueueTicketStatus.WAITING || ticket.status == QueueTicketStatus.READY);
   }
 
   private Optional<QueueTicket> findTicket(long ticketId) {

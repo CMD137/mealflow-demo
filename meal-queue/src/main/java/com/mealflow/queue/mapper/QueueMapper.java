@@ -71,6 +71,16 @@ public interface QueueMapper {
   })
   QueueTicketRow findTicket(long id);
 
+  @Select("""
+      SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
+             estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
+      FROM queue_ticket
+      WHERE status IN ('WAITING', 'READY') AND expire_time <= #{now}
+      ORDER BY id
+      """)
+  @ResultMap("ticketMap")
+  List<QueueTicketRow> findExpiredTickets(@Param("now") LocalDateTime now);
+
   @Select("SELECT id FROM queue_ticket ORDER BY id")
   List<Long> findTicketIds();
 
@@ -83,6 +93,10 @@ public interface QueueMapper {
   int updateTicketStatus(@Param("id") long id, @Param("status") String status, @Param("orderId") Long orderId,
       @Param("readyTime") LocalDateTime readyTime, @Param("processingTime") LocalDateTime processingTime,
       @Param("now") LocalDateTime now);
+
+  @Update("UPDATE queue_ticket SET status = #{targetStatus}, update_time = #{now} WHERE id = #{id} AND status = #{expectedStatus}")
+  int expireTicket(@Param("id") long id, @Param("expectedStatus") String expectedStatus,
+      @Param("targetStatus") String targetStatus, @Param("now") LocalDateTime now);
 
   @Insert("""
       INSERT INTO capacity_token (
@@ -118,6 +132,16 @@ public interface QueueMapper {
       @Result(column = "released_capacity_token_id", property = "releasedCapacityTokenId")
   })
   CapacityTokenRow findToken(long id);
+
+  @Select("""
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
+      FROM capacity_token
+      WHERE status = #{status} AND ticket_id IS NULL AND order_id IS NULL AND expire_time <= #{now}
+      ORDER BY id
+      """)
+  @ResultMap("tokenMap")
+  List<CapacityTokenRow> findExpiredUnboundTokens(@Param("now") LocalDateTime now, @Param("status") String status);
 
   @Select("""
       SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,

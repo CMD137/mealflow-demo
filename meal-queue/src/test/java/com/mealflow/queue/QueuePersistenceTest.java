@@ -1,6 +1,7 @@
 package com.mealflow.queue;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.mealflow.queue.api.QueueApplyRequest;
 import com.mealflow.queue.api.QueueApplyResponse;
@@ -49,6 +50,9 @@ class QueuePersistenceTest {
     assertThat(release.readyTicket()).isNotNull();
     assertThat(release.readyTicket().ticketId()).isEqualTo(second.ticketId());
     assertThat(queueService.getTicket(second.ticketId()).status()).isEqualTo("READY");
+    assertThatThrownBy(() -> queueService.getTicket(second.ticketId(), 1L))
+        .hasMessageContaining("does not belong to current user");
+    assertThat(queueService.getTicket(second.ticketId(), 2L).ticketId()).isEqualTo(second.ticketId());
     assertThat(queueService.metrics(10L)).containsEntry("held", 1);
 
     ReleaseCapacityResponse duplicateRelease = queueService.releaseCapacity(first.capacityTokenId(), "TEST_RELEASE_AGAIN");
