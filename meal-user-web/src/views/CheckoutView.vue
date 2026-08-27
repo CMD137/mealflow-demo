@@ -95,8 +95,9 @@ onMounted(load);
 
     <section class="card block">
       <h2>配送地址</h2>
+      <RouterLink to="/addresses?return=/checkout" class="address-manage">管理地址</RouterLink>
       <select v-model.number="form.addressId">
-        <option v-if="!addresses.length" :value="undefined" disabled>暂无地址，请先在个人中心添加</option>
+        <option v-if="!addresses.length" :value="undefined" disabled>暂无地址，请先添加</option>
         <option v-for="address in addresses" :key="address.addressId" :value="address.addressId">
           {{ address.contactName }} {{ address.phone }} · {{ address.detail }}
         </option>
@@ -159,6 +160,14 @@ textarea {
   border: 1px solid #dbe2ea;
   border-radius: 8px;
   padding: 11px 12px;
+}
+
+.address-manage {
+  float: right;
+  margin-top: -28px;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 textarea {

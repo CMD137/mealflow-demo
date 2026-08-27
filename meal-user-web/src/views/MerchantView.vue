@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import AppShell from '@/components/AppShell.vue';
 import QuantityStepper from '@/components/QuantityStepper.vue';
 import { categoriesApi, skusApi } from '@/api/catalog';
@@ -12,7 +12,6 @@ import { formatMoney } from '@/utils/format';
 import type { CategoryView, MerchantView, SkuView } from '@/types/api';
 
 const route = useRoute();
-const router = useRouter();
 const cart = useCartStore();
 const merchantId = Number(route.params.merchantId);
 const loading = ref(false);
@@ -69,10 +68,6 @@ onMounted(load);
 
 <template>
   <AppShell :title="merchant?.name || '点餐'" :subtitle="merchant?.businessStatus === 'OPEN' ? '营业中，可以下单' : '商家休息中'">
-    <template #header-extra>
-      <button class="ghost-button small" @click="router.back()">返回</button>
-    </template>
-
     <div v-if="toast" class="toast">{{ toast }}</div>
 
     <section class="merchant-banner card">
@@ -133,11 +128,6 @@ onMounted(load);
 </template>
 
 <style scoped>
-.small {
-  min-height: 34px;
-  padding: 0 10px;
-}
-
 .merchant-banner {
   padding: 16px;
 }

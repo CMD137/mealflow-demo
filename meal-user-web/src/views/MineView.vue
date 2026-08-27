@@ -25,6 +25,7 @@ function logout() {
 
     <div class="quick-list card">
       <RouterLink to="/cart">购物车<span>›</span></RouterLink>
+      <RouterLink to="/addresses">收货地址<span>›</span></RouterLink>
       <RouterLink to="/orders">我的订单<span>›</span></RouterLink>
       <RouterLink to="/vouchers">优惠券<span>›</span></RouterLink>
       <RouterLink to="/sign">每日签到<span>›</span></RouterLink>

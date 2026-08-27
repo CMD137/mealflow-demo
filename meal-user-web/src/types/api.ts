@@ -159,6 +159,12 @@ export interface AddressView {
   defaultAddress: boolean;
 }
 
+export interface AddressRequest {
+  contactName: string;
+  phone: string;
+  detail: string;
+}
+
 export interface PaymentCheckoutView {
   payOrderId: number;
   provider: string;

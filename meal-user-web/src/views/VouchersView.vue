@@ -76,6 +76,20 @@ function voucherMeta(voucherId: number) {
   return vouchers.value.find((voucher) => voucher.voucherId === voucherId);
 }
 
+function claimPeriod(voucher: VoucherView) {
+  const start = voucher.startTime ? formatDateTime(voucher.startTime) : '即刻';
+  const end = voucher.endTime ? formatDateTime(voucher.endTime) : '长期有效';
+  return `${start} 至 ${end}`;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+  }).format(date);
+}
+
 function canClaim(voucher: VoucherView) {
   const now = Date.now();
   const started = !voucher.startTime || new Date(voucher.startTime).getTime() <= now;
@@ -127,6 +141,7 @@ onMounted(load);
         <div>
           <h2>{{ voucher.name }}</h2>
           <p>秒杀券 · 库存 {{ voucher.stock }} · 已有 {{ ownedCount(voucher.voucherId) }} 张</p>
+          <p>领取时间：{{ claimPeriod(voucher) }}</p>
         </div>
         <strong>{{ formatMoney(voucher.discountCent) }}</strong>
       </div>

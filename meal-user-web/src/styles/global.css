@@ -61,6 +61,23 @@ a {
   font-size: 13px;
 }
 
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-back {
+  min-height: 34px;
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .app-main {
   min-height: calc(100vh - 74px);
   padding: 14px 14px 24px;
