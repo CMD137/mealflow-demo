@@ -22,10 +22,7 @@ public class VoucherClaimSettlementService {
     claim.setVoucherId(command.voucherId());
 
     if (promotionMapper.insertClaimProcessing(claim) == 0) {
-      VoucherClaimRow existing = promotionMapper.findClaimByEventKey(command.eventKey());
-      if (existing == null) {
-        existing = promotionMapper.findClaim(command.userId(), command.voucherId());
-      }
+      VoucherClaimRow existing = findExistingClaim(command);
       return existingResult(existing);
     }
 
@@ -51,5 +48,29 @@ public class VoucherClaimSettlementService {
       return new ClaimSettlementResult(existing.getStatus(), existing.getId(), existing.getUserVoucherId());
     }
     throw new IllegalStateException("claim is still processing: " + existing.getEventKey());
+  }
+
+  /**
+   * With concurrent delivery, another transaction can win the unique key before its row is visible
+   * to this transaction. A tiny bounded retry turns that normal database race into the persisted
+   * result; no in-memory idempotency state is used for correctness.
+   */
+  private VoucherClaimRow findExistingClaim(SeckillClaimCommand command) {
+    for (int attempt = 0; attempt < 5; attempt++) {
+      VoucherClaimRow existing = promotionMapper.findClaimByEventKey(command.eventKey());
+      if (existing == null) {
+        existing = promotionMapper.findClaim(command.userId(), command.voucherId());
+      }
+      if (existing != null) {
+        return existing;
+      }
+      try {
+        Thread.sleep(5L);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        break;
+      }
+    }
+    return null;
   }
 }
