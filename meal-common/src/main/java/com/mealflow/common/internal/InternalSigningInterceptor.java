@@ -1,5 +1,6 @@
 package com.mealflow.common.internal;
 
+import com.mealflow.common.trace.TraceContext;
 import java.io.IOException;
 import java.net.URI;
 import org.springframework.http.HttpHeaders;
@@ -45,6 +46,10 @@ public class InternalSigningInterceptor implements ClientHttpRequestInterceptor 
       @Override
       public HttpHeaders getHeaders() {
         HttpHeaders headers = HttpHeaders.writableHttpHeaders(request.getHeaders());
+        String traceId = TraceContext.current();
+        if (traceId != null && !traceId.isBlank()) {
+          headers.set(TraceContext.TRACE_ID_HEADER, traceId);
+        }
         signer.sign(headers, request.getMethod() == null ? "GET" : request.getMethod().name(), rawPath, rawQuery);
         return headers;
       }
