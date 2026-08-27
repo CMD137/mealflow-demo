@@ -11,7 +11,8 @@ public class RedisVoucherSeckillGuard implements VoucherSeckillGuard {
   private static final Long ACCEPTED = 0L;
   private static final Long SOLD_OUT = 1L;
   private static final Long DUPLICATE = 2L;
-  private static final Long NOT_READY = 3L;
+  private static final Long STOCK_MISSING = 3L;
+  private static final String STATE_INITIALIZED_KEY = "seckill:state:initialized";
 
   private static final DefaultRedisScript<Long> CLAIM_SCRIPT = new DefaultRedisScript<>("""
       if redis.call('exists', KEYS[1]) == 0 then
@@ -31,7 +32,7 @@ public class RedisVoucherSeckillGuard implements VoucherSeckillGuard {
       """, Long.class);
 
   private static final DefaultRedisScript<Long> COMPENSATE_SCRIPT = new DefaultRedisScript<>("""
-      if redis.call('srem', KEYS[2], ARGV[1]) == 1 then
+      if redis.call('srem', KEYS[2], ARGV[1]) == 1 and redis.call('exists', KEYS[1]) == 1 then
         redis.call('incr', KEYS[1])
       end
       redis.call('zrem', KEYS[3], ARGV[1])
@@ -59,8 +60,8 @@ public class RedisVoucherSeckillGuard implements VoucherSeckillGuard {
     if (SOLD_OUT.equals(result)) {
       return ClaimResult.SOLD_OUT;
     }
-    if (NOT_READY.equals(result)) {
-      return ClaimResult.NOT_READY;
+    if (STOCK_MISSING.equals(result)) {
+      return ClaimResult.STOCK_MISSING;
     }
     throw new IllegalStateException("unknown Redis voucher claim result: " + result);
   }
@@ -115,6 +116,22 @@ public class RedisVoucherSeckillGuard implements VoucherSeckillGuard {
   @Override
   public boolean isPending(long userId, long voucherId) {
     return redisTemplate.opsForZSet().score(pendingKey(voucherId), String.valueOf(userId)) != null;
+  }
+
+  @Override
+  public long pendingCount(long voucherId) {
+    Long count = redisTemplate.opsForZSet().zCard(pendingKey(voucherId));
+    return count == null ? 0 : count;
+  }
+
+  @Override
+  public boolean isStateInitialized() {
+    return Boolean.TRUE.equals(redisTemplate.hasKey(STATE_INITIALIZED_KEY));
+  }
+
+  @Override
+  public void markStateInitialized() {
+    redisTemplate.opsForValue().set(STATE_INITIALIZED_KEY, "1");
   }
 
   private String stockKey(long voucherId) {

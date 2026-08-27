@@ -17,6 +17,12 @@ public interface VoucherSeckillGuard {
 
   boolean isPending(long userId, long voucherId);
 
+  long pendingCount(long voucherId);
+
+  boolean isStateInitialized();
+
+  void markStateInitialized();
+
   default void syncStock(long voucherId, int stock) {
   }
 
@@ -25,6 +31,6 @@ public interface VoucherSeckillGuard {
   }
 
   enum ClaimResult {
-    ACCEPTED, SOLD_OUT, DUPLICATE, NOT_READY
+    ACCEPTED, SOLD_OUT, DUPLICATE, STOCK_MISSING
   }
 }

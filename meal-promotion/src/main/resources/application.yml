@@ -36,6 +36,10 @@ mealflow:
   promotion:
     seckill:
       topic: ${SECKILL_EVENT_TOPIC:mealflow-seckill-commands}
+      bootstrap:
+        # Default false. Only enable in a brand-new environment, or after operators have stopped
+        # the old MQ/consumer path and confirmed MySQL has converged. Never use as normal Redis-loss recovery.
+        enabled: ${SECKILL_BOOTSTRAP_ENABLED:false}
     pending-recovery:
       enabled: ${PROMOTION_PENDING_RECOVERY_ENABLED:true}
       initial-delay-ms: ${PROMOTION_PENDING_RECOVERY_INITIAL_DELAY_MS:10000}

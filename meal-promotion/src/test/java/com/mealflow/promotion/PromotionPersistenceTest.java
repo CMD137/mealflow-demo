@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,6 +32,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -61,6 +63,11 @@ class PromotionPersistenceTest {
 
   @MockBean
   private SeckillClaimPublisher claimPublisher;
+
+  @BeforeEach
+  void assumeContinuousRedisSeckillState() {
+    when(seckillGuard.isStateInitialized()).thenReturn(true);
+  }
 
   @Test
   void acceptsRedisReservationAndReturnsPending() {
@@ -183,6 +190,22 @@ class PromotionPersistenceTest {
     assertThat(retried.status()).isEqualTo("CLAIMED");
     assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isZero();
     assertThat(promotionMapper.countUserVoucher(210L, voucher.voucherId())).isEqualTo(1);
+    verify(seckillGuard, times(2)).complete(210L, voucher.voucherId());
+  }
+
+  @Test
+  void repeatedSoldOutMessageCompletesCompensationAfterFirstCleanupFailure() {
+    VoucherView voucher = newVoucher(0);
+    SeckillClaimCommand command = SeckillClaimCommand.of(voucher.voucherId(), 212L);
+    doThrow(new IllegalStateException("redis unavailable")).doNothing()
+        .when(seckillGuard).compensate(212L, voucher.voucherId());
+
+    assertThatThrownBy(() -> consumer().consume(command)).isInstanceOf(IllegalStateException.class);
+    ClaimSettlementResult retried = consumer().consume(command);
+
+    assertThat(retried.status()).isEqualTo("SOLD_OUT");
+    assertThat(promotionMapper.countUserVoucher(212L, voucher.voucherId())).isZero();
+    verify(seckillGuard, times(2)).compensate(212L, voucher.voucherId());
   }
 
   @Test
@@ -204,28 +227,67 @@ class PromotionPersistenceTest {
     VoucherView future = newVoucher(2, LocalDateTime.now().plusHours(1), LocalDateTime.now().plusHours(2));
     VoucherView ended = newVoucher(2, LocalDateTime.now().minusHours(2), LocalDateTime.now().minusHours(1));
 
-    assertThat(promotionService.seckill(205L, future.voucherId(), "future").status()).isEqualTo("NOT_READY");
+    assertThat(promotionService.seckill(205L, future.voucherId(), "future").status()).isEqualTo("NOT_STARTED");
     assertThat(promotionService.seckill(206L, ended.voucherId(), "ended").status()).isEqualTo("FAILED");
     verify(seckillGuard, never()).tryClaim(anyLong(), anyLong(), anyLong());
   }
 
   @Test
-  void restoresMissingRedisStockBeforeReturningNotReady() {
+  void returnsRecoveringWhenStockMissingAndVoucherHasPendingReservations() {
     when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong()))
-        .thenReturn(VoucherSeckillGuard.ClaimResult.NOT_READY, VoucherSeckillGuard.ClaimResult.NOT_READY);
+        .thenReturn(VoucherSeckillGuard.ClaimResult.STOCK_MISSING);
+    when(seckillGuard.pendingCount(1000L)).thenReturn(1L);
 
-    assertThat(promotionService.seckill(207L, 1000L, "missing-key").status()).isEqualTo("NOT_READY");
-    verify(seckillGuard).syncStockIfAbsent(1000L, 100);
+    assertThat(promotionService.seckill(207L, 1000L, "missing-key").status()).isEqualTo("STOCK_RECOVERING");
+    verify(seckillGuard, never()).syncStockIfAbsent(anyLong(), any(Integer.class));
   }
 
   @Test
-  void retriesClaimAfterRestoringMissingRedisStock() {
+  void retriesClaimAfterSafelyRestoringMissingRedisStock() {
     when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong()))
-        .thenReturn(VoucherSeckillGuard.ClaimResult.NOT_READY, VoucherSeckillGuard.ClaimResult.ACCEPTED);
+        .thenReturn(VoucherSeckillGuard.ClaimResult.STOCK_MISSING, VoucherSeckillGuard.ClaimResult.ACCEPTED);
+    when(seckillGuard.pendingCount(1000L)).thenReturn(0L);
 
     assertThat(promotionService.seckill(208L, 1000L, "restore-and-claim").status()).isEqualTo("PENDING");
     verify(seckillGuard).syncStockIfAbsent(1000L, 100);
     verify(claimPublisher).publish(SeckillClaimCommand.of(1000L, 208L));
+  }
+
+  @Test
+  void failsClosedWhenStateMarkerIsMissingEvenWithoutPending() {
+    when(seckillGuard.isStateInitialized()).thenReturn(false);
+
+    assertThat(promotionService.seckill(213L, 1000L, "state-lost").status()).isEqualTo("STOCK_RECOVERING");
+    verify(seckillGuard, never()).tryClaim(anyLong(), anyLong(), anyLong());
+    verify(seckillGuard, never()).pendingCount(anyLong());
+    verify(seckillGuard, never()).syncStockIfAbsent(anyLong(), any(Integer.class));
+  }
+
+  @Test
+  void failsClosedWhenMarkerDisappearsAfterLuaReportsMissingStock() {
+    when(seckillGuard.isStateInitialized()).thenReturn(true, false);
+    when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong()))
+        .thenReturn(VoucherSeckillGuard.ClaimResult.STOCK_MISSING);
+
+    assertThat(promotionService.seckill(214L, 1000L, "marker-lost-after-lua").status())
+        .isEqualTo("STOCK_RECOVERING");
+    verify(seckillGuard, never()).pendingCount(anyLong());
+    verify(seckillGuard, never()).syncStockIfAbsent(anyLong(), any(Integer.class));
+  }
+
+  @Test
+  void concurrentRecoveryCallersOnlyUseSetNxAndNeverOverwriteStock() {
+    when(seckillGuard.tryClaim(anyLong(), anyLong(), anyLong())).thenReturn(
+        VoucherSeckillGuard.ClaimResult.STOCK_MISSING, VoucherSeckillGuard.ClaimResult.ACCEPTED,
+        VoucherSeckillGuard.ClaimResult.STOCK_MISSING, VoucherSeckillGuard.ClaimResult.ACCEPTED);
+    when(seckillGuard.pendingCount(1000L)).thenReturn(0L);
+    when(seckillGuard.syncStockIfAbsent(1000L, 100)).thenReturn(true, false);
+
+    assertThat(promotionService.seckill(215L, 1000L, "recover-a").status()).isEqualTo("PENDING");
+    assertThat(promotionService.seckill(216L, 1000L, "recover-b").status()).isEqualTo("PENDING");
+
+    verify(seckillGuard, times(2)).syncStockIfAbsent(1000L, 100);
+    verify(seckillGuard, never()).syncStock(1000L, 100);
   }
 
   @Test

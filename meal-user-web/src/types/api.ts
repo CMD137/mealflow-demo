@@ -84,7 +84,7 @@ export interface UserVoucherView {
 export interface SeckillVoucherResponse {
   eventKey: string;
   claimId?: number | null;
-  status: 'PENDING' | 'CLAIMED' | 'DUPLICATE' | 'SOLD_OUT' | 'FAILED' | 'NOT_READY' | 'NOT_FOUND';
+  status: 'PENDING' | 'CLAIMED' | 'ALREADY_CLAIMED' | 'SOLD_OUT' | 'FAILED' | 'NOT_STARTED' | 'STOCK_RECOVERING' | 'NOT_FOUND';
   userVoucherId?: number | null;
 }
 

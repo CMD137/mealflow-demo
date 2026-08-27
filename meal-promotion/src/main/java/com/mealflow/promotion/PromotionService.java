@@ -55,7 +55,7 @@ public class PromotionService {
     }
     LocalDateTime now = LocalDateTime.now();
     if (voucher.getStartTime() != null && now.isBefore(voucher.getStartTime())) {
-      return new SeckillVoucherResponse(eventKey, "NOT_READY", null, null);
+      return new SeckillVoucherResponse(eventKey, "NOT_STARTED", null, null);
     }
     if (voucher.getEndTime() != null && !now.isBefore(voucher.getEndTime())) {
       return new SeckillVoucherResponse(eventKey, "FAILED", null, null);
@@ -63,11 +63,21 @@ public class PromotionService {
 
     ClaimResult claimResult;
     try {
+      // A missing marker means Redis may have lost stock, user sets and Pending together.
+      // Fail closed instead of deriving a new reservation state from MySQL.
+      if (!seckillGuard.isStateInitialized()) {
+        return new SeckillVoucherResponse(eventKey, "STOCK_RECOVERING", null, null);
+      }
       claimResult = seckillGuard.tryClaim(userId, voucherId,
           System.currentTimeMillis() + pendingInitialTimeoutMs);
-      // Redis is a derived inventory cache. If its key was evicted or Redis restarted,
-      // restore the remaining MySQL stock once and retry the reservation.
-      if (claimResult == ClaimResult.NOT_READY) {
+      if (claimResult == ClaimResult.STOCK_MISSING) {
+        // The marker is checked again after Lua: Redis could have restarted between the
+        // first check and this response, in which case Pending is no longer trustworthy.
+        if (!seckillGuard.isStateInitialized() || seckillGuard.pendingCount(voucherId) > 0) {
+          return new SeckillVoucherResponse(eventKey, "STOCK_RECOVERING", null, null);
+        }
+        // With a continuous Redis state and this voucher's Pending ZSet empty, SETNX is
+        // safe and also serves as the only recovery-race coordinator. Never overwrite stock.
         seckillGuard.syncStockIfAbsent(voucherId, voucher.getStock());
         claimResult = seckillGuard.tryClaim(userId, voucherId,
             System.currentTimeMillis() + pendingInitialTimeoutMs);
@@ -78,13 +88,13 @@ public class PromotionService {
     if (claimResult == ClaimResult.SOLD_OUT) {
       return new SeckillVoucherResponse(eventKey, "SOLD_OUT", null, null);
     }
-    if (claimResult == ClaimResult.NOT_READY) {
-      return new SeckillVoucherResponse(eventKey, "NOT_READY", null, null);
+    if (claimResult == ClaimResult.STOCK_MISSING) {
+      return new SeckillVoucherResponse(eventKey, "STOCK_RECOVERING", null, null);
     }
     if (claimResult == ClaimResult.DUPLICATE) {
       SeckillVoucherResponse current = claimStatus(userId, voucherId);
       if ("CLAIMED".equals(current.status())) {
-        return new SeckillVoucherResponse(eventKey, "DUPLICATE", current.claimId(), current.userVoucherId());
+        return new SeckillVoucherResponse(eventKey, "ALREADY_CLAIMED", current.claimId(), current.userVoucherId());
       }
       return current;
     }
