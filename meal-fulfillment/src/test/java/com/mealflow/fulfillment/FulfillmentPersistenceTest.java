@@ -61,7 +61,7 @@ class FulfillmentPersistenceTest {
             }
             """, MediaType.APPLICATION_JSON));
 
-    OrderView order = fulfillmentService.accept(20001L, "fulfillment-test-accept");
+    OrderView order = fulfillmentService.accept(10L, 20001L, "fulfillment-test-accept");
 
     assertThat(order.orderId()).isEqualTo(20001L);
     assertThat(fulfillmentService.operations())
@@ -112,7 +112,7 @@ class FulfillmentPersistenceTest {
         .andRespond(withSuccess("{\"success\":true,\"code\":\"OK\",\"message\":\"success\"}",
             MediaType.APPLICATION_JSON));
 
-    fulfillmentService.mealReady(20002L, "fulfillment-meal-ready-retry");
+    fulfillmentService.mealReady(10L, 20002L, "fulfillment-meal-ready-retry");
 
     assertThat(mealReadyTaskMapper.findByRequestId("fulfillment-meal-ready-retry"))
         .satisfies(task -> {

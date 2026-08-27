@@ -60,25 +60,33 @@ public class OrderController {
   }
 
   @PostMapping("/{orderId}/merchant-accept")
-  public Result<OrderView> merchantAccept(@PathVariable long orderId) {
+  public Result<OrderView> merchantAccept(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
     orderService.merchantAccept(orderId);
     return Result.ok(orderService.get(orderId));
   }
 
   @PostMapping("/{orderId}/meal-ready")
-  public Result<OrderView> mealReady(@PathVariable long orderId) {
+  public Result<OrderView> mealReady(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
     orderService.mealReady(orderId);
     return Result.ok(orderService.get(orderId));
   }
 
   @PostMapping("/{orderId}/picked-up")
-  public Result<OrderView> pickedUp(@PathVariable long orderId) {
+  public Result<OrderView> pickedUp(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
     orderService.pickedUp(orderId);
     return Result.ok(orderService.get(orderId));
   }
 
   @PostMapping("/{orderId}/delivered")
-  public Result<OrderView> delivered(@PathVariable long orderId) {
+  public Result<OrderView> delivered(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
     orderService.delivered(orderId);
     return Result.ok(orderService.get(orderId));
   }
@@ -141,6 +149,14 @@ public class OrderController {
     OrderView order = orderService.get(orderId);
     if (order.userId() != userId) {
       throw new BizException(ErrorCode.FORBIDDEN, "order does not belong to current user");
+    }
+    return order;
+  }
+
+  private OrderView requireMerchantOrder(long orderId, long merchantId) {
+    OrderView order = orderService.get(orderId);
+    if (order.merchantId() != merchantId) {
+      throw new BizException(ErrorCode.FORBIDDEN, "order does not belong to current merchant");
     }
     return order;
   }

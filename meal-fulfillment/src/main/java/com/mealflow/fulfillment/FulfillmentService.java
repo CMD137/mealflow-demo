@@ -24,6 +24,7 @@ import java.util.Map;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,20 +61,20 @@ public class FulfillmentService {
   }
 
   @Transactional
-  public OrderView accept(long orderId, String requestId) {
-    OrderView order = postOrder(orderId, "merchant-accept");
+  public OrderView accept(long merchantId, long orderId, String requestId) {
+    OrderView order = postOrder(merchantId, orderId, "merchant-accept");
     recordOperation(requestId, orderId, "ACCEPT", "SUCCESS", "merchant accepted");
     appendFulfillmentEvent("FulfillmentAccepted", requestId, order);
     return order;
   }
 
-  public OrderView mealReady(long orderId, String requestId) {
+  public OrderView mealReady(long merchantId, long orderId, String requestId) {
     MealReadyTaskRow existing = mealReadyTaskMapper.findByRequestId(requestId);
     if (existing != null) {
       processMealReadyTask(existing);
       return fromJson(existing.getOrderJson(), OrderView.class);
     }
-    OrderView order = postOrder(orderId, "meal-ready");
+    OrderView order = postOrder(merchantId, orderId, "meal-ready");
     mealReadyTaskMapper.insert(requestId, orderId, order.capacityTokenId(), toJson(order), LocalDateTime.now());
     processMealReadyTask(mealReadyTaskMapper.findByRequestId(requestId));
     return order;
@@ -146,16 +147,16 @@ public class FulfillmentService {
   }
 
   @Transactional
-  public OrderView pickedUp(long orderId, String requestId) {
-    OrderView order = postOrder(orderId, "picked-up");
+  public OrderView pickedUp(long merchantId, long orderId, String requestId) {
+    OrderView order = postOrder(merchantId, orderId, "picked-up");
     recordOperation(requestId, orderId, "PICKED_UP", "SUCCESS", "delivery picked up");
     appendFulfillmentEvent("FulfillmentPickedUp", requestId, order);
     return order;
   }
 
   @Transactional
-  public OrderView delivered(long orderId, String requestId) {
-    OrderView order = postOrder(orderId, "delivered");
+  public OrderView delivered(long merchantId, long orderId, String requestId) {
+    OrderView order = postOrder(merchantId, orderId, "delivered");
     recordOperation(requestId, orderId, "DELIVERED", "SUCCESS", "delivery completed");
     appendFulfillmentEvent("FulfillmentDelivered", requestId, order);
     return order;
@@ -192,11 +193,13 @@ public class FulfillmentService {
     return localEventMapper.markStaleSendingFailedBefore(now.minus(OUTBOX_SENDING_TIMEOUT), now);
   }
 
-  private OrderView postOrder(long orderId, String action) {
+  private OrderView postOrder(long merchantId, long orderId, String action) {
+    HttpHeaders headers = new HttpHeaders();
+    headers.set("X-Merchant-Id", Long.toString(merchantId));
     Result<OrderView> result = restTemplate.exchange(
         endpoints.order() + "/orders/" + orderId + "/" + action,
         HttpMethod.POST,
-        HttpEntity.EMPTY,
+        new HttpEntity<>(headers),
         new ParameterizedTypeReference<Result<OrderView>>() {
         }).getBody();
     if (result == null || !result.success()) {
