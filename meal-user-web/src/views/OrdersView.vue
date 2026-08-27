@@ -13,7 +13,7 @@ const tabs = [
   { key: 'all', label: '全部' },
   { key: 'PENDING_PAYMENT', label: '待支付' },
   { key: 'WAIT_MERCHANT_ACCEPT', label: '待接单' },
-  { key: 'READY', label: '待取餐' },
+  { key: 'WAIT_RIDER_PICKUP', label: '待取餐' },
   { key: 'COMPLETED', label: '完成' }
 ];
 

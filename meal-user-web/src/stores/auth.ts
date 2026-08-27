@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { loginApi, meApi } from '@/api/auth';
 import { clearToken, readToken, saveToken } from '@/api/http';
+import { useCartStore } from '@/stores/cart';
 import type { LoginRequest, LoginResponse, UserView } from '@/types/api';
 
 interface AuthState {
@@ -26,8 +27,11 @@ export const useAuthStore = defineStore('userAuth', {
       const info = await loginApi(payload);
       this.loginInfo = info;
       this.token = info.token;
+      this.user = null;
       saveToken(info.token);
-      localStorage.setItem(LOGIN_INFO_KEY, JSON.stringify(info));
+      sessionStorage.setItem(LOGIN_INFO_KEY, JSON.stringify(info));
+      sessionStorage.removeItem('mealflow.lastOrderResult');
+      useCartStore().reset();
       await this.loadProfile();
     },
     async loadProfile() {
@@ -45,13 +49,15 @@ export const useAuthStore = defineStore('userAuth', {
       this.loginInfo = null;
       this.user = null;
       clearToken();
-      localStorage.removeItem(LOGIN_INFO_KEY);
+      sessionStorage.removeItem(LOGIN_INFO_KEY);
+      sessionStorage.removeItem('mealflow.lastOrderResult');
+      useCartStore().reset();
     }
   }
 });
 
 function readLoginInfo() {
-  const raw = localStorage.getItem(LOGIN_INFO_KEY);
+  const raw = sessionStorage.getItem(LOGIN_INFO_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as LoginResponse;

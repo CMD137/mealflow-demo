@@ -126,4 +126,15 @@ class AuthUserPersistenceTest {
     assertThat(info.totalPoints()).isEqualTo(6);
     assertThat(info.continuousDays()).isEqualTo(1);
   }
+
+  @Test
+  void keepsSignInStateIsolatedByUser() {
+    SignInView userA = authUserService.signIn(101L);
+    SignInView userB = authUserService.signInfo(102L);
+
+    assertThat(userA.signedToday()).isTrue();
+    assertThat(userB.signedToday()).isFalse();
+    assertThat(userB.monthSignDates()).isEmpty();
+    assertThat(userB.totalPoints()).isZero();
+  }
 }

@@ -60,6 +60,12 @@ export const useCartStore = defineStore('cart', () => {
     items.value = [];
   }
 
+  function reset() {
+    items.value = [];
+    skuMap.value = {};
+    loading.value = false;
+  }
+
   function itemForSku(skuId: number) {
     return items.value.find((item) => item.skuId === skuId);
   }
@@ -78,6 +84,7 @@ export const useCartStore = defineStore('cart', () => {
     remove,
     select,
     clear,
+    reset,
     itemForSku
   };
 });

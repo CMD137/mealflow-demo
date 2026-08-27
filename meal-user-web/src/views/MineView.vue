@@ -18,6 +18,7 @@ function logout() {
       <div class="avatar">{{ auth.nickname.slice(0, 1) }}</div>
       <div>
         <h2>{{ auth.nickname }}</h2>
+        <p>用户 ID：{{ auth.user?.userId ?? auth.loginInfo?.userId ?? '-' }}</p>
         <p>{{ auth.user?.phone }} · {{ auth.user?.level }}</p>
       </div>
     </section>

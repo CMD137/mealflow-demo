@@ -29,8 +29,9 @@ export const useAuthStore = defineStore('auth', {
       const info = await loginApi(payload);
       this.loginInfo = info;
       this.token = info.token;
+      this.user = null;
       saveToken(info.token);
-      localStorage.setItem(LOGIN_INFO_KEY, JSON.stringify(info));
+      sessionStorage.setItem(LOGIN_INFO_KEY, JSON.stringify(info));
       await this.loadProfile();
     },
     async loadProfile() {
@@ -51,13 +52,13 @@ export const useAuthStore = defineStore('auth', {
       this.user = null;
       this.loginInfo = null;
       clearToken();
-      localStorage.removeItem(LOGIN_INFO_KEY);
+      sessionStorage.removeItem(LOGIN_INFO_KEY);
     }
   }
 });
 
 function readSavedLoginInfo() {
-  const raw = localStorage.getItem(LOGIN_INFO_KEY);
+  const raw = sessionStorage.getItem(LOGIN_INFO_KEY);
   if (!raw) {
     return null;
   }
