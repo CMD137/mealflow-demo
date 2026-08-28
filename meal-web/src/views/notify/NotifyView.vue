@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
+  myNotifyDeliveriesApi,
+  myNotifyMessagesApi,
   notifyConsumerRecordsApi,
   notifyDeliveriesApi,
   notifyMessagesApi,
@@ -22,13 +24,16 @@ const records = ref<ConsumerRecordView[]>([]);
 async function load() {
   loading.value = true;
   try {
-    const [messageData, deliveryData] = await Promise.all([
-      notifyMessagesApi(),
-      notifyDeliveriesApi()
-    ]);
+    // 内部运维视角使用全局接口；普通商家管理员使用用户级接口（避免 INTERNAL_OPERATE 权限被网关拒绝）
+    const isOps = auth.hasPermission('INTERNAL_OPERATE');
+    const [messageData, deliveryData] = await Promise.all(
+      isOps
+        ? [notifyMessagesApi(), notifyDeliveriesApi()]
+        : [myNotifyMessagesApi(), myNotifyDeliveriesApi()]
+    );
     messages.value = messageData;
     deliveries.value = deliveryData;
-    records.value = auth.hasPermission('INTERNAL_OPERATE') ? await notifyConsumerRecordsApi() : [];
+    records.value = isOps ? await notifyConsumerRecordsApi() : [];
   } finally {
     loading.value = false;
   }

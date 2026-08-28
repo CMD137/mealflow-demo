@@ -1,6 +1,7 @@
 import { http } from './http';
 import type { ConsumerRecordView, DeliveryView, MessageView } from '@/types/api';
 
+// 内部运维接口：需要 INTERNAL_OPERATE 权限（仅事件运维角色可访问）
 export function notifyMessagesApi() {
   return http.get<unknown, MessageView[]>('/notify/internal/messages');
 }
@@ -22,4 +23,13 @@ export function replayNotifyConsumerRecordApi(eventKey: string, consumerGroup: s
     `/notify/internal/consumer-records/${encodeURIComponent(eventKey)}/groups/${encodeURIComponent(consumerGroup)}/replay`,
     {}
   );
+}
+
+// 用户级接口：普通登录用户（含商家管理员）查看自己的通知与投递
+export function myNotifyMessagesApi() {
+  return http.get<unknown, MessageView[]>('/notify/messages');
+}
+
+export function myNotifyDeliveriesApi() {
+  return http.get<unknown, DeliveryView[]>('/notify/deliveries');
 }
