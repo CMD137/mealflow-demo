@@ -12,7 +12,7 @@ const loading = ref(false);
 const codeLoading = ref(false);
 const form = reactive({
   phone: '13800000000',
-  code: 'demo'
+  code: '123456'
 });
 
 async function requestCode() {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
-import { updateBusinessStatusApi, updateCapacityApi } from '@/api/merchant';
-import { setQueueLimitApi } from '@/api/queue';
+import { merchantsApi, updateBusinessStatusApi, updateCapacityApi } from '@/api/merchant';
+import { queueMetricsApi, setQueueLimitApi } from '@/api/queue';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
@@ -14,6 +14,32 @@ const form = reactive({
   queueLimit: 20,
   businessStatus: 'OPEN'
 });
+
+async function load() {
+  const merchantId = auth.merchantId;
+  if (!merchantId) {
+    return;
+  }
+  loading.value = true;
+  try {
+    const [merchants, metrics] = await Promise.all([
+      merchantsApi(),
+      queueMetricsApi(merchantId).catch(() => null)
+    ]);
+    const merchant = merchants.find((item) => item.merchantId === merchantId);
+    if (merchant) {
+      form.merchantId = merchant.merchantId;
+      form.baseCapacity = merchant.baseCapacity;
+      form.manualFactor = merchant.manualFactor;
+      form.businessStatus = merchant.businessStatus;
+    }
+    if (metrics && typeof metrics.limit === 'number') {
+      form.queueLimit = metrics.limit;
+    }
+  } finally {
+    loading.value = false;
+  }
+}
 
 async function save() {
   const merchantId = form.merchantId;
@@ -31,6 +57,8 @@ async function save() {
     loading.value = false;
   }
 }
+
+onMounted(load);
 </script>
 
 <template>
