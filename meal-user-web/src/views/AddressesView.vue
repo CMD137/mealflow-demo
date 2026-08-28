@@ -8,6 +8,8 @@ const loading = ref(false);
 const saving = ref(false);
 const editingId = ref<number | null>(null);
 const addresses = ref<AddressView[]>([]);
+const errorMessage = ref('');
+const pendingDelete = ref<AddressView | null>(null);
 const form = reactive<AddressRequest>({ contactName: '', phone: '', detail: '' });
 
 async function load() {
@@ -35,7 +37,7 @@ function edit(address: AddressView) {
 
 async function save() {
   if (!form.contactName.trim() || !form.phone.trim() || !form.detail.trim()) {
-    window.alert('请完整填写收货人、联系电话和详细地址');
+    errorMessage.value = '请完整填写收货人、联系电话和详细地址';
     return;
   }
   saving.value = true;
@@ -53,10 +55,16 @@ async function save() {
 }
 
 async function remove(address: AddressView) {
-  if (!window.confirm(`确认删除“${address.contactName}”这条地址吗？`)) return;
+  pendingDelete.value = address;
+}
+
+async function confirmRemove() {
+  const address = pendingDelete.value;
+  if (!address) return;
   await deleteAddressApi(address.addressId);
   await load();
   if (editingId.value === address.addressId) resetForm();
+  pendingDelete.value = null;
 }
 
 async function setDefault(address: AddressView) {
@@ -70,6 +78,7 @@ onMounted(load);
 
 <template>
   <AppShell title="收货地址" subtitle="管理下单时使用的配送地址">
+    <p v-if="errorMessage" class="inline-error">{{ errorMessage }}</p>
     <section v-for="address in addresses" :key="address.addressId" class="address-card card">
       <div class="address-main">
         <div>
@@ -99,6 +108,13 @@ onMounted(load);
         <button class="primary-button" :disabled="saving" @click="save">{{ saving ? '保存中...' : '保存地址' }}</button>
       </div>
     </section>
+    <section v-if="pendingDelete" class="confirm-card card">
+      <p>确认删除“{{ pendingDelete.contactName }}”这条地址吗？</p>
+      <div class="editor-actions">
+        <button class="ghost-button" @click="pendingDelete = null">取消</button>
+        <button class="danger-button" @click="confirmRemove">确认删除</button>
+      </div>
+    </section>
   </AppShell>
 </template>
 
@@ -107,6 +123,15 @@ onMounted(load);
 .editor {
   margin-bottom: 12px;
   padding: 14px;
+}
+
+.inline-error {
+  margin: 0 0 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  padding: 10px 12px;
+  font-size: 14px;
 }
 
 .address-main,

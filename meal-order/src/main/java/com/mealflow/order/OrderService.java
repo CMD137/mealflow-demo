@@ -21,6 +21,7 @@ import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
 import com.mealflow.order.client.CatalogClient;
 import com.mealflow.order.client.AuthUserClient;
+import com.mealflow.order.client.MerchantClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
@@ -53,6 +54,7 @@ public class OrderService {
 
   private final CatalogClient catalogClient;
   private final AuthUserClient authUserClient;
+  private final MerchantClient merchantClient;
   private final PromotionClient promotionClient;
   private final QueueClient queueClient;
   private final PaymentClient paymentClient;
@@ -66,13 +68,14 @@ public class OrderService {
   private final OrderIdempotencyService idempotencyService;
   private final OrderSagaCoordinator sagaCoordinator;
 
-  public OrderService(CatalogClient catalogClient, AuthUserClient authUserClient, PromotionClient promotionClient, QueueClient queueClient,
+  public OrderService(CatalogClient catalogClient, AuthUserClient authUserClient, MerchantClient merchantClient, PromotionClient promotionClient, QueueClient queueClient,
       PaymentClient paymentClient, OrderMapper orderMapper, LocalEventMapper localEventMapper,
       ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper,
       DatabaseIdGenerator idGenerator, OrderIdempotencyService idempotencyService,
       OrderSagaCoordinator sagaCoordinator) {
     this.catalogClient = catalogClient;
     this.authUserClient = authUserClient;
+    this.merchantClient = merchantClient;
     this.promotionClient = promotionClient;
     this.queueClient = queueClient;
     this.paymentClient = paymentClient;
@@ -96,6 +99,7 @@ public class OrderService {
       if (request.addressId() == null) {
         throw new BizException(ErrorCode.BAD_REQUEST, "delivery address is required");
       }
+      merchantClient.requireAcceptingOrders(request.merchantId());
       AuthUserClient.AddressView address = authUserClient.address(userId, request.addressId());
       List<OrderItemSnapshot> snapshots = catalogClient.snapshots(request.merchantId(), items);
       int originAmount = snapshots.stream().mapToInt(OrderItemSnapshot::subtotalCent).sum();

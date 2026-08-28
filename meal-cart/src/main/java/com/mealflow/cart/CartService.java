@@ -29,6 +29,11 @@ public class CartService {
       cartMapper.increaseQuantity(existing.getId(), request.quantity(), LocalDateTime.now());
       return view(cartMapper.findById(existing.getId()));
     }
+    Long activeMerchantId = cartMapper.findActiveMerchantId(userId);
+    if (activeMerchantId != null && activeMerchantId.longValue() != request.merchantId()) {
+      throw new BizException(ErrorCode.CART_MERCHANT_CONFLICT,
+          "购物车已有其他商户商品，请先清空购物车后再添加");
+    }
     long id = idGenerator.next();
     try {
       cartMapper.insert(id, userId, request.merchantId(), request.skuId(), request.quantity(), true,

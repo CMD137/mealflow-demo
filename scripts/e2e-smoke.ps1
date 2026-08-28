@@ -185,7 +185,7 @@ $firstOrderBody = @{
 $secondOrderBody = @{
   requestId = $secondRequestId
   merchantId = 10
-  addressId = 21
+  addressId = 22
   items = @(@{ skuId = 2; quantity = 1 })
   remark = "e2e-second"
 }

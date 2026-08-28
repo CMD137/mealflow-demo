@@ -17,6 +17,7 @@ const submitting = ref(false);
 const vouchers = ref<VoucherView[]>([]);
 const wallet = ref<UserVoucherView[]>([]);
 const addresses = ref<AddressView[]>([]);
+const errorMessage = ref('');
 const form = reactive({
   userVoucherId: undefined as number | undefined,
   addressId: undefined as number | undefined,
@@ -47,15 +48,20 @@ async function load() {
 }
 
 async function submit() {
+  errorMessage.value = '';
   if (!selected.value.length) {
-    window.alert('请先选择要结算的商品');
+    errorMessage.value = '请先选择要结算的商品';
     return;
   }
   if (!form.addressId) {
-    window.alert('请先添加并选择配送地址');
+    errorMessage.value = '请先添加并选择配送地址';
     return;
   }
   const merchantId = selected.value[0].merchantId;
+  if (selected.value.some((item) => item.merchantId !== merchantId)) {
+    errorMessage.value = '本次结算只能包含同一商户的商品';
+    return;
+  }
   submitting.value = true;
   try {
     const result = await submitOrderApi({
@@ -84,6 +90,7 @@ onMounted(load);
 
 <template>
   <AppShell title="确认订单" subtitle="选择优惠券并提交订单" :show-nav="false">
+    <p v-if="errorMessage" class="inline-error">{{ errorMessage }}</p>
     <section class="card block">
       <h2>商品明细</h2>
       <div v-for="item in selected" :key="item.cartItemId" class="line">
@@ -95,7 +102,7 @@ onMounted(load);
 
     <section class="card block">
       <h2>配送地址</h2>
-      <RouterLink to="/addresses?return=/checkout" class="address-manage">管理地址</RouterLink>
+      <RouterLink to="/addresses?return=/checkout" class="address-manage">{{ addresses.length ? '管理地址' : '新增收货地址' }}</RouterLink>
       <select v-model.number="form.addressId">
         <option v-if="!addresses.length" :value="undefined" disabled>暂无地址，请先添加</option>
         <option v-for="address in addresses" :key="address.addressId" :value="address.addressId">
@@ -124,7 +131,7 @@ onMounted(load);
         <span>优惠 {{ formatMoney(discountCent) }}</span>
         <strong>{{ formatMoney(payableCent) }}</strong>
       </div>
-      <button class="primary-button" :disabled="submitting || !selected.length" @click="submit">
+      <button class="primary-button" :disabled="submitting || !selected.length || !form.addressId" @click="submit">
         {{ submitting ? '提交中...' : '提交订单' }}
       </button>
     </div>
@@ -160,6 +167,15 @@ textarea {
   border: 1px solid #dbe2ea;
   border-radius: 8px;
   padding: 11px 12px;
+}
+
+.inline-error {
+  margin: 0 0 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  padding: 10px 12px;
+  font-size: 14px;
 }
 
 .address-manage {

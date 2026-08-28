@@ -19,11 +19,12 @@ public interface NotifyMapper {
   long maxDeliveryId();
 
   @Insert("""
-      INSERT INTO notify_message (id, user_id, biz_type, content, create_time)
-      VALUES (#{id}, #{userId}, #{bizType}, #{content}, #{createTime})
+      INSERT INTO notify_message (id, user_id, recipient_type, recipient_id, biz_type, content, create_time)
+      VALUES (#{id}, #{userId}, #{recipientType}, #{recipientId}, #{bizType}, #{content}, #{createTime})
       """)
-  int insert(@Param("id") long id, @Param("userId") long userId, @Param("bizType") String bizType,
-      @Param("content") String content, @Param("createTime") LocalDateTime createTime);
+  int insert(@Param("id") long id, @Param("userId") long userId, @Param("recipientType") String recipientType,
+      @Param("recipientId") long recipientId, @Param("bizType") String bizType, @Param("content") String content,
+      @Param("createTime") LocalDateTime createTime);
 
   @Select("""
       SELECT template_code, biz_type, content_template, channels, enabled
@@ -52,7 +53,7 @@ public interface NotifyMapper {
       @Param("content") String content, @Param("now") LocalDateTime now);
 
   @Select("""
-      SELECT id, user_id, biz_type, content, create_time
+      SELECT id, user_id, recipient_type, recipient_id, biz_type, content, create_time
       FROM notify_message
       WHERE user_id = #{userId}
       ORDER BY create_time DESC
@@ -60,6 +61,8 @@ public interface NotifyMapper {
   @Results(id = "messageMap", value = {
       @Result(column = "id", property = "id"),
       @Result(column = "user_id", property = "userId"),
+      @Result(column = "recipient_type", property = "recipientType"),
+      @Result(column = "recipient_id", property = "recipientId"),
       @Result(column = "biz_type", property = "bizType"),
       @Result(column = "content", property = "content"),
       @Result(column = "create_time", property = "createTime")
@@ -67,7 +70,16 @@ public interface NotifyMapper {
   List<NotifyMessageRow> findByUser(long userId);
 
   @Select("""
-      SELECT id, user_id, biz_type, content, create_time
+      SELECT id, user_id, recipient_type, recipient_id, biz_type, content, create_time
+      FROM notify_message
+      WHERE recipient_type = 'MERCHANT' AND recipient_id = #{merchantId}
+      ORDER BY create_time DESC, id DESC
+      """)
+  @ResultMap("messageMap")
+  List<NotifyMessageRow> findByMerchant(long merchantId);
+
+  @Select("""
+      SELECT id, user_id, recipient_type, recipient_id, biz_type, content, create_time
       FROM notify_message
       ORDER BY create_time DESC, id DESC
       """)

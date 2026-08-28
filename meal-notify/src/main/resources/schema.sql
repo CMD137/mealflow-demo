@@ -1,8 +1,13 @@
 CREATE TABLE IF NOT EXISTS notify_message (
   id BIGINT PRIMARY KEY, user_id BIGINT NOT NULL, biz_type VARCHAR(64) NOT NULL,
+  recipient_type VARCHAR(16) NOT NULL DEFAULT 'USER', recipient_id BIGINT NULL,
   content VARCHAR(512) NOT NULL, create_time TIMESTAMP NOT NULL,
-  INDEX idx_notify_message_user_time (user_id, create_time)
+  INDEX idx_notify_message_user_time (user_id, create_time),
+  INDEX idx_notify_message_recipient_time (recipient_type, recipient_id, create_time)
 );
+ALTER TABLE notify_message ADD COLUMN IF NOT EXISTS recipient_type VARCHAR(16) NOT NULL DEFAULT 'USER';
+ALTER TABLE notify_message ADD COLUMN IF NOT EXISTS recipient_id BIGINT NULL;
+UPDATE notify_message SET recipient_id = user_id WHERE recipient_id IS NULL;
 CREATE TABLE IF NOT EXISTS notify_template (
   template_code VARCHAR(64) PRIMARY KEY, biz_type VARCHAR(64) NOT NULL,
   content_template VARCHAR(512) NOT NULL, channels VARCHAR(128) NOT NULL,

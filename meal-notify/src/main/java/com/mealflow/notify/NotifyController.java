@@ -51,6 +51,12 @@ public class NotifyController {
     return Result.ok(notifyService.list(RequestIdentity.requireUser(userId)));
   }
 
+  @GetMapping("/merchant/messages")
+  public Result<List<MessageView>> merchantMessages(
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    return Result.ok(notifyService.listMerchant(RequestIdentity.requireMerchant(merchantId)));
+  }
+
   @GetMapping("/internal/messages")
   public Result<List<MessageView>> listAll() {
     return Result.ok(notifyService.listAll());

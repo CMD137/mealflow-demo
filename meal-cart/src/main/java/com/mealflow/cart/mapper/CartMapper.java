@@ -33,6 +33,9 @@ public interface CartMapper {
   @ResultMap("cartItemMap")
   List<CartItemRow> findByUser(long userId);
 
+  @Select("SELECT DISTINCT merchant_id FROM cart_item WHERE user_id = #{userId} AND quantity > 0 LIMIT 1")
+  Long findActiveMerchantId(long userId);
+
   @Insert("""
       INSERT INTO cart_item (id, user_id, merchant_id, sku_id, quantity, selected, create_time, update_time)
       VALUES (#{id}, #{userId}, #{merchantId}, #{skuId}, #{quantity}, #{selected}, #{now}, #{now})

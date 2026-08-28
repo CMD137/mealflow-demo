@@ -54,8 +54,8 @@ public class NotifyService {
   public MessageView push(PushMessageRequest request) {
     long id = idGenerator.next("notifyMessage");
     LocalDateTime createTime = LocalDateTime.now();
-    notifyMapper.insert(id, request.userId(), request.bizType(), request.content(), createTime);
-    MessageView message = new MessageView(id, request.userId(), request.bizType(), request.content(), createTime);
+    notifyMapper.insert(id, request.userId(), "USER", request.userId(), request.bizType(), request.content(), createTime);
+    MessageView message = new MessageView(id, request.userId(), "USER", request.userId(), request.bizType(), request.content(), createTime);
     afterCommitOrNow(() -> notifyStreamService.publish(message));
     return message;
   }
@@ -89,12 +89,21 @@ public class NotifyService {
       if (content == null) {
         return null;
       }
-      return push(new PushMessageRequest(userId, "ORDER", content));
+      MessageView userMessage = push(new PushMessageRequest(userId, "ORDER", content));
+      long merchantId = longNumber(payload.get("merchantId"));
+      if (merchantId > 0) {
+        pushMerchant(merchantId, "ORDER", merchantContent(eventType, longNumber(payload.get("orderId"))));
+      }
+      return userMessage;
     });
   }
 
   public List<MessageView> list(long userId) {
     return notifyMapper.findByUser(userId).stream().map(this::view).toList();
+  }
+
+  public List<MessageView> listMerchant(long merchantId) {
+    return notifyMapper.findByMerchant(merchantId).stream().map(this::view).toList();
   }
 
   public List<MessageView> listAll() {
@@ -134,8 +143,15 @@ public class NotifyService {
   }
 
   private MessageView view(NotifyMessageRow message) {
-    return new MessageView(message.getId(), message.getUserId(), message.getBizType(), message.getContent(),
-        message.getCreateTime());
+    return new MessageView(message.getId(), message.getUserId(), message.getRecipientType(), message.getRecipientId(),
+        message.getBizType(), message.getContent(), message.getCreateTime());
+  }
+
+  private MessageView pushMerchant(long merchantId, String bizType, String content) {
+    long id = idGenerator.next("notifyMessage");
+    LocalDateTime createTime = LocalDateTime.now();
+    notifyMapper.insert(id, 0, "MERCHANT", merchantId, bizType, content, createTime);
+    return new MessageView(id, 0, "MERCHANT", merchantId, bizType, content, createTime);
   }
 
   private DeliveryView deliveryView(NotifyDeliveryRow row) {
@@ -215,6 +231,19 @@ public class NotifyService {
       case "OrderPickedUp", "FulfillmentPickedUp" -> "订单 " + orderId + " 骑手已取餐";
       case "OrderDelivered", "FulfillmentDelivered" -> "订单 " + orderId + " 已送达";
       default -> null;
+    };
+  }
+
+  private String merchantContent(String eventType, long orderId) {
+    return switch (eventType) {
+      case "OrderCreated" -> "新订单 " + orderId + " 已创建，等待顾客支付";
+      case "OrderPaid" -> "订单 " + orderId + " 已支付，请及时接单";
+      case "OrderCancelled" -> "订单 " + orderId + " 已取消";
+      case "OrderMerchantAccepted", "FulfillmentAccepted" -> "订单 " + orderId + " 已接单";
+      case "OrderMealReady", "FulfillmentMealReady" -> "订单 " + orderId + " 已出餐";
+      case "OrderPickedUp", "FulfillmentPickedUp" -> "订单 " + orderId + " 已由骑手取餐";
+      case "OrderDelivered", "FulfillmentDelivered" -> "订单 " + orderId + " 已送达";
+      default -> "订单 " + orderId + " 状态已更新";
     };
   }
 }

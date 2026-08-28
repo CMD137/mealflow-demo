@@ -101,6 +101,10 @@ public class QueueService {
 
   @Transactional
   public QueueApplyResponse apply(QueueApplyRequest request) {
+    QueueApplyResponse recovered = recoverApply(request);
+    if (recovered != null) {
+      return recovered;
+    }
     return idempotentTemplate.execute("queue:apply:" + request.userId() + ":" + request.requestId(), () -> {
       {
         queueMapper.ensureMerchantLimit(request.merchantId(), LocalDateTime.now());
@@ -228,6 +232,25 @@ public class QueueService {
     QueueTicket ticket = requireTicket(ticketId);
     requireTicketOwner(ticket, userId);
     cancelTicket(ticketId);
+  }
+
+  private QueueApplyResponse recoverApply(QueueApplyRequest request) {
+    QueueTicketRow ticketRow = queueMapper.findTicketByRequest(request.userId(), request.requestId());
+    if (ticketRow != null) {
+      QueueTicket ticket = mapTicket(ticketRow);
+      return QueueApplyResponse.queued(ticket.id, ticket.ticketNo, aheadCount(ticket),
+          estimateWaitSeconds(aheadCount(ticket), ticket.merchantId), ticket.expireTime);
+    }
+    CapacityTokenRow tokenRow = queueMapper.findDirectTokenByRequest(request.requestId(), request.merchantId());
+    if (tokenRow != null) {
+      return QueueApplyResponse.ready(tokenRow.getId());
+    }
+    return null;
+  }
+
+  public QueueTicketView activeTicket(long userId) {
+    QueueTicketRow row = queueMapper.findActiveTicketByUser(userId, LocalDateTime.now());
+    return row == null ? null : ticketView(mapTicket(row));
   }
 
   public synchronized QueueTicketView getTicket(long ticketId) {

@@ -65,6 +65,11 @@ public class QueueController {
     return Result.ok(queueService.getTicket(ticketId, RequestIdentity.requireUser(userId)));
   }
 
+  @GetMapping("/tickets/active")
+  public Result<QueueTicketView> activeTicket(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+    return Result.ok(queueService.activeTicket(RequestIdentity.requireUser(userId)));
+  }
+
   @PostMapping("/tickets/{ticketId}/cancel")
   public Result<Void> cancel(@PathVariable long ticketId,
       @RequestHeader(value = "X-User-Id", required = false) Long userId) {

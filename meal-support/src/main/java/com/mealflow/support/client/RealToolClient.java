@@ -82,6 +82,13 @@ public class RealToolClient implements ToolClient {
   }
 
   private ToolInvokeResponse queueStatus(SessionContext session) {
+    JsonNode activeTicket = get(queueBaseUrl + "/queue/tickets/active", session.userId());
+    if (activeTicket != null && !activeTicket.isNull()) {
+      return ToolInvokeResponse.ok("get_queue_status", Map.of(
+          "hasTicket", true,
+          "queueTicketId", activeTicket.path("ticketId").asLong(),
+          "ticket", activeTicket));
+    }
     JsonNode orders = get(orderBaseUrl + "/orders", session.userId());
     JsonNode matched = null;
     if (orders.isArray()) {

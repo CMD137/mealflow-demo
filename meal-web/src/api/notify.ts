@@ -30,6 +30,10 @@ export function myNotifyMessagesApi() {
   return http.get<unknown, MessageView[]>('/notify/messages');
 }
 
+export function merchantNotifyMessagesApi() {
+  return http.get<unknown, MessageView[]>('/notify/merchant/messages');
+}
+
 export function myNotifyDeliveriesApi() {
   return http.get<unknown, DeliveryView[]>('/notify/deliveries');
 }

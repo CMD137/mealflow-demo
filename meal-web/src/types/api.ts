@@ -176,6 +176,8 @@ export interface PaymentView {
 export interface MessageView {
   messageId: number;
   userId: number;
+  recipientType?: 'USER' | 'MERCHANT';
+  recipientId?: number;
   bizType: string;
   content: string;
   createTime?: string;

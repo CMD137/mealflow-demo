@@ -75,6 +75,24 @@ public interface QueueMapper {
       SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
              estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
       FROM queue_ticket
+      WHERE user_id = #{userId} AND status IN ('WAITING', 'READY', 'PROCESSING') AND expire_time > #{now}
+      ORDER BY create_time DESC LIMIT 1
+      """)
+  @ResultMap("ticketMap")
+  QueueTicketRow findActiveTicketByUser(@Param("userId") long userId, @Param("now") LocalDateTime now);
+
+  @Select("""
+      SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
+             estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
+      FROM queue_ticket WHERE user_id = #{userId} AND request_id = #{requestId} ORDER BY id DESC LIMIT 1
+      """)
+  @ResultMap("ticketMap")
+  QueueTicketRow findTicketByRequest(@Param("userId") long userId, @Param("requestId") String requestId);
+
+  @Select("""
+      SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
+             estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
+      FROM queue_ticket
       WHERE status IN ('WAITING', 'READY') AND expire_time <= #{now}
       ORDER BY id
       """)
@@ -132,6 +150,15 @@ public interface QueueMapper {
       @Result(column = "released_capacity_token_id", property = "releasedCapacityTokenId")
   })
   CapacityTokenRow findToken(long id);
+
+  @Select("""
+      SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,
+             released_ticket_id, released_capacity_token_id
+      FROM capacity_token WHERE request_id = #{requestId} AND merchant_id = #{merchantId} AND ticket_id IS NULL
+      ORDER BY id DESC LIMIT 1
+      """)
+  @ResultMap("tokenMap")
+  CapacityTokenRow findDirectTokenByRequest(@Param("requestId") String requestId, @Param("merchantId") long merchantId);
 
   @Select("""
       SELECT id, request_id, merchant_id, ticket_id, order_id, status, expire_time, release_reason,

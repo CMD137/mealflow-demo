@@ -5,6 +5,8 @@ import java.time.LocalDateTime;
 public class NotifyMessageRow {
   private long id;
   private long userId;
+  private String recipientType;
+  private long recipientId;
   private String bizType;
   private String content;
   private LocalDateTime createTime;
@@ -24,6 +26,11 @@ public class NotifyMessageRow {
   public void setUserId(long userId) {
     this.userId = userId;
   }
+
+  public String getRecipientType() { return recipientType; }
+  public void setRecipientType(String recipientType) { this.recipientType = recipientType; }
+  public long getRecipientId() { return recipientId; }
+  public void setRecipientId(long recipientId) { this.recipientId = recipientId; }
 
   public String getBizType() {
     return bizType;

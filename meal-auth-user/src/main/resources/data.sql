@@ -10,7 +10,8 @@ VALUES
 INSERT IGNORE INTO user_address (id, user_id, contact_name, contact_phone, detail, is_default, create_time, update_time)
 VALUES
   (20, 100, 'Demo Contact', '13800000000', 'Tech Park Building 1', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  (21, 101, 'Queue Contact', '13800000001', 'Startup Road No.2', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+  (21, 101, 'Queue Contact', '13800000001', 'Startup Road No.2', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (22, 102, 'Queue Contact B', '13800000002', 'Innovation Avenue No.3', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 INSERT IGNORE INTO merchant_employee (id, merchant_id, user_id, role_code, status, create_time, update_time)
 VALUES

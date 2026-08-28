@@ -1,8 +1,12 @@
+x-service-timezone: &service-timezone
+  TZ: Asia/Shanghai
+
 services:
   nacos:
     image: nacos/nacos-server:v2.3.2
     container_name: mealflow-nacos
     environment:
+      <<: *service-timezone
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
     networks: [private]
@@ -11,8 +15,10 @@ services:
     image: mysql:8.0
     container_name: mealflow-mysql
     environment:
+      <<: *service-timezone
       MYSQL_ROOT_PASSWORD: mealflow
       MYSQL_DATABASE: mealflow
+    command: ["mysqld", "--default-time-zone=+08:00"]
     networks: [private]
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
@@ -25,6 +31,7 @@ services:
   redis:
     image: redis:7
     container_name: mealflow-redis
+    environment: *service-timezone
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
@@ -33,6 +40,7 @@ services:
   rocketmq-namesrv:
     image: apache/rocketmq:5.2.0
     container_name: mealflow-rocketmq-namesrv
+    environment: *service-timezone
     command: sh mqnamesrv
     networks: [private]
 
@@ -42,6 +50,7 @@ services:
     depends_on:
       - rocketmq-namesrv
     environment:
+      <<: *service-timezone
       NAMESRV_ADDR: rocketmq-namesrv:9876
     command: sh mqbroker -n rocketmq-namesrv:9876
     networks: [private]
@@ -63,6 +72,7 @@ services:
       redis:
         condition: service_started
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       AUTH_USER_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -75,7 +85,7 @@ services:
       REDIS_PORT: 6379
     volumes:
       - ./meal-auth-user/target/meal-auth-user-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx256m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-merchant:
@@ -93,6 +103,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       MERCHANT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -101,7 +112,7 @@ services:
       MERCHANT_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-merchant/target/meal-merchant-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx256m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-catalog:
@@ -120,6 +131,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       CATALOG_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -138,7 +150,7 @@ services:
     volumes:
       - ./meal-catalog/target/meal-catalog-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
       - ./uploads/catalog:/app/uploads/catalog
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx256m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-cart:
@@ -156,6 +168,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       CART_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -164,7 +177,7 @@ services:
       CART_DB_DRIVER: com.mysql.cj.jdbc.Driver
     volumes:
       - ./meal-cart/target/meal-cart-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx256m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-order:
@@ -190,6 +203,7 @@ services:
       rocketmq-broker:
         condition: service_started
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       ORDER_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -200,6 +214,7 @@ services:
       MEAL_PROMOTION_URI: http://meal-promotion
       MEAL_QUEUE_URI: http://meal-queue
       MEAL_PAYMENT_URI: http://meal-payment
+      MEAL_MERCHANT_URI: http://meal-merchant
       OUTBOX_PUBLISHER: rocketmq
       OUTBOX_TOPIC: mealflow-order-events
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
@@ -210,7 +225,7 @@ services:
       PAYMENT_EVENT_MAX_RECONSUME_TIMES: 5
     volumes:
       - ./meal-order/target/meal-order-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx384m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-queue:
@@ -230,6 +245,7 @@ services:
       redis:
         condition: service_started
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       QUEUE_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -243,7 +259,7 @@ services:
       REDIS_PORT: 6379
     volumes:
       - ./meal-queue/target/meal-queue-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx384m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-promotion:
@@ -265,7 +281,7 @@ services:
       rocketmq-broker:
         condition: service_started
     environment:
-      TZ: Asia/Hong_Kong
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       PROMOTION_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -283,7 +299,7 @@ services:
       PROMOTION_PENDING_RECOVERY_ENABLED: "true"
     volumes:
       - ./meal-promotion/target/meal-promotion-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx384m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-payment:
@@ -303,6 +319,7 @@ services:
       rocketmq-broker:
         condition: service_started
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       PAYMENT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -324,7 +341,7 @@ services:
       SPRING_CLOUD_INETUTILS_PREFERRED_NETWORKS: "10.200"
     volumes:
       - ./meal-payment/target/meal-payment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx384m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private, edge]
 
   meal-fulfillment:
@@ -346,6 +363,7 @@ services:
       rocketmq-broker:
         condition: service_started
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       FULFILLMENT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -360,7 +378,7 @@ services:
       ROCKETMQ_PRODUCER_GROUP: mealflow-fulfillment-producer
     volumes:
       - ./meal-fulfillment/target/meal-fulfillment-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx384m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-notify:
@@ -380,6 +398,7 @@ services:
       rocketmq-broker:
         condition: service_started
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       NOTIFY_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -393,7 +412,7 @@ services:
       NOTIFY_EVENT_MAX_RECONSUME_TIMES: 5
     volumes:
       - ./meal-notify/target/meal-notify-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx256m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-support:
@@ -411,6 +430,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       SUPPORT_DB_URL: jdbc:mysql://mysql:3306/mealflow?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -431,7 +451,7 @@ services:
       AGENT_RUNTIME_BASE_URL: ${AGENT_RUNTIME_BASE_URL:-http://meal-support-agent-runtime:8090}
     volumes:
       - ./meal-support/target/meal-support-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx256m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     networks: [private]
 
   meal-support-agent-runtime:
@@ -450,6 +470,7 @@ services:
       meal-support:
         condition: service_started
     environment:
+      <<: *service-timezone
       # The Java bridge is the ONLY outbound exit; both directions use compose DNS names.
       SUPPORT_BRIDGE_URL: http://meal-support:8111
       REDIS_URL: redis://redis:6379/0
@@ -503,12 +524,13 @@ services:
       meal-support:
         condition: service_healthy
     environment:
+      <<: *service-timezone
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY_ENABLED: "true"
       MEAL_AUTH_USER_URI: http://meal-auth-user:8101
     volumes:
       - ./meal-gateway/target/meal-gateway-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
-    command: ["java", "-jar", "/app/app.jar"]
+    command: ["java", "-Xmx512m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
     ports:
       - "8080:8080"
     networks: [edge, private]
@@ -526,6 +548,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: mealflow-prometheus
+    profiles: [observability]
     depends_on:
       - meal-gateway
       - meal-auth-user
@@ -550,6 +573,7 @@ services:
   grafana:
     image: grafana/grafana:11.2.0
     container_name: mealflow-grafana
+    profiles: [observability]
     depends_on:
       - prometheus
     environment:

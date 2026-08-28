@@ -59,6 +59,15 @@ public class OrderController {
     return Result.ok();
   }
 
+  @PostMapping("/admin/{orderId}/cancel")
+  public Result<Void> merchantCancel(@PathVariable long orderId,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+      @Valid @RequestBody CancelOrderRequest request) {
+    requireMerchantOrder(orderId, RequestIdentity.requireMerchant(merchantId));
+    orderService.cancel(orderId, request.reason());
+    return Result.ok();
+  }
+
   @PostMapping("/{orderId}/merchant-accept")
   public Result<OrderView> merchantAccept(@PathVariable long orderId,
       @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {

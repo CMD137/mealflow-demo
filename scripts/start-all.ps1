@@ -1,6 +1,7 @@
 param(
   [switch]$SkipPackage,
-  [switch]$Stop
+  [switch]$Stop,
+  [switch]$Observability
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,7 +29,11 @@ try {
   }
 
   Write-Host "Starting backend Docker services..."
-  docker compose up -d
+  if ($Observability) {
+    docker compose --profile observability up -d
+  } else {
+    docker compose up -d
+  }
 
   Write-Host "Starting frontend services..."
   & $frontendScript
@@ -38,11 +43,16 @@ try {
   Write-Host "Gateway:    http://localhost:8080/ping"
   Write-Host "Admin web:  http://localhost:5173/"
   Write-Host "User H5:    http://localhost:5174/"
-  Write-Host "Prometheus: http://localhost:9090/"
-  Write-Host "Grafana:    http://localhost:3000/  admin / mealflow"
+  if ($Observability) {
+    Write-Host "Prometheus: http://localhost:9090/"
+    Write-Host "Grafana:    http://localhost:3000/  admin / mealflow"
+  } else {
+    Write-Host "Monitoring is disabled. Start with -Observability to enable Prometheus and Grafana."
+  }
   Write-Host ""
   Write-Host "Stop all services with: .\start-all.cmd -Stop"
   Write-Host "Skip backend package with: .\start-all.cmd -SkipPackage"
+  Write-Host "Enable monitoring with: .\start-all.cmd -Observability"
 } finally {
   Pop-Location
 }

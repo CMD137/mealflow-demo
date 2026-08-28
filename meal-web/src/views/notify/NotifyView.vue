@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus';
 import {
   myNotifyDeliveriesApi,
   myNotifyMessagesApi,
+  merchantNotifyMessagesApi,
   notifyConsumerRecordsApi,
   notifyDeliveriesApi,
   notifyMessagesApi,
@@ -29,7 +30,7 @@ async function load() {
     const [messageData, deliveryData] = await Promise.all(
       isOps
         ? [notifyMessagesApi(), notifyDeliveriesApi()]
-        : [myNotifyMessagesApi(), myNotifyDeliveriesApi()]
+        : [auth.merchantId ? merchantNotifyMessagesApi() : myNotifyMessagesApi(), myNotifyDeliveriesApi()]
     );
     messages.value = messageData;
     deliveries.value = deliveryData;

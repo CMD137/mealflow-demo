@@ -1,31 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { adminSkusApi } from '@/api/catalog';
-import { adminOrdersApi, cancelOrderApi, submitOrderApi } from '@/api/orders';
+import { adminOrdersApi, merchantCancelOrderApi } from '@/api/orders';
 import { useAuthStore } from '@/stores/auth';
-import type { OrderSkuItem, OrderView, SkuView, SubmitOrderResponse } from '@/types/api';
+import type { OrderView } from '@/types/api';
 import { formatMoney, statusType } from '@/utils/format';
 
 const auth = useAuthStore();
 const loading = ref(false);
-const submitLoading = ref(false);
-const dialogVisible = ref(false);
 const rows = ref<OrderView[]>([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = ref(20);
-const skus = ref<SkuView[]>([]);
 const selected = ref<OrderView | null>(null);
-const submitResult = ref<SubmitOrderResponse | null>(null);
 const filters = reactive({ merchantId: auth.merchantId, userId: undefined as number | undefined, status: '' });
-const orderForm = reactive({
-  remark: '',
-  userVoucherId: undefined as number | undefined,
-  items: [{ skuId: 0, quantity: 1 }] as OrderSkuItem[]
-});
-
-const availableSkus = computed(() => skus.value.filter((sku) => sku.status === 'ON_SHELF'));
 
 async function load() {
   if (!filters.merchantId && auth.merchantId) {
@@ -33,19 +21,15 @@ async function load() {
   }
   loading.value = true;
   try {
-    const [orderData, skuData] = await Promise.all([
-      adminOrdersApi({
+    const orderData = await adminOrdersApi({
         merchantId: filters.merchantId,
         userId: filters.userId,
         status: filters.status || undefined,
         page: page.value,
         pageSize: pageSize.value
-      }),
-      adminSkusApi({ page: 1, pageSize: 100 })
-    ]);
+      });
     rows.value = orderData.items;
     total.value = orderData.total;
-    skus.value = skuData.items;
   } finally {
     loading.value = false;
   }
@@ -61,64 +45,9 @@ function handleQuery() {
   load();
 }
 
-function openCreate() {
-  if (!filters.merchantId) {
-    ElMessage.warning('当前登录账号未绑定商家，无法创建订单');
-    return;
-  }
-  submitResult.value = null;
-  orderForm.remark = '';
-  orderForm.userVoucherId = undefined;
-  orderForm.items = [{ skuId: availableSkus.value[0]?.skuId || 0, quantity: 1 }];
-  dialogVisible.value = true;
-}
-
-function addItem() {
-  orderForm.items.push({ skuId: availableSkus.value[0]?.skuId || 0, quantity: 1 });
-}
-
-function removeItem(index: number) {
-  if (orderForm.items.length > 1) {
-    orderForm.items.splice(index, 1);
-  }
-}
-
-async function submitDemoOrder() {
-  const merchantId = filters.merchantId;
-  if (!merchantId) {
-    ElMessage.warning('当前登录账号未绑定商家，无法创建订单');
-    return;
-  }
-  const items = orderForm.items.filter((item) => item.skuId && item.quantity > 0);
-  if (!items.length) {
-    ElMessage.warning('请至少选择一个商品');
-    return;
-  }
-  submitLoading.value = true;
-  try {
-    submitResult.value = await submitOrderApi({
-      requestId: `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      merchantId,
-      items,
-      userVoucherId: orderForm.userVoucherId || null,
-      remark: orderForm.remark
-    });
-    if (submitResult.value.mode === 'ORDER_CREATED') {
-      ElMessage.success(`订单已创建：${submitResult.value.orderId}`);
-      dialogVisible.value = false;
-      load();
-    } else {
-      ElMessage.warning(`订单进入排队：${submitResult.value.ticketNo}`);
-      load();
-    }
-  } finally {
-    submitLoading.value = false;
-  }
-}
-
 async function cancel(row: OrderView) {
   await ElMessageBox.confirm(`确认取消订单 ${row.orderId}？`, '取消订单', { type: 'warning' });
-  await cancelOrderApi(row.orderId, '商家后台取消');
+  await merchantCancelOrderApi(row.orderId, '商家后台取消');
   ElMessage.success('订单已取消');
   load();
 }
@@ -131,11 +60,10 @@ onMounted(load);
     <div class="page-header">
       <div>
         <h2 class="page-title">订单管理</h2>
-        <p class="page-subtitle">查询订单、创建演示订单、取消订单和查看排队关联。</p>
+        <p class="page-subtitle">查询订单、取消订单和查看排队关联。</p>
       </div>
       <div class="action-bar">
         <el-button @click="load" :loading="loading">刷新</el-button>
-        <el-button type="primary" @click="openCreate">创建演示订单</el-button>
       </div>
     </div>
 
@@ -210,49 +138,6 @@ onMounted(load);
       </el-table>
     </el-drawer>
 
-    <el-dialog v-model="dialogVisible" title="创建演示订单" width="700px">
-      <el-alert
-        title="用于演示下单与排队链路：选择已上架商品并提交订单；顾客需在用户端跳转支付。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <el-form :model="orderForm" label-width="96px" class="order-form">
-        <el-form-item label="商品">
-          <div class="order-items">
-            <div v-for="(item, index) in orderForm.items" :key="index" class="order-item-row">
-              <el-select v-model="item.skuId" filterable placeholder="选择 SKU">
-                <el-option
-                  v-for="sku in availableSkus"
-                  :key="sku.skuId"
-                  :label="`${sku.name} / ${formatMoney(sku.priceCent)} / 库存 ${sku.stock}`"
-                  :value="sku.skuId"
-                />
-              </el-select>
-              <el-input-number v-model="item.quantity" :min="1" :max="99" />
-              <el-button :disabled="orderForm.items.length === 1" @click="removeItem(index)">删除</el-button>
-            </div>
-            <el-button @click="addItem">添加商品</el-button>
-          </div>
-        </el-form-item>
-        <el-form-item label="用户券 ID">
-          <el-input-number v-model="orderForm.userVoucherId" :min="1" controls-position="right" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="orderForm.remark" type="textarea" :rows="2" />
-        </el-form-item>
-      </el-form>
-      <el-result
-        v-if="submitResult?.mode === 'QUEUED'"
-        icon="warning"
-        title="订单已进入排队"
-        :sub-title="`ticket: ${submitResult.ticketNo}，前方 ${submitResult.aheadCount} 单，预计等待 ${submitResult.estimatedWaitSeconds} 秒`"
-      />
-      <template #footer>
-        <el-button @click="dialogVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="submitDemoOrder">提交订单</el-button>
-      </template>
-    </el-dialog>
   </section>
 </template>
 
@@ -263,21 +148,4 @@ onMounted(load);
   padding-top: 14px;
 }
 
-.order-form {
-  margin-top: 16px;
-}
-
-.order-items {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.order-item-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 72px;
-  gap: 8px;
-  width: 100%;
-}
 </style>

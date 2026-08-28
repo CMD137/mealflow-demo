@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { merchantsApi, updateBusinessStatusApi, updateCapacityApi } from '@/api/merchant';
-import { queueMetricsApi, setQueueLimitApi } from '@/api/queue';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
@@ -11,9 +10,10 @@ const form = reactive({
   merchantId: auth.merchantId,
   baseCapacity: 1,
   manualFactor: 1,
-  queueLimit: 20,
   businessStatus: 'OPEN'
 });
+
+const effectiveCapacity = computed(() => Math.max(1, Math.round(form.baseCapacity * form.manualFactor)));
 
 async function load() {
   const merchantId = auth.merchantId;
@@ -22,19 +22,13 @@ async function load() {
   }
   loading.value = true;
   try {
-    const [merchants, metrics] = await Promise.all([
-      merchantsApi(),
-      queueMetricsApi(merchantId).catch(() => null)
-    ]);
+    const merchants = await merchantsApi();
     const merchant = merchants.find((item) => item.merchantId === merchantId);
     if (merchant) {
       form.merchantId = merchant.merchantId;
       form.baseCapacity = merchant.baseCapacity;
       form.manualFactor = merchant.manualFactor;
       form.businessStatus = merchant.businessStatus;
-    }
-    if (metrics && typeof metrics.limit === 'number') {
-      form.queueLimit = metrics.limit;
     }
   } finally {
     loading.value = false;
@@ -51,7 +45,6 @@ async function save() {
   try {
     await updateCapacityApi(merchantId, form.baseCapacity, form.manualFactor);
     await updateBusinessStatusApi(merchantId, form.businessStatus);
-    await setQueueLimitApi(merchantId, form.queueLimit);
     ElMessage.success('产能配置已保存');
   } finally {
     loading.value = false;
@@ -66,7 +59,7 @@ onMounted(load);
     <div class="page-header">
       <div>
         <h2 class="page-title">产能配置</h2>
-        <p class="page-subtitle">调整商家并发接单容量、排队上限和营业状态。</p>
+        <p class="page-subtitle">调整商家基础产能、人工系数和营业状态。</p>
       </div>
     </div>
     <div class="content-panel">
@@ -74,7 +67,7 @@ onMounted(load);
         <el-form-item label="商家 ID"><el-input-number v-model="form.merchantId" :min="1" /></el-form-item>
         <el-form-item label="基础产能"><el-input-number v-model="form.baseCapacity" :min="1" /></el-form-item>
         <el-form-item label="人工系数"><el-input-number v-model="form.manualFactor" :min="0.1" :step="0.1" /></el-form-item>
-        <el-form-item label="排队上限"><el-input-number v-model="form.queueLimit" :min="0" /></el-form-item>
+        <el-form-item label="当前并发接单容量"><el-input :model-value="String(effectiveCapacity)" disabled /></el-form-item>
         <el-form-item label="营业状态">
           <el-select v-model="form.businessStatus">
             <el-option label="营业中" value="OPEN" />
