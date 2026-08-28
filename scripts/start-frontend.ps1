@@ -41,7 +41,13 @@ function Stop-Frontend($app) {
     return
   }
 
-  $processId = (Get-Content $pidFile -Raw).Trim()
+  $raw = Get-Content $pidFile -Raw
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    Write-Host "$($app.DisplayName) pid file is empty, cleaning up."
+    Remove-Item $pidFile -Force
+    return
+  }
+  $processId = $raw.Trim()
   if (Test-ProcessRunning $processId) {
     taskkill.exe /PID $processId /T /F | Out-Null
     Write-Host "Stopped $($app.DisplayName)."
