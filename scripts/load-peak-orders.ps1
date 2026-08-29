@@ -77,11 +77,15 @@ $jobs = for ($i = 1; $i -le $Users; $i++) {
         password = "123456"
       }).data
       $headers = @{ Authorization = "Bearer $($login.token)" }
+      $addresses = (Invoke-Json -Method GET -Path "/auth/addresses" -Headers $headers).data
+      $address = @($addresses | Where-Object { $_.defaultAddress } | Select-Object -First 1)
+      if ($address.Count -eq 0) { $address = @($addresses | Select-Object -First 1) }
+      if ($address.Count -eq 0) { throw "load user has no delivery address" }
       $skuId = if (($UserNo % 2) -eq 0) { 2 } else { 1 }
       $submit = Invoke-Json -Method POST -Path "/orders/submit" -Headers $headers -Body @{
         requestId = "load-order-$Stamp-$UserNo"
         merchantId = $MerchantId
-        addressId = 20
+        addressId = $address[0].addressId
         items = @(@{ skuId = $skuId; quantity = 1 })
         remark = "load-peak-orders"
       }

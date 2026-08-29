@@ -35,7 +35,11 @@ function Invoke-MealFlow {
       $response = Invoke-RestMethod @params
       break
     } catch {
-      if ($attempts -ge 12) {
+      $statusCode = $null
+      if ($_.Exception.Response) {
+        $statusCode = [int]$_.Exception.Response.StatusCode
+      }
+      if ($attempts -ge 12 -or ($null -ne $statusCode -and $statusCode -notin 502, 503, 504)) {
         throw
       }
       Start-Sleep -Seconds 5
@@ -177,6 +181,18 @@ $secondUserHeaders = New-AuthHeaders -Token $secondUserLogin.token
 $seckillHeaders = New-AuthHeaders -Token $seckillLogin.token
 Assert-True ($adminLogin.roleCode -eq "MERCHANT_ADMIN") "Expected demo admin to have merchant admin role"
 
+function Resolve-TestAddressId {
+  param([hashtable]$Headers, [string]$UserLabel)
+  $addresses = (Invoke-MealFlow -Method GET -Path "/auth/addresses" -Headers $Headers).data
+  $address = @($addresses | Where-Object { $_.defaultAddress } | Select-Object -First 1)
+  if ($address.Count -eq 0) { $address = @($addresses | Select-Object -First 1) }
+  if ($address.Count -eq 0) { throw "测试用户 $UserLabel 缺少收货地址" }
+  return [long]$address[0].addressId
+}
+
+$firstAddressId = Resolve-TestAddressId -Headers $firstUserHeaders -UserLabel "101"
+$secondAddressId = Resolve-TestAddressId -Headers $secondUserHeaders -UserLabel "102"
+
 Step "creating an isolated seckill voucher"
 $testVoucher = (Invoke-MealFlow -Method POST -Path "/vouchers/admin" -Headers $adminHeaders -Body @{
   name = "E2E秒杀券-$stamp"
@@ -233,7 +249,7 @@ $secondRequestId = "e2e-submit-second-$stamp"
 $firstOrderBody = @{
   requestId = $firstRequestId
   merchantId = 10
-  addressId = 20
+  addressId = $firstAddressId
   items = @(@{ skuId = 1; quantity = 1 })
   remark = "e2e-first"
 }
@@ -241,7 +257,7 @@ $firstOrderBody = @{
 $secondOrderBody = @{
   requestId = $secondRequestId
   merchantId = 10
-  addressId = 22
+  addressId = $secondAddressId
   items = @(@{ skuId = 2; quantity = 1 })
   remark = "e2e-second"
 }

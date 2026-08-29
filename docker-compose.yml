@@ -297,6 +297,7 @@ services:
       SECKILL_EVENT_TOPICS: mealflow-seckill-commands
       SECKILL_EVENT_MAX_RECONSUME_TIMES: 5
       PROMOTION_PENDING_RECOVERY_ENABLED: "true"
+      SECKILL_BOOTSTRAP_ENABLED: "true"
     volumes:
       - ./meal-promotion/target/meal-promotion-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-Xmx384m", "-Duser.timezone=Asia/Shanghai", "-jar", "/app/app.jar"]
