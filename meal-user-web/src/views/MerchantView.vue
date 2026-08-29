@@ -21,6 +21,7 @@ const categories = ref<CategoryView[]>([]);
 const skus = ref<SkuView[]>([]);
 const toast = ref('');
 const conflictSku = ref<SkuView | null>(null);
+const replacingCart = ref(false);
 
 const visibleSkus = computed(() => {
   const onshelf = availableSkus(skus.value);
@@ -62,10 +63,18 @@ async function addSku(sku: SkuView) {
 async function replaceCartAndAdd() {
   const sku = conflictSku.value;
   if (!sku) return;
-  await cart.clear();
-  await cart.add(merchantId, sku.skuId, 1);
-  conflictSku.value = null;
-  showToast(`已切换商户并加入 ${sku.name}`);
+  replacingCart.value = true;
+  try {
+    await cart.clear();
+    await cart.add(merchantId, sku.skuId, 1);
+    conflictSku.value = null;
+    showToast(`已切换商户并加入 ${sku.name}`);
+  } catch (error) {
+    await cart.load();
+    showToast(`原购物车已清空，但新商品添加失败：${(error as Error).message || '请重试'}`);
+  } finally {
+    replacingCart.value = false;
+  }
 }
 
 async function decreaseSku(sku: SkuView) {
@@ -92,8 +101,10 @@ onMounted(load);
       <strong>购物车已有其他商户商品</strong>
       <p>清空现有商品后加入“{{ conflictSku.name }}”吗？</p>
       <div class="conflict-actions">
-        <button class="ghost-button" @click="conflictSku = null">取消</button>
-        <button class="primary-button" @click="replaceCartAndAdd">清空后添加</button>
+        <button class="ghost-button" :disabled="replacingCart" @click="conflictSku = null">取消</button>
+        <button class="primary-button" :disabled="replacingCart" @click="replaceCartAndAdd">
+          {{ replacingCart ? '处理中…' : '清空后添加' }}
+        </button>
       </div>
     </section>
 
