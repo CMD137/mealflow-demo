@@ -1,6 +1,7 @@
 param(
   [string]$BaseUrl = "http://localhost:8080",
-  [int]$TimeoutSec = 10
+  [int]$TimeoutSec = 10,
+  [string]$InternalSecret = "mealflow-dev-internal-secret"
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,6 +44,63 @@ function Invoke-MealFlow {
 
   if ($null -ne $response.success -and -not $response.success) {
     throw "Request failed: $Method $Path code=$($response.code) message=$($response.message)"
+  }
+  return $response
+}
+
+function Invoke-MealFlowInternal {
+  param(
+    [ValidateSet("GET", "POST")]
+    [string]$Method,
+    [ValidateSet("meal-queue", "meal-payment")]
+    [string]$Service,
+    [int]$Port,
+    [string]$Path,
+    [object]$Body = $null
+  )
+
+  $bodyJson = if ($null -eq $Body) { "" } else { $Body | ConvertTo-Json -Depth 20 -Compress }
+  $bodyBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bodyJson))
+  $python = @'
+import base64, hashlib, hmac, json, os, time, urllib.error, urllib.request, uuid
+method = os.environ["MF_METHOD"]
+service = os.environ["MF_SERVICE"]
+port = os.environ["MF_PORT"]
+path = os.environ["MF_PATH"]
+secret = os.environ["MF_SECRET"]
+body = base64.b64decode(os.environ["MF_BODY_B64"])
+timestamp = str(int(time.time() * 1000))
+nonce = uuid.uuid4().hex
+canonical = "\n".join(["mealflow-e2e", method, path, "", timestamp, nonce])
+signature = hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+headers = {
+    "X-Internal-Service": "mealflow-e2e",
+    "X-Internal-Timestamp": timestamp,
+    "X-Internal-Nonce": nonce,
+    "X-Internal-Signature": signature,
+    "Accept": "application/json",
+}
+if body:
+    headers["Content-Type"] = "application/json"
+request = urllib.request.Request("http://" + service + ":" + port + path, data=body or None,
+    headers=headers, method=method)
+try:
+    with urllib.request.urlopen(request, timeout=20) as response:
+        print(response.read().decode())
+except urllib.error.HTTPError as error:
+    print(error.read().decode())
+'@
+  $output = & docker compose exec -T `
+    -e "MF_METHOD=$Method" `
+    -e "MF_SERVICE=$Service" `
+    -e "MF_PORT=$Port" `
+    -e "MF_PATH=$Path" `
+    -e "MF_SECRET=$InternalSecret" `
+    -e "MF_BODY_B64=$bodyBase64" `
+    meal-support-agent-runtime python -c $python
+  $response = $output | ConvertFrom-Json
+  if ($null -ne $response.success -and -not $response.success) {
+    throw "Internal request failed: $Method $Path code=$($response.code) message=$($response.message)"
   }
   return $response
 }
@@ -150,26 +208,24 @@ Assert-True ($claimedVoucher.Count -ge 1) "Claimed voucher was not found in wall
 
 Step "forcing merchant 10 capacity to 1"
 for ($resetRound = 1; $resetRound -le 20; $resetRound++) {
-  $tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens" -Headers $adminHeaders).data
+  $tokens = (Invoke-MealFlowInternal -Method GET -Service meal-queue -Port 8106 -Path "/queue/internal/capacity/tokens").data
   $heldTokens = @($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" })
   if ($heldTokens.Count -eq 0) {
     break
   }
   $heldTokens | ForEach-Object {
-    Invoke-MealFlow -Method POST -Path "/queue/internal/capacity/$($_.capacityTokenId)/release" -Body @{
+    Invoke-MealFlowInternal -Method POST -Service meal-queue -Port 8106 -Path "/queue/internal/capacity/$($_.capacityTokenId)/release" -Body @{
       requestId = "e2e-reset-$stamp-$resetRound-$($_.capacityTokenId)"
       reason = "E2E_RESET"
     } -Headers $adminHeaders | Out-Null
   }
 }
-$tokens = (Invoke-MealFlow -Method GET -Path "/queue/internal/capacity/tokens" -Headers $adminHeaders).data
+$tokens = (Invoke-MealFlowInternal -Method GET -Service meal-queue -Port 8106 -Path "/queue/internal/capacity/tokens").data
 $heldTokens = @($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" })
 if ($heldTokens.Count -gt 0) {
   throw "Unable to reset merchant 10 held capacity tokens"
 }
-Invoke-MealFlow -Method POST -Path "/queue/merchants/10/limit" -Body @{ limit = 1 } -Headers $adminHeaders | Out-Null
-$metrics = (Invoke-MealFlow -Method GET -Path "/queue/merchants/10/metrics" -Headers $adminHeaders).data
-Assert-True ([int]$metrics.limit -eq 1) "Merchant queue limit was not updated"
+Invoke-MealFlow -Method POST -Path "/merchants/10/capacity" -Body @{ baseCapacity = 1; manualFactor = 1 } -Headers $adminHeaders | Out-Null
 
 $firstRequestId = "e2e-submit-first-$stamp"
 $secondRequestId = "e2e-submit-second-$stamp"
@@ -202,8 +258,8 @@ Assert-True ($secondSubmit.mode -eq "QUEUED") "Second order should be queued"
 Assert-True ($null -ne $secondSubmit.ticketId) "Queued ticketId is missing"
 
 Step "mocking payment and waiting for payment event consumption"
-Invoke-MealFlow -Method POST -Path "/payments/internal/$($firstSubmit.payOrderId)/mock-pay" -Headers $adminHeaders | Out-Null
-Invoke-MealFlow -Method POST -Path "/payments/internal/events/dispatch" -Headers $adminHeaders | Out-Null
+Invoke-MealFlowInternal -Method POST -Service meal-payment -Port 8108 -Path "/payments/internal/$($firstSubmit.payOrderId)/mock-pay" | Out-Null
+Invoke-MealFlowInternal -Method POST -Service meal-payment -Port 8108 -Path "/payments/internal/events/dispatch" | Out-Null
 for ($paidAttempt = 1; $paidAttempt -le 24; $paidAttempt++) {
   $paidOrder = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)" -Headers $firstUserHeaders).data
   if ($paidOrder.status -eq "WAIT_MERCHANT_ACCEPT") {
