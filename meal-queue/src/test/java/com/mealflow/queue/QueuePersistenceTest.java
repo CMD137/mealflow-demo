@@ -37,9 +37,9 @@ class QueuePersistenceTest {
         "Queue Road 1"
     );
     QueueApplyResponse first = queueService.apply(new QueueApplyRequest("queue-test-1", 1L, 10L, snapshot,
-        LocalDateTime.now().plusMinutes(10), 0));
+        LocalDateTime.now().plusMinutes(10), 0, 1));
     QueueApplyResponse second = queueService.apply(new QueueApplyRequest("queue-test-2", 2L, 10L, snapshot,
-        LocalDateTime.now().plusMinutes(10), 0));
+        LocalDateTime.now().plusMinutes(10), 0, 1));
 
     assertThat(first.result()).isEqualTo("READY");
     assertThat(second.result()).isEqualTo("QUEUED");

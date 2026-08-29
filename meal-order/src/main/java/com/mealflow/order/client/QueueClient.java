@@ -74,7 +74,7 @@ public class QueueClient {
   }
 
   public record QueueApplyRequest(String requestId, long userId, long merchantId, QueueTicketSnapshot snapshot,
-                                  LocalDateTime expireTime, long priorityWeightMillis) {
+                                  LocalDateTime expireTime, long priorityWeightMillis, int effectiveCapacity) {
   }
 
   public record QueueApplyResponse(String result, Long capacityTokenId, Long ticketId, String ticketNo, int aheadCount,

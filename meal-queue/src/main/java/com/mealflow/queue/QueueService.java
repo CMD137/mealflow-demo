@@ -107,7 +107,9 @@ public class QueueService {
     }
     return idempotentTemplate.execute("queue:apply:" + request.userId() + ":" + request.requestId(), () -> {
       {
-        queueMapper.ensureMerchantLimit(request.merchantId(), LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        queueMapper.ensureMerchantLimit(request.merchantId(), now);
+        queueMapper.updateMerchantLimit(request.merchantId(), Math.max(1, request.effectiveCapacity()), now);
         if (queueMapper.tryAcquireCapacity(request.merchantId()) == 1) {
           CapacityToken token = createToken(request.requestId(), request.merchantId(), null, request.expireTime());
           return QueueApplyResponse.ready(token.id);
@@ -158,6 +160,11 @@ public class QueueService {
         updateTicketStatus(ticket.id, QueueTicketStatus.TIMEOUT, null, null, null);
         maybeWaiting = waitingQueueStore.poll(token.merchantId);
         continue;
+      }
+      if (queueMapper.tryAcquireCapacity(ticket.merchantId) != 1) {
+        waitingQueueStore.add(ticket.merchantId,
+            new WaitingTicketEntry(ticket.merchantId, ticket.id, ticket.ticketNo, ticket.score));
+        break;
       }
       CapacityToken nextToken = createToken("ticket-ready:" + ticket.id, ticket.merchantId, ticket.id,
           ticket.expireTime);
@@ -235,13 +242,14 @@ public class QueueService {
   }
 
   private QueueApplyResponse recoverApply(QueueApplyRequest request) {
-    QueueTicketRow ticketRow = queueMapper.findTicketByRequest(request.userId(), request.requestId());
+    LocalDateTime now = LocalDateTime.now();
+    QueueTicketRow ticketRow = queueMapper.findTicketByRequest(request.userId(), request.requestId(), now);
     if (ticketRow != null) {
       QueueTicket ticket = mapTicket(ticketRow);
       return QueueApplyResponse.queued(ticket.id, ticket.ticketNo, aheadCount(ticket),
           estimateWaitSeconds(aheadCount(ticket), ticket.merchantId), ticket.expireTime);
     }
-    CapacityTokenRow tokenRow = queueMapper.findDirectTokenByRequest(request.requestId(), request.merchantId());
+    CapacityTokenRow tokenRow = queueMapper.findDirectTokenByRequest(request.requestId(), request.merchantId(), now);
     if (tokenRow != null) {
       return QueueApplyResponse.ready(tokenRow.getId());
     }

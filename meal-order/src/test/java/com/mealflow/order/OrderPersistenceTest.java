@@ -73,6 +73,8 @@ class OrderPersistenceTest {
   void mockAddress() {
     when(authUserClient.address(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong()))
         .thenReturn(new AuthUserClient.AddressView(20L, 101L, "Test User", "13800000000", "Test Road 1", true));
+    when(merchantClient.requireAcceptingOrders(org.mockito.ArgumentMatchers.anyLong()))
+        .thenReturn(new MerchantClient.MerchantView(10L, "Test Merchant", "OPEN", 1, 1));
   }
 
   @Test

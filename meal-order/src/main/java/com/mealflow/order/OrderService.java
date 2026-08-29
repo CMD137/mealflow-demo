@@ -99,7 +99,8 @@ public class OrderService {
       if (request.addressId() == null) {
         throw new BizException(ErrorCode.BAD_REQUEST, "delivery address is required");
       }
-      merchantClient.requireAcceptingOrders(request.merchantId());
+      MerchantClient.MerchantView merchant = merchantClient.requireAcceptingOrders(request.merchantId());
+      int effectiveCapacity = Math.max(1, (int) Math.round(merchant.baseCapacity() * merchant.manualFactor()));
       AuthUserClient.AddressView address = authUserClient.address(userId, request.addressId());
       List<OrderItemSnapshot> snapshots = catalogClient.snapshots(request.merchantId(), items);
       int originAmount = snapshots.stream().mapToInt(OrderItemSnapshot::subtotalCent).sum();
@@ -117,7 +118,8 @@ public class OrderService {
           reservation.reservationIds(), voucherLock.voucherLockId(), finalAmount, request.remark(), userId,
           request.merchantId(), address.contactName(), address.phone(), address.detail());
       QueueClient.QueueApplyResponse queue = queueClient.apply(new QueueClient.QueueApplyRequest(
-          "queue-apply:" + request.requestId(), userId, request.merchantId(), snapshot, expireTime, 0));
+          "queue-apply:" + request.requestId(), userId, request.merchantId(), snapshot, expireTime, 0,
+          effectiveCapacity));
       if ("QUEUED".equals(queue.result())) {
         return SubmitOrderResponse.queued(queue.ticketId(), queue.ticketNo(), queue.aheadCount(),
             queue.estimatedWaitSeconds(), queue.expireTime());

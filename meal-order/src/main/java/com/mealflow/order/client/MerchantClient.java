@@ -19,7 +19,7 @@ public class MerchantClient {
     this.endpoints = endpoints;
   }
 
-  public void requireAcceptingOrders(long merchantId) {
+  public MerchantView requireAcceptingOrders(long merchantId) {
     Result<MerchantView> result = restTemplate.exchange(endpoints.merchant() + "/merchants/" + merchantId,
         HttpMethod.GET, null, new ParameterizedTypeReference<Result<MerchantView>>() { }).getBody();
     if (result == null || !result.success() || result.data() == null) {
@@ -28,6 +28,7 @@ public class MerchantClient {
     if (!"OPEN".equals(result.data().businessStatus())) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "merchant is not accepting new orders");
     }
+    return result.data();
   }
 
   public record MerchantView(long merchantId, String name, String businessStatus, int baseCapacity, double manualFactor) {

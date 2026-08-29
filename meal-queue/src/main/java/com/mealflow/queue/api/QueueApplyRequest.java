@@ -10,6 +10,7 @@ public record QueueApplyRequest(
     long merchantId,
     @NotNull QueueTicketSnapshot snapshot,
     @NotNull LocalDateTime expireTime,
-    long priorityWeightMillis
+    long priorityWeightMillis,
+    int effectiveCapacity
 ) {
 }
