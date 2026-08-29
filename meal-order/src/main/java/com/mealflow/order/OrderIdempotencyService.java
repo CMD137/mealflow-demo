@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.order.api.SubmitOrderResponse;
-import com.mealflow.order.mapper.IdempotencyRecordMapper;
 import com.mealflow.order.mapper.IdempotencyRecordRow;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -17,11 +16,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderIdempotencyService {
   private static final int LEASE_SECONDS = 60;
-  private final IdempotencyRecordMapper mapper;
+  private final OrderIdempotencyRecordService recordService;
   private final ObjectMapper objectMapper;
 
-  public OrderIdempotencyService(IdempotencyRecordMapper mapper, ObjectMapper objectMapper) {
-    this.mapper = mapper;
+  public OrderIdempotencyService(OrderIdempotencyRecordService recordService, ObjectMapper objectMapper) {
+    this.recordService = recordService;
     this.objectMapper = objectMapper;
   }
 
@@ -29,10 +28,10 @@ public class OrderIdempotencyService {
     String subject = "user:" + userId;
     String requestHash = hash(request);
     LocalDateTime now = LocalDateTime.now();
-    if (mapper.insertProcessing(subject, key, requestHash, now.plusSeconds(LEASE_SECONDS), now) == 1) {
+    if (recordService.start(subject, key, requestHash, now.plusSeconds(LEASE_SECONDS), now)) {
       return run(subject, key, action);
     }
-    IdempotencyRecordRow existing = mapper.find(subject, key);
+    IdempotencyRecordRow existing = recordService.find(subject, key);
     if (existing == null) {
       throw new BizException(ErrorCode.IDEMPOTENT_PROCESSING);
     }
@@ -43,7 +42,7 @@ public class OrderIdempotencyService {
       return fromJson(existing.getResponseJson());
     }
     if (existing.getLeaseExpireTime() != null && existing.getLeaseExpireTime().isBefore(now)
-        && mapper.takeOverExpired(subject, key, now.plusSeconds(LEASE_SECONDS), now) == 1) {
+        && recordService.takeOverExpired(subject, key, now.plusSeconds(LEASE_SECONDS), now)) {
       return run(subject, key, action);
     }
     throw new BizException(ErrorCode.IDEMPOTENT_PROCESSING);
@@ -52,10 +51,10 @@ public class OrderIdempotencyService {
   private SubmitOrderResponse run(String subject, String key, Supplier<SubmitOrderResponse> action) {
     try {
       SubmitOrderResponse response = action.get();
-      mapper.complete(subject, key, toJson(response), LocalDateTime.now());
+      recordService.complete(subject, key, toJson(response), LocalDateTime.now());
       return response;
     } catch (RuntimeException ex) {
-      mapper.markFailed(subject, key, LocalDateTime.now());
+      recordService.markFailed(subject, key, LocalDateTime.now());
       throw ex;
     }
   }
