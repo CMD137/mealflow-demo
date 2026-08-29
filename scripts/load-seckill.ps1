@@ -3,11 +3,13 @@ param(
   [int]$Users = 50,
   [long]$VoucherId = 1000,
   [int]$TimeoutSec = 10,
-  [int]$ExpectedClaimed = -1
+  [int]$ExpectedClaimed = -1,
+  [int]$ExpectedSoldOut = -1,
+  [long]$RunStamp = 0
 )
 
 $ErrorActionPreference = "Stop"
-$stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+$stamp = if ($RunStamp -gt 0) { $RunStamp } else { [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
 
 $jobs = for ($i = 1; $i -le $Users; $i++) {
   Start-Job -ArgumentList $BaseUrl, $TimeoutSec, $VoucherId, $stamp, $i -ScriptBlock {
@@ -84,13 +86,20 @@ $summary = $results | Group-Object status | Sort-Object Name | ForEach-Object {
 Write-Host "[mealflow-load] seckill users=$Users voucherId=$VoucherId"
 $summary | Format-Table -AutoSize
 
-if (($results | Where-Object { -not $_.success -and $_.code -eq "EXCEPTION" }).Count -gt 0) {
-  throw "Seckill load test has request exceptions"
+if (($results | Where-Object { -not $_.success }).Count -gt 0) {
+  throw "Seckill load test has failed requests"
 }
 
 if ($ExpectedClaimed -ge 0) {
   $claimed = @($results | Where-Object { $_.status -eq "CLAIMED" }).Count
   if ($claimed -ne $ExpectedClaimed) {
     throw "Expected $ExpectedClaimed claimed vouchers, got $claimed"
+  }
+}
+
+if ($ExpectedSoldOut -ge 0) {
+  $soldOut = @($results | Where-Object { $_.status -eq "SOLD_OUT" }).Count
+  if ($soldOut -ne $ExpectedSoldOut) {
+    throw "Expected $ExpectedSoldOut sold-out responses, got $soldOut"
   }
 }
