@@ -43,6 +43,9 @@ class OrderPersistenceTest {
   private OrderService orderService;
 
   @Autowired
+  private OrderSubmissionCoordinator submissionCoordinator;
+
+  @Autowired
   private ConsumerRecordMapper consumerRecordMapper;
 
   @Autowired
@@ -90,7 +93,7 @@ class OrderPersistenceTest {
     when(paymentClient.create(any()))
         .thenReturn(new PaymentClient.PaymentView(5001L, 10001L, 101L, 1700, "UNPAID"));
 
-    SubmitOrderResponse response = orderService.submit(101L,
+    SubmitOrderResponse response = submissionCoordinator.submit(101L,
         new SubmitOrderRequest("order-test-1", 10L, 20L, null,
             List.of(new OrderSkuItem(1L, 2)), 7001L, "test"));
 
@@ -158,7 +161,7 @@ class OrderPersistenceTest {
     when(paymentClient.create(any()))
         .thenReturn(new PaymentClient.PaymentView(5101L, 10101L, 101L, 1000, "UNPAID"));
 
-    SubmitOrderResponse response = orderService.submit(101L,
+    SubmitOrderResponse response = submissionCoordinator.submit(101L,
         new SubmitOrderRequest("order-replay-1", 10L, 20L, null,
             List.of(new OrderSkuItem(1L, 1)), null, "replay"));
     String eventKey = "payment:PaymentPaid:" + response.payOrderId() + ":1";
@@ -193,7 +196,7 @@ class OrderPersistenceTest {
         .thenReturn(new PaymentClient.PaymentView(5201L, 10201L, 101L, 1200, "UNPAID"));
     doThrow(new IllegalStateException("catalog unavailable")).doNothing().when(catalogClient).confirm(any());
 
-    SubmitOrderResponse response = orderService.submit(101L,
+    SubmitOrderResponse response = submissionCoordinator.submit(101L,
         new SubmitOrderRequest("order-saga-retry", 10L, 20L, null,
             List.of(new OrderSkuItem(1L, 1)), null, "retry"));
 

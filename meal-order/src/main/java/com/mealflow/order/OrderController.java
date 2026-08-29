@@ -29,14 +29,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/orders")
 public class OrderController {
   private final OrderService orderService;
-  public OrderController(OrderService orderService) {
+  private final OrderSubmissionCoordinator submissionCoordinator;
+
+  public OrderController(OrderService orderService, OrderSubmissionCoordinator submissionCoordinator) {
     this.orderService = orderService;
+    this.submissionCoordinator = submissionCoordinator;
   }
 
   @PostMapping("/submit")
   public Result<SubmitOrderResponse> submit(@RequestHeader(value = "X-User-Id", required = false) Long userId,
       @Valid @RequestBody SubmitOrderRequest request) {
-    return Result.ok(orderService.submit(RequestIdentity.requireUser(userId), request));
+    return Result.ok(submissionCoordinator.submit(RequestIdentity.requireUser(userId), request));
   }
 
   @PostMapping("/internal/from-ticket/{ticketId}/{capacityTokenId}")

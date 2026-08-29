@@ -65,14 +65,12 @@ public class OrderService {
   private final OutboxEventPublisher outboxEventPublisher;
   private final ObjectMapper objectMapper;
   private final DatabaseIdGenerator idGenerator;
-  private final OrderIdempotencyService idempotencyService;
   private final OrderSagaCoordinator sagaCoordinator;
 
   public OrderService(CatalogClient catalogClient, AuthUserClient authUserClient, MerchantClient merchantClient, PromotionClient promotionClient, QueueClient queueClient,
       PaymentClient paymentClient, OrderMapper orderMapper, LocalEventMapper localEventMapper,
       ConsumerRecordMapper consumerRecordMapper, OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper,
-      DatabaseIdGenerator idGenerator, OrderIdempotencyService idempotencyService,
-      OrderSagaCoordinator sagaCoordinator) {
+      DatabaseIdGenerator idGenerator, OrderSagaCoordinator sagaCoordinator) {
     this.catalogClient = catalogClient;
     this.authUserClient = authUserClient;
     this.merchantClient = merchantClient;
@@ -87,46 +85,43 @@ public class OrderService {
     this.outboxEventPublisher = outboxEventPublisher;
     this.objectMapper = objectMapper;
     this.idGenerator = idGenerator;
-    this.idempotencyService = idempotencyService;
     this.sagaCoordinator = sagaCoordinator;
   }
 
   @Transactional
-  public SubmitOrderResponse submit(long userId, SubmitOrderRequest request) {
-    return idempotencyService.execute(userId, request.requestId(), request, () -> {
-      LocalDateTime expireTime = LocalDateTime.now().plusMinutes(15);
-      List<OrderSkuItem> items = normalizeItems(request);
-      if (request.addressId() == null) {
-        throw new BizException(ErrorCode.BAD_REQUEST, "delivery address is required");
-      }
-      MerchantClient.MerchantView merchant = merchantClient.requireAcceptingOrders(request.merchantId());
-      int effectiveCapacity = Math.max(1, (int) Math.round(merchant.baseCapacity() * merchant.manualFactor()));
-      AuthUserClient.AddressView address = authUserClient.address(userId, request.addressId());
-      List<OrderItemSnapshot> snapshots = catalogClient.snapshots(request.merchantId(), items);
-      int originAmount = snapshots.stream().mapToInt(OrderItemSnapshot::subtotalCent).sum();
-      CatalogClient.ReserveStockResponse reservation = catalogClient.reserve(new CatalogClient.ReserveStockRequest(
-          "stock-reserve:" + request.requestId(), userId, request.merchantId(), null, null, items, expireTime));
-      PromotionClient.VoucherLockResponse voucherLock = promotionClient.lock(new PromotionClient.LockVoucherRequest(
-          "voucher-lock:" + request.requestId(), userId, request.userVoucherId(), null, null, expireTime));
-      int finalAmount = Math.max(0, originAmount - voucherLock.discountAmount());
-      QueueClient.QueueTicketSnapshot snapshot = new QueueClient.QueueTicketSnapshot(
-          snapshots.stream().map(item -> Map.<String, Object>of(
-              "skuId", item.skuId(),
-              "skuName", item.skuName(),
-              "priceCent", item.priceCent(),
-              "quantity", item.quantity())).toList(),
-          reservation.reservationIds(), voucherLock.voucherLockId(), finalAmount, request.remark(), userId,
-          request.merchantId(), address.contactName(), address.phone(), address.detail());
-      QueueClient.QueueApplyResponse queue = queueClient.apply(new QueueClient.QueueApplyRequest(
-          "queue-apply:" + request.requestId(), userId, request.merchantId(), snapshot, expireTime, 0,
-          effectiveCapacity));
-      if ("QUEUED".equals(queue.result())) {
-        return SubmitOrderResponse.queued(queue.ticketId(), queue.ticketNo(), queue.aheadCount(),
-            queue.estimatedWaitSeconds(), queue.expireTime());
-      }
-      OrderRecord order = createOrder(userId, request.merchantId(), null, queue.capacityTokenId(), snapshot);
-      return SubmitOrderResponse.orderCreated(order.id, order.payOrderId, order.status.name());
-    });
+  public SubmitOrderResponse submitInTransaction(long userId, SubmitOrderRequest request) {
+    LocalDateTime expireTime = LocalDateTime.now().plusMinutes(15);
+    List<OrderSkuItem> items = normalizeItems(request);
+    if (request.addressId() == null) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "delivery address is required");
+    }
+    MerchantClient.MerchantView merchant = merchantClient.requireAcceptingOrders(request.merchantId());
+    int effectiveCapacity = Math.max(1, (int) Math.round(merchant.baseCapacity() * merchant.manualFactor()));
+    AuthUserClient.AddressView address = authUserClient.address(userId, request.addressId());
+    List<OrderItemSnapshot> snapshots = catalogClient.snapshots(request.merchantId(), items);
+    int originAmount = snapshots.stream().mapToInt(OrderItemSnapshot::subtotalCent).sum();
+    CatalogClient.ReserveStockResponse reservation = catalogClient.reserve(new CatalogClient.ReserveStockRequest(
+        "stock-reserve:" + request.requestId(), userId, request.merchantId(), null, null, items, expireTime));
+    PromotionClient.VoucherLockResponse voucherLock = promotionClient.lock(new PromotionClient.LockVoucherRequest(
+        "voucher-lock:" + request.requestId(), userId, request.userVoucherId(), null, null, expireTime));
+    int finalAmount = Math.max(0, originAmount - voucherLock.discountAmount());
+    QueueClient.QueueTicketSnapshot snapshot = new QueueClient.QueueTicketSnapshot(
+        snapshots.stream().map(item -> Map.<String, Object>of(
+            "skuId", item.skuId(),
+            "skuName", item.skuName(),
+            "priceCent", item.priceCent(),
+            "quantity", item.quantity())).toList(),
+        reservation.reservationIds(), voucherLock.voucherLockId(), finalAmount, request.remark(), userId,
+        request.merchantId(), address.contactName(), address.phone(), address.detail());
+    QueueClient.QueueApplyResponse queue = queueClient.apply(new QueueClient.QueueApplyRequest(
+        "queue-apply:" + request.requestId(), userId, request.merchantId(), snapshot, expireTime, 0,
+        effectiveCapacity));
+    if ("QUEUED".equals(queue.result())) {
+      return SubmitOrderResponse.queued(queue.ticketId(), queue.ticketNo(), queue.aheadCount(),
+          queue.estimatedWaitSeconds(), queue.expireTime());
+    }
+    OrderRecord order = createOrder(userId, request.merchantId(), null, queue.capacityTokenId(), snapshot);
+    return SubmitOrderResponse.orderCreated(order.id, order.payOrderId, order.status.name());
   }
 
   @Transactional
