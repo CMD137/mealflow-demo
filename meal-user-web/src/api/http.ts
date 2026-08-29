@@ -22,7 +22,9 @@ http.interceptors.response.use(
     const payload = response.data as Result<unknown>;
     if (payload && typeof payload === 'object' && 'success' in payload) {
       if (!payload.success) {
-        return Promise.reject(new Error(payload.message || payload.code || '请求失败'));
+        const error = new Error(payload.message || payload.code || '请求失败') as Error & { code?: string };
+        error.code = payload.code;
+        return Promise.reject(error);
       }
       return payload.data;
     }

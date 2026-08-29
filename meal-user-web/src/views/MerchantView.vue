@@ -20,6 +20,7 @@ const merchant = ref<MerchantView | null>(null);
 const categories = ref<CategoryView[]>([]);
 const skus = ref<SkuView[]>([]);
 const toast = ref('');
+const conflictSku = ref<SkuView | null>(null);
 
 const visibleSkus = computed(() => {
   const onshelf = availableSkus(skus.value);
@@ -46,8 +47,25 @@ async function load() {
 }
 
 async function addSku(sku: SkuView) {
+  try {
+    await cart.add(merchantId, sku.skuId, 1);
+    showToast(`${sku.name} 已加入购物车`);
+  } catch (error) {
+    if ((error as { code?: string }).code === 'CART_MERCHANT_CONFLICT') {
+      conflictSku.value = sku;
+      return;
+    }
+    showToast((error as Error).message || '加入购物车失败');
+  }
+}
+
+async function replaceCartAndAdd() {
+  const sku = conflictSku.value;
+  if (!sku) return;
+  await cart.clear();
   await cart.add(merchantId, sku.skuId, 1);
-  showToast(`${sku.name} 已加入购物车`);
+  conflictSku.value = null;
+  showToast(`已切换商户并加入 ${sku.name}`);
 }
 
 async function decreaseSku(sku: SkuView) {
@@ -69,6 +87,15 @@ onMounted(load);
 <template>
   <AppShell :title="merchant?.name || '点餐'" :subtitle="merchant?.businessStatus === 'OPEN' ? '营业中，可以下单' : '商家休息中'">
     <div v-if="toast" class="toast">{{ toast }}</div>
+
+    <section v-if="conflictSku" class="conflict-card card">
+      <strong>购物车已有其他商户商品</strong>
+      <p>清空现有商品后加入“{{ conflictSku.name }}”吗？</p>
+      <div class="conflict-actions">
+        <button class="ghost-button" @click="conflictSku = null">取消</button>
+        <button class="primary-button" @click="replaceCartAndAdd">清空后添加</button>
+      </div>
+    </section>
 
     <section class="merchant-banner card">
       <div>
@@ -170,6 +197,24 @@ onMounted(load);
   gap: 12px;
   margin-bottom: 10px;
   padding: 12px;
+}
+
+.conflict-card {
+  margin-bottom: 12px;
+  border: 1px solid #fde68a;
+  padding: 14px;
+}
+
+.conflict-card p {
+  margin: 8px 0 12px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.conflict-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .sku-list {

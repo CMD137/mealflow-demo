@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import AppShell from '@/components/AppShell.vue';
 import { addAddressApi, addressesApi, deleteAddressApi, setDefaultAddressApi, updateAddressApi } from '@/api/auth';
 import type { AddressRequest, AddressView } from '@/types/api';
 
 const loading = ref(false);
+const route = useRoute();
+const router = useRouter();
 const saving = ref(false);
 const editingId = ref<number | null>(null);
 const addresses = ref<AddressView[]>([]);
@@ -42,6 +45,7 @@ async function save() {
   }
   saving.value = true;
   try {
+    const isNewAddress = editingId.value === null;
     const wasEmpty = addresses.value.length === 0;
     const saved = editingId.value
       ? await updateAddressApi(editingId.value, form)
@@ -49,6 +53,10 @@ async function save() {
     if (wasEmpty) await setDefaultAddressApi(saved.addressId);
     await load();
     resetForm();
+    const returnTo = typeof route.query.return === 'string' ? route.query.return : '';
+    if (isNewAddress && returnTo === '/checkout') {
+      await router.push(returnTo);
+    }
   } finally {
     saving.value = false;
   }
