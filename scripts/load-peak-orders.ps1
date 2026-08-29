@@ -77,7 +77,7 @@ $jobs = for ($i = 1; $i -le $Users; $i++) {
         password = "123456"
       }).data
       $headers = @{ Authorization = "Bearer $($login.token)" }
-      $addresses = (Invoke-Json -Method GET -Path "/auth/addresses" -Headers $headers).data
+      $addresses = (Invoke-Json -Method GET -Path "/users/addresses" -Headers $headers).data
       $address = @($addresses | Where-Object { $_.defaultAddress } | Select-Object -First 1)
       if ($address.Count -eq 0) { $address = @($addresses | Select-Object -First 1) }
       if ($address.Count -eq 0) { throw "load user has no delivery address" }

@@ -183,7 +183,7 @@ Assert-True ($adminLogin.roleCode -eq "MERCHANT_ADMIN") "Expected demo admin to 
 
 function Resolve-TestAddressId {
   param([hashtable]$Headers, [string]$UserLabel)
-  $addresses = (Invoke-MealFlow -Method GET -Path "/auth/addresses" -Headers $Headers).data
+  $addresses = (Invoke-MealFlow -Method GET -Path "/users/addresses" -Headers $Headers).data
   $address = @($addresses | Where-Object { $_.defaultAddress } | Select-Object -First 1)
   if ($address.Count -eq 0) { $address = @($addresses | Select-Object -First 1) }
   if ($address.Count -eq 0) { throw "测试用户 $UserLabel 缺少收货地址" }
