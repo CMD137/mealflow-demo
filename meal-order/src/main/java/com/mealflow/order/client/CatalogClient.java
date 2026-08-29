@@ -1,6 +1,8 @@
 package com.mealflow.order.client;
 
+import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.api.Result;
+import com.mealflow.common.exception.BizException;
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
 import com.mealflow.order.config.ServiceEndpoints;
@@ -53,8 +55,15 @@ public class CatalogClient {
   }
 
   private static <T> T requireData(Result<T> result) {
-    if (result == null || !result.success()) {
-      throw new IllegalStateException(result == null ? "catalog 调用失败" : result.message());
+    if (result == null) {
+      throw new IllegalStateException("catalog 调用失败");
+    }
+    if (!result.success()) {
+      try {
+        throw new BizException(ErrorCode.valueOf(result.code()), result.message());
+      } catch (IllegalArgumentException ex) {
+        throw new IllegalStateException("catalog 调用失败: " + result.code() + " " + result.message(), ex);
+      }
     }
     return result.data();
   }
