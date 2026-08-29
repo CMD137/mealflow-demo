@@ -119,6 +119,11 @@ public class RedisVoucherSeckillGuard implements VoucherSeckillGuard {
   }
 
   @Override
+  public void recordClaimed(long userId, long voucherId) {
+    redisTemplate.opsForSet().add(userSetKey(voucherId), String.valueOf(userId));
+  }
+
+  @Override
   public long pendingCount(long voucherId) {
     Long count = redisTemplate.opsForZSet().zCard(pendingKey(voucherId));
     return count == null ? 0 : count;

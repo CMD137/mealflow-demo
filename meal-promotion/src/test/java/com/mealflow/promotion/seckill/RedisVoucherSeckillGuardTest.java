@@ -13,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -27,6 +28,9 @@ class RedisVoucherSeckillGuardTest {
 
   @Mock
   private ZSetOperations<String, String> zSetOperations;
+
+  @Mock
+  private SetOperations<String, String> setOperations;
 
   @Test
   void translatesMissingStockLuaResultToDedicatedInternalState() {
@@ -69,5 +73,14 @@ class RedisVoucherSeckillGuardTest {
     verify(zSetOperations).zCard("seckill:{1000}:pending");
     verify(valueOperations).setIfAbsent("seckill:{1000}:stock", "73");
     verify(valueOperations).set("seckill:state:initialized", "1");
+  }
+
+  @Test
+  void recordsDurableClaimInVoucherScopedUserSet() {
+    when(redisTemplate.opsForSet()).thenReturn(setOperations);
+
+    new RedisVoucherSeckillGuard(redisTemplate).recordClaimed(101L, 1000L);
+
+    verify(setOperations).add("seckill:{1000}:users", "101");
   }
 }

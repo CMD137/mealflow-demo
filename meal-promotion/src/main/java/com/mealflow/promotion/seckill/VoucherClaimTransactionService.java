@@ -3,6 +3,7 @@ package com.mealflow.promotion.seckill;
 import com.mealflow.promotion.mapper.PromotionMapper;
 import com.mealflow.promotion.mapper.UserVoucherRow;
 import com.mealflow.promotion.mapper.VoucherClaimRow;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +21,13 @@ public class VoucherClaimTransactionService {
     claim.setEventKey(command.eventKey());
     claim.setUserId(command.userId());
     claim.setVoucherId(command.voucherId());
-    promotionMapper.insertClaimProcessing(claim);
+    try {
+      promotionMapper.insertClaimProcessing(claim);
+    } catch (DuplicateKeyException ex) {
+      // Only the claim insert represents an idempotent duplicate message. A later
+      // unique-key failure (for example user_voucher) is a real consistency error.
+      throw new DuplicateClaimException(ex);
+    }
 
     if (promotionMapper.decrementStock(command.voucherId()) != 1) {
       promotionMapper.markClaimSoldOut(claim.getId(), "MYSQL_STOCK_EXHAUSTED");

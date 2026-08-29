@@ -87,6 +87,21 @@ public interface PromotionMapper {
   })
   UserVoucherRow findUserVoucher(long id);
 
+  @Select("SELECT id, user_id, voucher_id, status FROM user_voucher WHERE user_id = #{userId} AND voucher_id = #{voucherId}")
+  @ResultMap("userVoucherMap")
+  UserVoucherRow findUserVoucherByUserAndVoucher(@Param("userId") long userId,
+      @Param("voucherId") long voucherId);
+
+  @Select("""
+      SELECT uv.id, uv.user_id, uv.voucher_id, uv.status
+      FROM user_voucher uv
+      JOIN voucher v ON v.id = uv.voucher_id
+      WHERE v.type = 'SECKILL'
+      ORDER BY uv.id
+      """)
+  @ResultMap("userVoucherMap")
+  List<UserVoucherRow> findSeckillUserVouchers();
+
   @Update("UPDATE user_voucher SET status = #{status}, update_time = #{now} WHERE id = #{id} AND status = #{expectedStatus}")
   int updateUserVoucherStatusIfCurrent(@Param("id") long id, @Param("status") String status,
       @Param("expectedStatus") String expectedStatus, @Param("now") LocalDateTime now);

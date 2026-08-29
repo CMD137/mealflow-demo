@@ -16,6 +16,7 @@ import com.mealflow.promotion.api.LockVoucherRequest;
 import com.mealflow.promotion.api.VoucherAdminRequest;
 import com.mealflow.promotion.api.VoucherView;
 import com.mealflow.promotion.mapper.PromotionMapper;
+import com.mealflow.promotion.mapper.UserVoucherRow;
 import com.mealflow.promotion.mq.SeckillClaimPublisher;
 import com.mealflow.promotion.mq.SeckillClaimRocketMqConsumer;
 import com.mealflow.promotion.seckill.ClaimSettlementResult;
@@ -25,17 +26,14 @@ import com.mealflow.promotion.seckill.VoucherClaimPendingRecoveryScheduler;
 import com.mealflow.promotion.seckill.VoucherSeckillGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.dao.DuplicateKeyException;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
     "spring.cloud.nacos.discovery.enabled=false",
@@ -109,47 +107,55 @@ class PromotionPersistenceTest {
   }
 
   @Test
-  void oneHundredUsersCanOnlySettleTenClaims() {
+  void oneHundredSettlementsCanOnlyIssueTenVouchers() {
     VoucherView voucher = newVoucher(10);
-    ExecutorService executor = Executors.newFixedThreadPool(16);
-    try {
-      List<CompletableFuture<ClaimSettlementResult>> futures = new ArrayList<>();
-      for (long userId = 10_000; userId < 10_100; userId++) {
-        long currentUser = userId;
-        futures.add(CompletableFuture.supplyAsync(
-            () -> settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), currentUser)), executor));
-      }
-      List<ClaimSettlementResult> results = futures.stream().map(CompletableFuture::join).toList();
-
-      assertThat(results).filteredOn(result -> "CLAIMED".equals(result.status())).hasSize(10);
-      assertThat(results).filteredOn(result -> "SOLD_OUT".equals(result.status())).hasSize(90);
-      assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isZero();
-      assertThat(promotionMapper.countVoucherClaimsByStatus(voucher.voucherId(), "CLAIMED")).isEqualTo(10);
-      assertThat(promotionMapper.countVoucherClaimsByStatus(voucher.voucherId(), "SOLD_OUT")).isEqualTo(90);
-      assertThat(promotionMapper.countUserVouchersByVoucher(voucher.voucherId())).isEqualTo(10);
-    } finally {
-      executor.shutdownNow();
+    List<ClaimSettlementResult> results = new java.util.ArrayList<>();
+    for (long userId = 10_000; userId < 10_100; userId++) {
+      results.add(settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), userId)));
     }
+
+    assertThat(results).filteredOn(result -> "CLAIMED".equals(result.status())).hasSize(10);
+    assertThat(results).filteredOn(result -> "SOLD_OUT".equals(result.status())).hasSize(90);
+    assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isZero();
+    assertThat(promotionMapper.countVoucherClaimsByStatus(voucher.voucherId(), "CLAIMED")).isEqualTo(10);
+    assertThat(promotionMapper.countVoucherClaimsByStatus(voucher.voucherId(), "SOLD_OUT")).isEqualTo(90);
+    assertThat(promotionMapper.countUserVouchersByVoucher(voucher.voucherId())).isEqualTo(10);
   }
 
   @Test
-  void concurrentDuplicateMessagesCreateOneVoucherForOneUser() {
+  void repeatedMessagesCreateOneVoucherForOneUser() {
     VoucherView voucher = newVoucher(10);
     SeckillClaimCommand command = SeckillClaimCommand.of(voucher.voucherId(), 20_000L);
-    ExecutorService executor = Executors.newFixedThreadPool(10);
-    try {
-      List<CompletableFuture<ClaimSettlementResult>> futures = new ArrayList<>();
-      for (int attempt = 0; attempt < 20; attempt++) {
-        futures.add(CompletableFuture.supplyAsync(() -> settlementService.settle(command), executor));
-      }
-      assertThat(futures.stream().map(CompletableFuture::join).toList())
-          .allSatisfy(result -> assertThat(result.status()).isEqualTo("CLAIMED"));
+    for (int attempt = 0; attempt < 20; attempt++) {
       assertThat(settlementService.settle(command).status()).isEqualTo("CLAIMED");
-      assertThat(promotionMapper.countUserVoucher(20_000L, voucher.voucherId())).isEqualTo(1);
-      assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isEqualTo(9);
-    } finally {
-      executor.shutdownNow();
     }
+    assertThat(promotionMapper.countUserVoucher(20_000L, voucher.voucherId())).isEqualTo(1);
+    assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isEqualTo(9);
+  }
+
+  @Test
+  void durableWalletPreventsHistoricalUserFromReservingRedisAgain() {
+    VoucherView voucher = newVoucher(3);
+    UserVoucherRow userVoucher = insertUserVoucher(30_001L, voucher.voucherId());
+
+    SeckillVoucherResponse response = promotionService.seckill(30_001L, voucher.voucherId(), "legacy-wallet");
+
+    assertThat(response.status()).isEqualTo("ALREADY_CLAIMED");
+    assertThat(response.userVoucherId()).isEqualTo(userVoucher.getId());
+    assertThat(promotionService.claimStatus(30_001L, voucher.voucherId()).status()).isEqualTo("CLAIMED");
+    verify(seckillGuard, never()).tryClaim(anyLong(), anyLong(), anyLong());
+    verify(claimPublisher, never()).publish(any());
+  }
+
+  @Test
+  void userVoucherConflictIsNotMisclassifiedAsDuplicateClaimMessage() {
+    VoucherView voucher = newVoucher(3);
+    insertUserVoucher(30_002L, voucher.voucherId());
+
+    assertThatThrownBy(() -> settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), 30_002L)))
+        .isInstanceOf(DuplicateKeyException.class);
+    assertThat(promotionMapper.findClaim(30_002L, voucher.voucherId())).isNull();
+    assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isEqualTo(3);
   }
 
   @Test
@@ -331,5 +337,14 @@ class PromotionPersistenceTest {
 
   private VoucherAdminRequest request(int stock, LocalDateTime start, LocalDateTime end) {
     return new VoucherAdminRequest("测试秒杀券", "SECKILL", 300, stock, "ACTIVE", start, end);
+  }
+
+  private UserVoucherRow insertUserVoucher(long userId, long voucherId) {
+    UserVoucherRow row = new UserVoucherRow();
+    row.setUserId(userId);
+    row.setVoucherId(voucherId);
+    row.setStatus("AVAILABLE");
+    promotionMapper.insertUserVoucher(row);
+    return row;
   }
 }

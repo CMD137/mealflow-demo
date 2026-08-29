@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 import com.mealflow.promotion.mapper.PromotionMapper;
+import com.mealflow.promotion.mapper.UserVoucherRow;
 import com.mealflow.promotion.mapper.VoucherRow;
 import java.util.List;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -36,13 +37,16 @@ class VoucherRedisStockInitializerTest {
     VoucherRow voucher = new VoucherRow();
     voucher.setId(1000L);
     voucher.setStock(73);
+    UserVoucherRow userVoucher = claimedVoucher(101L, 1000L);
     when(promotionMapper.findVouchers()).thenReturn(List.of(voucher));
+    when(promotionMapper.findSeckillUserVouchers()).thenReturn(List.of(userVoucher));
     when(seckillGuard.isStateInitialized()).thenReturn(false);
 
     new VoucherRedisStockInitializer(promotionMapper, seckillGuard, true).initializeVoucherStock();
 
     org.mockito.InOrder order = org.mockito.Mockito.inOrder(seckillGuard);
     order.verify(seckillGuard).syncStockIfAbsent(1000L, 73);
+    order.verify(seckillGuard).recordClaimed(101L, 1000L);
     order.verify(seckillGuard).markStateInitialized();
   }
 
@@ -62,13 +66,24 @@ class VoucherRedisStockInitializerTest {
   }
 
   @Test
-  void bootstrapDoesNotRunWhenMarkerAlreadyExists() {
+  void markerPreservesLiveStockButStillReconcilesClaimedUsers() {
+    UserVoucherRow userVoucher = claimedVoucher(101L, 1000L);
     when(seckillGuard.isStateInitialized()).thenReturn(true);
+    when(promotionMapper.findSeckillUserVouchers()).thenReturn(List.of(userVoucher));
 
     new VoucherRedisStockInitializer(promotionMapper, seckillGuard, true).initializeVoucherStock();
 
     verify(seckillGuard, never()).syncStockIfAbsent(org.mockito.ArgumentMatchers.anyLong(),
         org.mockito.ArgumentMatchers.anyInt());
+    verify(seckillGuard).recordClaimed(101L, 1000L);
     verify(seckillGuard, never()).markStateInitialized();
+  }
+
+  private UserVoucherRow claimedVoucher(long userId, long voucherId) {
+    UserVoucherRow row = new UserVoucherRow();
+    row.setUserId(userId);
+    row.setVoucherId(voucherId);
+    row.setStatus("AVAILABLE");
+    return row;
   }
 }

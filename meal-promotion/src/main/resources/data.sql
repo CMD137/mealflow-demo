@@ -3,3 +3,8 @@ VALUES (1000, '午高峰秒杀券', 'SECKILL', 500, 100, 'ACTIVE', '2020-01-01 0
 
 INSERT IGNORE INTO user_voucher (id, user_id, voucher_id, status, create_time, update_time)
 VALUES (300, 100, 1000, 'AVAILABLE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+INSERT IGNORE INTO voucher_claim
+  (event_key, user_id, voucher_id, user_voucher_id, status, create_time, update_time)
+VALUES
+  ('seckill:1000:100', 100, 1000, 300, 'CLAIMED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);

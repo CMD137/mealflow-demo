@@ -61,6 +61,15 @@ public class PromotionService {
       return new SeckillVoucherResponse(eventKey, "FAILED", null, null);
     }
 
+    SeckillVoucherResponse persisted = persistedClaimStatus(userId, voucherId, eventKey);
+    if (persisted != null) {
+      if ("CLAIMED".equals(persisted.status())) {
+        return new SeckillVoucherResponse(eventKey, "ALREADY_CLAIMED", persisted.claimId(),
+            persisted.userVoucherId());
+      }
+      return persisted;
+    }
+
     ClaimResult claimResult;
     try {
       // A missing marker means Redis may have lost stock, user sets and Pending together.
@@ -115,12 +124,9 @@ public class PromotionService {
 
   public SeckillVoucherResponse claimStatus(long userId, long voucherId) {
     String eventKey = SeckillClaimCommand.eventKey(voucherId, userId);
-    VoucherClaimRow claim = promotionMapper.findClaim(userId, voucherId);
-    if (claim != null) {
-      if ("CLAIMED".equals(claim.getStatus()) || "SOLD_OUT".equals(claim.getStatus())) {
-        return new SeckillVoucherResponse(eventKey, claim.getStatus(), claim.getId(), claim.getUserVoucherId());
-      }
-      return new SeckillVoucherResponse(eventKey, "PENDING", claim.getId(), claim.getUserVoucherId());
+    SeckillVoucherResponse persisted = persistedClaimStatus(userId, voucherId, eventKey);
+    if (persisted != null) {
+      return persisted;
     }
     try {
       if (seckillGuard.isPending(userId, voucherId) || seckillGuard.isClaimed(userId, voucherId)) {
@@ -130,6 +136,21 @@ public class PromotionService {
       throw new BizException(ErrorCode.SYSTEM_ERROR, "秒杀状态暂不可查询，请稍后重试");
     }
     return new SeckillVoucherResponse(eventKey, "NOT_FOUND", null, null);
+  }
+
+  private SeckillVoucherResponse persistedClaimStatus(long userId, long voucherId, String eventKey) {
+    VoucherClaimRow claim = promotionMapper.findClaim(userId, voucherId);
+    if (claim != null) {
+      if ("CLAIMED".equals(claim.getStatus()) || "SOLD_OUT".equals(claim.getStatus())) {
+        return new SeckillVoucherResponse(eventKey, claim.getStatus(), claim.getId(), claim.getUserVoucherId());
+      }
+      return new SeckillVoucherResponse(eventKey, "PENDING", claim.getId(), claim.getUserVoucherId());
+    }
+    UserVoucherRow userVoucher = promotionMapper.findUserVoucherByUserAndVoucher(userId, voucherId);
+    if (userVoucher != null) {
+      return new SeckillVoucherResponse(eventKey, "CLAIMED", null, userVoucher.getId());
+    }
+    return null;
   }
 
   @Transactional

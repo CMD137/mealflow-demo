@@ -17,6 +17,8 @@ public interface VoucherSeckillGuard {
 
   boolean isPending(long userId, long voucherId);
 
+  void recordClaimed(long userId, long voucherId);
+
   long pendingCount(long voucherId);
 
   boolean isStateInitialized();
