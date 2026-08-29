@@ -125,6 +125,7 @@ class PromotionPersistenceTest {
       assertThat(results).filteredOn(result -> "SOLD_OUT".equals(result.status())).hasSize(90);
       assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isZero();
       assertThat(promotionMapper.countVoucherClaimsByStatus(voucher.voucherId(), "CLAIMED")).isEqualTo(10);
+      assertThat(promotionMapper.countVoucherClaimsByStatus(voucher.voucherId(), "SOLD_OUT")).isEqualTo(90);
       assertThat(promotionMapper.countUserVouchersByVoucher(voucher.voucherId())).isEqualTo(10);
     } finally {
       executor.shutdownNow();
@@ -139,15 +140,10 @@ class PromotionPersistenceTest {
     try {
       List<CompletableFuture<ClaimSettlementResult>> futures = new ArrayList<>();
       for (int attempt = 0; attempt < 20; attempt++) {
-        futures.add(CompletableFuture.supplyAsync(() -> {
-          try {
-            return settlementService.settle(command);
-          } catch (IllegalStateException ex) {
-            return null; // RocketMQ would redeliver while the winning transaction is still PROCESSING.
-          }
-        }, executor));
+        futures.add(CompletableFuture.supplyAsync(() -> settlementService.settle(command), executor));
       }
-      futures.forEach(CompletableFuture::join);
+      assertThat(futures.stream().map(CompletableFuture::join).toList())
+          .allSatisfy(result -> assertThat(result.status()).isEqualTo("CLAIMED"));
       assertThat(settlementService.settle(command).status()).isEqualTo("CLAIMED");
       assertThat(promotionMapper.countUserVoucher(20_000L, voucher.voucherId())).isEqualTo(1);
       assertThat(promotionMapper.findVoucher(voucher.voucherId()).getStock()).isEqualTo(9);

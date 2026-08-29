@@ -95,7 +95,7 @@ public interface PromotionMapper {
   int updateUserVoucherStatus(@Param("id") long id, @Param("status") String status, @Param("now") LocalDateTime now);
 
   @Insert("""
-      INSERT IGNORE INTO voucher_claim (event_key, user_id, voucher_id, status, create_time, update_time)
+      INSERT INTO voucher_claim (event_key, user_id, voucher_id, status, create_time, update_time)
       VALUES (#{eventKey}, #{userId}, #{voucherId}, 'PROCESSING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       """)
   @Options(useGeneratedKeys = true, keyProperty = "id")
