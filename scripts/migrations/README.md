@@ -18,6 +18,7 @@
 | `20260901-order-admin-index.sql` | 订单/Outbox 查询性能优化前的旧库 | `customer_order` 加 `(merchant_id,status,create_time)` 复合索引;`order_local_event` 加 `(status,id)` 复合索引 |
 | `20260827-order-expiry-and-address.sql` | 未保存订单地址快照、支付/券锁无到期字段的旧库 | 补地址快照、订单支付到期和券锁到期字段 |
 | `20260827-auth-single-merchant.sql` | 允许同一员工账号关联多个商户的旧库 | 人工确认无冲突后，增加 `user_id` 全局唯一约束并移除内部运维权限 |
+| `20260829-notify-recipient.sql` | 只有 `user_id` 的旧通知表 | 增加统一收件人类型/ID，回填用户通知并增加商户通知查询索引 |
 
 ## 已知仍需按实际库结构人工补的差异
 
