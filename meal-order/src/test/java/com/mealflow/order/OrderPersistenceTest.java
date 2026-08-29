@@ -17,6 +17,7 @@ import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
 import com.mealflow.order.client.CatalogClient;
 import com.mealflow.order.client.AuthUserClient;
+import com.mealflow.order.client.MerchantClient;
 import com.mealflow.order.client.PaymentClient;
 import com.mealflow.order.client.PromotionClient;
 import com.mealflow.order.client.QueueClient;
@@ -55,6 +56,9 @@ class OrderPersistenceTest {
 
   @MockBean
   private AuthUserClient authUserClient;
+
+  @MockBean
+  private MerchantClient merchantClient;
 
   @MockBean
   private PromotionClient promotionClient;
