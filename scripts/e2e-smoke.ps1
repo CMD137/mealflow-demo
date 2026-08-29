@@ -40,7 +40,7 @@ function Invoke-MealFlow {
         $statusCode = [int]$_.Exception.Response.StatusCode
       }
       if ($attempts -ge 12 -or ($null -ne $statusCode -and $statusCode -notin 502, 503, 504)) {
-        throw
+        throw "Request failed: $Method $Path HTTP=$statusCode message=$($_.Exception.Message)"
       }
       Start-Sleep -Seconds 5
     }
@@ -102,7 +102,17 @@ except urllib.error.HTTPError as error:
     -e "MF_SECRET=$InternalSecret" `
     -e "MF_BODY_B64=$bodyBase64" `
     meal-support-agent-runtime python -c $python
-  $response = $output | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0) {
+    throw "Internal helper failed: $Method $Path dockerExitCode=$LASTEXITCODE"
+  }
+  if ([string]::IsNullOrWhiteSpace(($output -join ""))) {
+    throw "Internal helper returned no response: $Method $Path"
+  }
+  try {
+    $response = $output | ConvertFrom-Json
+  } catch {
+    throw "Internal helper returned invalid JSON: $Method $Path"
+  }
   if ($null -ne $response.success -and -not $response.success) {
     throw "Internal request failed: $Method $Path code=$($response.code) message=$($response.message)"
   }
@@ -180,6 +190,7 @@ $firstUserHeaders = New-AuthHeaders -Token $firstUserLogin.token
 $secondUserHeaders = New-AuthHeaders -Token $secondUserLogin.token
 $seckillHeaders = New-AuthHeaders -Token $seckillLogin.token
 Assert-True ($adminLogin.roleCode -eq "MERCHANT_ADMIN") "Expected demo admin to have merchant admin role"
+Assert-True (-not [string]::IsNullOrWhiteSpace($seckillLogin.token)) "Seckill user login did not return a token"
 
 function Resolve-TestAddressId {
   param([hashtable]$Headers, [string]$UserLabel)
@@ -222,26 +233,20 @@ $wallet = (Invoke-MealFlow -Method GET -Path "/vouchers/wallet" -Headers $seckil
 $claimedVoucher = @($wallet | Where-Object { $_.voucherId -eq $testVoucherId -and $_.status -eq "AVAILABLE" })
 Assert-True ($claimedVoucher.Count -ge 1) "Claimed voucher was not found in wallet"
 
-Step "forcing merchant 10 capacity to 1"
-for ($resetRound = 1; $resetRound -le 20; $resetRound++) {
-  $tokens = (Invoke-MealFlowInternal -Method GET -Service meal-queue -Port 8106 -Path "/queue/internal/capacity/tokens").data
-  $heldTokens = @($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" })
-  if ($heldTokens.Count -eq 0) {
-    break
-  }
-  $heldTokens | ForEach-Object {
-    Invoke-MealFlowInternal -Method POST -Service meal-queue -Port 8106 -Path "/queue/internal/capacity/$($_.capacityTokenId)/release" -Body @{
-      requestId = "e2e-reset-$stamp-$resetRound-$($_.capacityTokenId)"
-      reason = "E2E_RESET"
-    } -Headers $adminHeaders | Out-Null
-  }
-}
-$tokens = (Invoke-MealFlowInternal -Method GET -Service meal-queue -Port 8106 -Path "/queue/internal/capacity/tokens").data
-$heldTokens = @($tokens | Where-Object { $_.merchantId -eq 10 -and $_.status -eq "HELD" })
-if ($heldTokens.Count -gt 0) {
-  throw "Unable to reset merchant 10 held capacity tokens"
-}
-Invoke-MealFlow -Method POST -Path "/merchants/10/capacity" -Body @{ baseCapacity = 1; manualFactor = 1 } -Headers $adminHeaders | Out-Null
+$originalMerchant = (Invoke-MealFlow -Method GET -Path "/merchants/10" -Headers $adminHeaders).data
+$initialMetrics = (Invoke-MealFlow -Method GET -Path "/queue/merchants/10/metrics" -Headers $adminHeaders).data
+Assert-True ($initialMetrics.waiting -eq 0) "Merchant 10 already has waiting tickets; refusing to disturb active queue data"
+$testCapacity = [int]$initialMetrics.held + 1
+$firstSubmit = $null
+$secondSubmit = $null
+$convertedOrderId = $null
+
+try {
+Step "reserving exactly one additional capacity slot without releasing existing tokens"
+Invoke-MealFlow -Method POST -Path "/merchants/10/capacity" -Body @{
+  baseCapacity = $testCapacity
+  manualFactor = 1
+} -Headers $adminHeaders | Out-Null
 
 $firstRequestId = "e2e-submit-first-$stamp"
 $secondRequestId = "e2e-submit-second-$stamp"
@@ -297,5 +302,83 @@ Assert-True ($ticket.status -eq "ORDER_CREATED") "Queued ticket was not converte
 $orders = (Invoke-MealFlow -Method GET -Path "/orders" -Headers $secondUserHeaders).data
 $converted = @($orders | Where-Object { $_.queueTicketId -eq $secondSubmit.ticketId })
 Assert-True ($converted.Count -ge 1) "Converted order was not found in order list"
+$convertedOrderId = $converted[0].orderId
 
-Step "smoke test passed: firstOrder=$($firstSubmit.orderId), queuedTicket=$($secondSubmit.ticketId), convertedOrder=$($converted[0].orderId)"
+Step "completing the paid order and cancelling the converted unpaid order"
+Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/picked-up" -Body @{
+  requestId = "e2e-picked-up-$stamp"
+} -Headers $adminHeaders | Out-Null
+Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/delivered" -Body @{
+  requestId = "e2e-delivered-$stamp"
+} -Headers $adminHeaders | Out-Null
+Invoke-MealFlow -Method POST -Path "/orders/$convertedOrderId/cancel" -Body @{
+  requestId = "e2e-cancel-$stamp"
+  reason = "E2E_CLEANUP"
+} -Headers $secondUserHeaders | Out-Null
+
+$finalMetrics = (Invoke-MealFlow -Method GET -Path "/queue/merchants/10/metrics" -Headers $adminHeaders).data
+Assert-True ($finalMetrics.held -eq $initialMetrics.held) "E2E-created capacity token was not released"
+Assert-True ($finalMetrics.waiting -eq 0) "E2E-created waiting ticket was not cleared"
+
+Step "smoke test passed: firstOrder=$($firstSubmit.orderId), queuedTicket=$($secondSubmit.ticketId), convertedOrder=$convertedOrderId"
+} finally {
+  if ($null -ne $convertedOrderId) {
+    try {
+      $cleanupOrder = (Invoke-MealFlow -Method GET -Path "/orders/$convertedOrderId" -Headers $secondUserHeaders).data
+      if ($cleanupOrder.status -eq "PENDING_PAYMENT" -or $cleanupOrder.status -eq "WAIT_MERCHANT_ACCEPT") {
+        Invoke-MealFlow -Method POST -Path "/orders/$convertedOrderId/cancel" -Body @{
+          requestId = "e2e-finally-cancel-$stamp"
+          reason = "E2E_CLEANUP"
+        } -Headers $secondUserHeaders | Out-Null
+      }
+    } catch {
+      Write-Warning "Failed to clean converted order ${convertedOrderId}: $($_.Exception.Message)"
+    }
+  } elseif ($null -ne $secondSubmit -and $null -ne $secondSubmit.ticketId) {
+    try {
+      $cleanupTicket = (Invoke-MealFlow -Method GET -Path "/queue/tickets/$($secondSubmit.ticketId)" -Headers $secondUserHeaders).data
+      if ($cleanupTicket.status -eq "WAITING") {
+        Invoke-MealFlow -Method POST -Path "/queue/tickets/$($secondSubmit.ticketId)/cancel" -Headers $secondUserHeaders | Out-Null
+      }
+    } catch {
+      Write-Warning "Failed to clean queued ticket $($secondSubmit.ticketId): $($_.Exception.Message)"
+    }
+  }
+
+  if ($null -ne $firstSubmit -and $null -ne $firstSubmit.orderId) {
+    try {
+      $cleanupFirst = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)" -Headers $firstUserHeaders).data
+      if ($cleanupFirst.status -eq "PENDING_PAYMENT" -or $cleanupFirst.status -eq "WAIT_MERCHANT_ACCEPT") {
+        Invoke-MealFlow -Method POST -Path "/orders/$($firstSubmit.orderId)/cancel" -Body @{
+          requestId = "e2e-finally-first-cancel-$stamp"
+          reason = "E2E_CLEANUP"
+        } -Headers $firstUserHeaders | Out-Null
+      } else {
+        if ($cleanupFirst.status -eq "MERCHANT_ACCEPTED") {
+          Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/meal-ready" -Body @{
+            requestId = "e2e-finally-ready-$stamp"
+          } -Headers $adminHeaders | Out-Null
+          $cleanupFirst = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)" -Headers $firstUserHeaders).data
+        }
+        if ($cleanupFirst.status -eq "WAIT_RIDER_PICKUP") {
+          Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/picked-up" -Body @{
+            requestId = "e2e-finally-picked-up-$stamp"
+          } -Headers $adminHeaders | Out-Null
+          $cleanupFirst = (Invoke-MealFlow -Method GET -Path "/orders/$($firstSubmit.orderId)" -Headers $firstUserHeaders).data
+        }
+        if ($cleanupFirst.status -eq "DELIVERING") {
+          Invoke-MealFlow -Method POST -Path "/fulfillment/orders/$($firstSubmit.orderId)/delivered" -Body @{
+            requestId = "e2e-finally-delivered-$stamp"
+          } -Headers $adminHeaders | Out-Null
+        }
+      }
+    } catch {
+      Write-Warning "Failed to clean first order $($firstSubmit.orderId): $($_.Exception.Message)"
+    }
+  }
+
+  Invoke-MealFlow -Method POST -Path "/merchants/10/capacity" -Body @{
+    baseCapacity = $originalMerchant.baseCapacity
+    manualFactor = $originalMerchant.manualFactor
+  } -Headers $adminHeaders | Out-Null
+}
