@@ -40,9 +40,12 @@
 12. `MealFlow-2027-campus-recruitment-audit.md`
    2027 届校招深度审查报告（历史判断，部分结论已被后续提交修正，以源码为准）。
 
+13. `seckill-design.md`
+   当前秒杀券实现复盘。秒杀链路的 Redis key、MQ、事务边界、恢复策略和已知边界以此文件及 `meal-promotion` 源码为准。
+
 ## 单一事实源约定
 
-- 表结构第一参考：`MealFlow-ddl.sql`。
+- 已实现服务的表结构第一参考：各服务 `src/main/resources/schema.sql`；`MealFlow-ddl.sql` 是早期跨服务设计草案。
 - 状态码第一参考：`MealFlow-status-codes.md`。
 - 排队状态机第一参考：`MealFlow-queue-design.md`。
 - 事件清单第一参考：`MealFlow-api-events.md`。
@@ -51,6 +54,7 @@
 - 索引与 EXPLAIN 基线第一参考：`MealFlow-performance-baseline.md`。
 - 旧库升级兼容脚本清单：`../scripts/migrations/README.md`。
 - 总览文档中的 DDL 片段必须与 `MealFlow-ddl.sql` 保持一致。
+- 秒杀当前实现第一参考：`seckill-design.md`、`../meal-promotion/src/main/resources/schema.sql` 和 `meal-promotion` 源码；其他早期设计文档中的旧秒杀方案不得覆盖它。
 
 ## 当前注意事项
 

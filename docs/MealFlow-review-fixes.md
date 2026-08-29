@@ -158,12 +158,9 @@ order-service 创建订单成功后发布 `OrderCreatedFromTicketEvent`，由 qu
 
 已修正。
 
-说明了 Redis Lua 与 MySQL Outbox 不是天然事务一致，并给出两种方案：
+当前实现没有把 Redis Lua 与 MySQL Outbox 包装成伪原子事务：Lua 成功时同时写 stock、users Set 和 Pending ZSet，随后直接发送 RocketMQ；首次发送失败保留 Pending，由调度器重发相同 eventKey。Consumer 在 MySQL 事务中写 `voucher_claim + user_voucher`，提交后再做 Redis 收尾。
 
-- Redis Stream 承接秒杀结果。
-- Lua 成功后同步写 `voucher_claim + local_event`。
-
-本项目推荐第二种，并增加 Redis 领取集合与 `voucher_claim` 对账补偿。
+`RocketMqOutboxClient` 在这条链路里只是同步发送封装，不对应秒杀 MySQL `local_event`/Outbox 表；`voucher_claim_retry` 也只是 Pending 发布尝试记录，不是全量 Redis-DB 对账表。
 
 ## 14. 库存预占缺少 reservation 表
 
@@ -255,23 +252,22 @@ ZSet member 使用趋势递增 `ticketNo`，同分情况下顺序稳定。
 内部流水状态：
 
 ```text
-ACCEPTED
+PROCESSING
 CLAIMED
-DUPLICATE
-FAILED
-COMPENSATING
-COMPENSATED
+SOLD_OUT
 ```
 
 用户展示状态：
 
 ```text
-PROCESSING
-SUCCESS
-FAILED
+NOT_STARTED
+PENDING
+CLAIMED
+ALREADY_CLAIMED
 SOLD_OUT
-DUPLICATE
-EXPIRED
+STOCK_RECOVERING
+FAILED
+NOT_FOUND
 ```
 
 ## 后续还需要继续细化的内容
@@ -349,7 +345,7 @@ KEY idx_locked_until(locked_until)
 
 ```text
 POST /internal/orders/from-ticket
-POST /internal/vouchers/lock
+POST /vouchers/internal/lock
 POST /internal/stocks/reserve
 ```
 
@@ -595,8 +591,8 @@ sku.available_stock + quantity
 补齐：
 
 ```text
-POST /internal/vouchers/confirm
-POST /internal/vouchers/release
+POST /vouchers/internal/confirm
+POST /vouchers/internal/release
 POST /internal/stocks/confirm
 POST /internal/stocks/release
 ```

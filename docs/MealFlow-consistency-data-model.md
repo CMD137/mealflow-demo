@@ -123,14 +123,14 @@ order:OrderCreatedFromTicket:{ticketId}:1
 payment:PaymentSuccess:{paymentOrderId}:1
 order:OrderCancelled:{orderId}:{version}
 fulfillment:MealReady:{fulfillmentOrderId}:{version}
-promotion:VoucherClaimAccepted:{voucherId}:{userId}:1
+seckill:{voucherId}:{userId}
 ```
 
 为什么需要 `event_key`：
 
 如果 local_event 已经发到 MQ，但更新 SENT 失败，下一轮扫描会再次发送。新的 MQ messageId 可能不同，但业务 `event_key` 必须相同。
 
-`event_key` 必须全局唯一，不只是生产服务内唯一。推荐前缀包含生产服务名和事件类型，格式为 `{producerService}:{eventType}:{businessKey}:{version}`，避免不同服务碰巧生成同样的业务键后被 `consumer_record` 误判为重复事件。
+`event_key` 必须全局唯一，不只是生产服务内唯一。通用领域事件推荐 `{producerService}:{eventType}:{businessKey}:{version}`；当前秒杀命令使用更短的固定键 `seckill:{voucherId}:{userId}`，因为幂等维度就是同一用户同一券，且只在专用 topic/claim 表中使用。
 
 ## 4. Consumer 幂等表
 
@@ -425,34 +425,35 @@ Cancel:
 
 ## 8. 秒杀券一致性
 
+本节描述当前 `meal-promotion` 的已实现模型；更完整的代码级复盘见 `seckill-design.md`。
+
 秒杀券分两层：
 
-- Redis 负责高并发资格校验。
-- MySQL 负责用户最终券包事实。
+- Redis 负责高并发预约：stock、users Set、Pending ZSet。
+- MySQL 负责最终库存、领取流水和用户券包事实。
 
-内部流水状态：
+`voucher_claim.status`：
 
 ```text
-ACCEPTED      已通过 Redis 资格校验
-CLAIMED       已入用户券包
-DUPLICATE     重复领取
-FAILED        落库失败
-COMPENSATING  补偿中
-COMPENSATED   已补偿
+PROCESSING    新领取事务处理中
+CLAIMED       数据库库存已扣减且用户券已创建
+SOLD_OUT      数据库条件扣库存失败
 ```
 
 用户展示状态：
 
 ```text
-PROCESSING
-SUCCESS
-FAILED
+NOT_STARTED
+PENDING
+CLAIMED
+ALREADY_CLAIMED
 SOLD_OUT
-DUPLICATE
-EXPIRED
+STOCK_RECOVERING
+FAILED
+NOT_FOUND      仅查询接口可能返回
 ```
 
-### 8.1 推荐实现：Lua + MySQL claim_flow + Outbox
+### 8.1 当前实现：Lua + Redis Pending + RocketMQ + MySQL
 
 请求线程：
 
@@ -462,66 +463,45 @@ EXPIRED
   校验用户未领取
   Redis stock - 1
   Redis user set add
+  Redis Pending ZSet add
 
 Lua 成功后：
-  MySQL 本地事务写 voucher_claim ACCEPTED
-  MySQL 本地事务写 local_event VoucherClaimAccepted
-  返回 PROCESSING/ACCEPTED
+  发布 SeckillClaimRequested
+  返回 PENDING
 ```
 
 异步消费者：
 
 ```text
-消费 VoucherClaimAccepted
--> 根据 uk_user_voucher(user_id, voucher_id) 创建 user_voucher
--> voucher_claim ACCEPTED -> CLAIMED
+消费 SeckillClaimRequested
+-> 新事务 INSERT voucher_claim PROCESSING
+-> UPDATE voucher SET stock = stock - 1 WHERE stock > 0 AND status = ACTIVE
+-> 成功：INSERT user_voucher AVAILABLE，claim -> CLAIMED
+-> 失败：claim -> SOLD_OUT
+-> MySQL 提交后清理 Pending；SOLD_OUT 同时幂等归还 Redis 预约库存
 ```
 
-兜底约束：
+当前发送端没有 MySQL `local_event`/Outbox 表。首次 MQ 发送失败时保留 Redis Pending，调度任务按相同 eventKey 重投。`voucher_claim_retry` 只记录 Pending 重投尝试，不是领取事实来源。
+
+### 8.2 幂等与事务边界
+
+兜底约束为：
 
 ```sql
-ALTER TABLE user_voucher
-ADD UNIQUE KEY uk_user_voucher(user_id, voucher_id);
+UNIQUE voucher_claim(event_key)
+UNIQUE voucher_claim(user_id, voucher_id)
+UNIQUE user_voucher(user_id, voucher_id)
 ```
 
-这个唯一索引用于兜底一人一券。
+`VoucherClaimTransactionService` 只负责第一次领取的事务。普通 INSERT 发生唯一键冲突时，该事务先回滚；无事务外层 `VoucherClaimSettlementService` 再查询已提交 claim 并返回 `CLAIMED`/`SOLD_OUT`。禁止恢复为 `INSERT IGNORE + 同事务短轮询`，因为唯一键已冲突不代表当前事务快照一定能读到对方记录。
 
-### 8.2 Lua 成功但 DB 未写入
+### 8.3 失败恢复边界
 
-风险：
-
-```text
-Redis Lua 成功
-服务还没写 voucher_claim/local_event 就宕机
-```
-
-补偿：
-
-```text
-扫描 Redis voucher:user:{voucherId}
--> 对比 voucher_claim
--> 缺失则补写 voucher_claim ACCEPTED 和 local_event
-```
-
-如果无法补写：
-
-```text
-Redis stock + 1
-Redis user set remove
-记录 voucher_claim COMPENSATED
-```
-
-### 8.3 Redis Stream 备选方案
-
-Lua 内部：
-
-```text
-扣库存
-记录用户
-XADD voucher:claim:stream
-```
-
-消费者从 Stream 落库。这个方案 Redis 侧闭环更好，但需要处理 Stream pending list、ack、重试和死信。校招项目可以作为扩展设计。
+- MQ 首次发送失败：Pending 保留，定时任务重投相同事件。
+- MySQL 已提交但 Redis 收尾失败：MQ 重投读取已有 claim，再次执行幂等收尾。
+- 单个 stock key 丢失且 marker 连续、该券 Pending 为 0：从 MySQL 当前 stock 使用 `SETNX` 恢复。
+- 全局 marker 丢失：返回 `STOCK_RECOVERING`，禁止自动从 MySQL 开放新预约。
+- 当前本地 Compose 显式开启 bootstrap 方便空环境初始化；它只能在确认旧消息与领取均已收敛时使用，不是通用 Redis 灾难恢复。
 
 ## 9. 订单表与 QueueTicket 幂等
 

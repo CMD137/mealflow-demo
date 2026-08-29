@@ -1,6 +1,6 @@
 # MealFlow 状态码定义
 
-本文定义所有 `TINYINT status` 的数值映射。开发、DDL、补偿 SQL、测试用例必须以本文为准。
+本文保留状态枚举的数值映射。当前各微服务的部分主线表已经直接使用 `VARCHAR` 枚举名，实际存储类型必须以对应服务的 `schema.sql` 为准；开发、补偿 SQL 和测试用例不得只根据本表猜测列类型。
 
 ## 1. QueueTicketStatus
 
@@ -86,16 +86,15 @@
 
 ## 8. VoucherClaimStatus
 
-适用表：`voucher_claim.status`
+当前 `meal-promotion.voucher_claim.status` 实际为 `VARCHAR(32)`，保存下面的枚举名；数值只对应 Java 枚举的 `code()`，不是数据库落库值。
 
 | 数值 | 枚举 | 含义 |
 | --- | --- | --- |
-| 1 | ACCEPTED | 已通过 Redis 资格校验 |
+| 1 | PROCESSING | 新领取事务处理中 |
 | 2 | CLAIMED | 已入用户券包 |
-| 3 | DUPLICATE | 重复领取 |
-| 4 | FAILED | 落库失败 |
-| 5 | COMPENSATING | 补偿中 |
-| 6 | COMPENSATED | 已补偿 |
+| 3 | SOLD_OUT | MySQL 最终库存不足 |
+
+`PENDING`、`ALREADY_CLAIMED`、`STOCK_RECOVERING` 等是秒杀接口展示状态，不写入 `voucher_claim.status`。
 
 ## 9. OrderStatus
 

@@ -87,15 +87,15 @@ com.sky.mealflow.infra
 - Redis 库存预热。
 - Lua 一人一券校验。
 - `voucher_claim` 流水。
-- `VoucherClaimAcceptedEvent`。
+- `SeckillClaimRequested` 命令。
 - 用户券包异步入账。
-- Redis/DB 对账补偿。
+- Redis Pending 重投和幂等收尾。
 
 验收：
 
 - 单用户重复抢同一券只成功一次。
 - 并发抢券不超卖。
-- Lua 成功但 DB 写入失败可补偿。
+- 首次发消息或 Redis 收尾失败可由 Pending 重投收敛。
 - Outbox 重发不会重复入券包。
 
 ### M4：高峰排队闭环

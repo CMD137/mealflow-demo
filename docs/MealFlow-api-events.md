@@ -292,37 +292,55 @@ POST /vouchers/{voucherId}/seckill
 }
 ```
 
-返回：
-
-```json
-{
-  "claimId": 50001,
-  "status": "PROCESSING"
-}
-```
-
-失败：
-
-```json
-{
-  "status": "SOLD_OUT",
-  "message": "已抢完"
-}
-```
-
-规则：
+当前 `requestId` 只做非空校验；真正的业务幂等键是：
 
 ```text
-Lua 校验库存和一人一券
--> 成功后写 voucher_claim ACCEPTED
--> 写 local_event VoucherClaimAccepted
--> 异步创建 user_voucher
+seckill:{voucherId}:{userId}
 ```
+
+首次预约返回：
+
+```json
+{
+  "eventKey": "seckill:1000:101",
+  "status": "PENDING",
+  "claimId": null,
+  "userVoucherId": null
+}
+```
+
+用户通过 `GET /vouchers/{voucherId}/claims/me` 查询最终状态，响应结构相同。最终结算状态为 `CLAIMED` 或 `SOLD_OUT`；同步入口还可能返回 `NOT_STARTED`、`ALREADY_CLAIMED`、`STOCK_RECOVERING`、`FAILED`。
+
+售罄示例：
+
+```json
+{
+  "eventKey": "seckill:1000:101",
+  "status": "SOLD_OUT",
+  "claimId": 50001,
+  "userVoucherId": null
+}
+```
+
+当前真实链路：
+
+```text
+Redis Lua 原子校验库存和一人一券
+-> 扣 Redis 预约库存，写 users Set 与 Pending ZSet
+-> 发布 SeckillClaimRequested 到 RocketMQ
+-> 返回 PENDING
+-> Consumer 在 MySQL 事务中写 voucher_claim PROCESSING
+-> 条件扣减 voucher.stock
+-> 成功创建 user_voucher 并将 claim 改为 CLAIMED；无库存则改为 SOLD_OUT
+-> 事务提交后完成 Redis Pending 收尾或售罄补偿
+```
+
+秒杀发送端虽然复用了名为 `RocketMqOutboxClient` 的发送封装，但当前没有 MySQL `local_event`/Outbox 记录。首次发送失败由 Redis Pending 定时重投；重复事件由 `voucher_claim.event_key`、`voucher_claim(user_id, voucher_id)` 和 `user_voucher(user_id, voucher_id)` 唯一约束收敛。
 
 ### 4.2 锁定优惠券
 
 ```text
-POST /internal/vouchers/lock
+POST /vouchers/internal/lock
 ```
 
 请求：
@@ -351,8 +369,8 @@ POST /internal/vouchers/lock
 ### 4.3 确认/释放优惠券
 
 ```text
-POST /internal/vouchers/confirm
-POST /internal/vouchers/release
+POST /vouchers/internal/confirm
+POST /vouchers/internal/release
 ```
 
 确认请求：
@@ -378,10 +396,9 @@ POST /internal/vouchers/release
 
 规则：
 
-- Confirm/Release 都必须携带 `requestId`。
-- `voucherLockId` 是业务定位键，`requestId` 是接口重试幂等键。
-- `requestId` 按操作派生，例如 `voucher-confirm:{orderId}:{voucherLockId}` 或 `voucher-release:{orderId}:{voucherLockId}:{reason}`。
-- 重试同一 `requestId` 时必须返回同一个 `voucherLockId`。
+- Confirm/Release 请求模型要求 `requestId` 非空，但当前服务没有单独持久化 requestId 幂等记录。
+- 当前业务幂等定位依赖 `voucherLockId` 和状态条件更新；重复 Confirm/Release 不会重复改变用户券状态。
+- Lock 重试时会按 `userVoucherId` 查找现有活动锁；如果券已经处于 `LOCKED` 且能查到活动锁，则返回已有 `voucherLockId`。
 - Confirm：`voucher_lock LOCKED -> CONFIRMED`，`user_voucher LOCKED -> USED`。
 - Release：`voucher_lock LOCKED -> RELEASED`，`user_voucher LOCKED -> AVAILABLE`。
 - 必须 CAS，重复释放不能重复恢复。
@@ -629,7 +646,7 @@ eventKey = fulfillment:DeliveryCompleted:{deliveryOrderId}:{version}
 | DeliveryAssignedEvent | fulfillment | notify、rider-app | fulfillment:DeliveryAssigned:{deliveryOrderId}:{version} |
 | DeliveryPickedUpEvent | fulfillment | order、notify | fulfillment:DeliveryPickedUp:{deliveryOrderId}:{version} |
 | DeliveryCompletedEvent | fulfillment | order、notify、report | fulfillment:DeliveryCompleted:{deliveryOrderId}:{version} |
-| VoucherClaimAcceptedEvent | promotion | promotion-worker、notify | promotion:VoucherClaimAccepted:{voucherId}:{userId}:1 |
+| SeckillClaimRequested | promotion | promotion | seckill:{voucherId}:{userId} |
 
 `MerchantCapacityReleaseRequestedEvent` 的 `{eventVersion}` 来自 `local_event.event_version`，表示事件 schema 版本，当前填 `1`。它不来自 `capacity_token`，因为 `capacity_token` 表没有 version 字段。
 

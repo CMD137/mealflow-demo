@@ -2,7 +2,7 @@
 
 > 目标读者：Java 校招面试复习。本文描述的是当前 `meal-promotion` 的真实实现，不是目标架构，也不是接口手册。
 >
-> 核心代码：`PromotionService`、`RedisVoucherSeckillGuard`、`VoucherClaimPendingRecoveryScheduler`、`SeckillClaimRocketMqConsumer`、`VoucherClaimSettlementService`。
+> 核心代码：`PromotionService`、`RedisVoucherSeckillGuard`、`VoucherClaimPendingRecoveryScheduler`、`SeckillClaimRocketMqConsumer`、`VoucherClaimSettlementService`、`VoucherClaimTransactionService`。
 
 ## 1. 一句话概括
 
@@ -95,11 +95,13 @@ Lua 把“查库存、判重、扣库存、写 Pending”放在一个 Redis 原�
 
 对每个待恢复成员：
 
-1. 先把它的 Pending score 前移到下一次退避时间，避免重叠调度同时发布同一预约；
+1. 先把它的 Pending score 前移到下一次退避时间，降低同一实例下一轮立即重复发布的概率；
 2. 重新发布**相同 eventKey** 的 `SeckillClaimCommand`；
 3. 将发布尝试写入或更新 `voucher_claim_retry`：发布成功标为 `RECOVERED`，失败标为 `RETRY`，并记录错误和下一次时间。
 
 退避序列是约 10 秒、30 秒、60 秒，后续按 60 秒左移增长，并受默认 300 秒上限约束。
+
+这里没有实现“多个调度实例对同一个 Pending 成员的原子抢占”。当前本地部署只有一个 promotion 实例；若手动触发与定时任务刚好重叠，仍可能重复发布。重复发布由下游数据库唯一约束和幂等结算吸收，不能把“先移动 score”表述成分布式锁。
 
 Pending 不能被简单理解成“没有落库”，因为 MySQL 事务可能已经提交而第 8 步 Redis 收尾失败。此时：
 
@@ -116,22 +118,33 @@ Consumer 只处理 `eventType = SeckillClaimRequested` 的消息，并校验消�
 
 ### 5.1 结算事务
 
-`VoucherClaimSettlementService.settle` 在一个 Spring MySQL 事务中完成：
+结算被刻意拆成两层：
 
-1. `INSERT IGNORE voucher_claim(..., PROCESSING)`；
-2. 若插入成功，条件扣减 `voucher.stock`；
+- `VoucherClaimSettlementService` 是**无事务的外层协调器**；
+- `VoucherClaimTransactionService.settleNew` 是**新领取的事务边界**。
+
+第一次处理事件时，内层事务完成：
+
+1. 普通 `INSERT` 写入 `voucher_claim(..., PROCESSING)`；
+2. 条件扣减 `voucher.stock`；
 3. 扣减失败：将 claim 改为 `SOLD_OUT`，提交事务；
 4. 扣减成功：插入 `user_voucher(AVAILABLE)`，再将 claim 改为 `CLAIMED` 并保存 `user_voucher_id`，提交事务。
 
-同一事件重复投递时，插入 claim 返回 0。结算服务读取已有 claim：
+同一事件或同一用户同一券并发处理时，数据库唯一约束抛出 `DuplicateKeyException`。这会使**内层新领取事务先完整回滚**；异常回到外层协调器后，外层再按 `event_key`、其次按 `(user_id, voucher_id)` 查询已经提交的 claim：
 
-- 已是 `CLAIMED` / `SOLD_OUT`：直接返回该最终结果，不再扣数据库库存、不再插入用户券；
+- 已是 `CLAIMED` / `SOLD_OUT`：直接返回已有最终结果，不再扣数据库库存、不再插入用户券；
 - 仍是 `PROCESSING`：抛异常，由 MQ 稍后重投；
-- 并发事务导致唯一键先出现、记录暂不可见时：最多查询 5 次、每次间隔 5 ms，再决定结果。
+- 唯一冲突后仍查不到记录：抛出带 eventKey、userId、voucherId 的异常，不伪造成功结果。
 
-因此幂等不是依赖 JVM 内存，也不是“MQ 只投一次”，而是依赖确定 eventKey 和数据库唯一约束。
+因此当前实现**不使用 `INSERT IGNORE`，也不在同一个事务快照中 sleep 轮询**。幂等不是依赖 JVM 内存，也不是假设“MQ 只投一次”，而是依赖确定 eventKey、数据库双唯一约束，以及“冲突事务回滚后再查询”的事务边界。
 
-### 5.2 为什么 Redis 收尾放在事务之后
+### 5.2 本次修复的竞态
+
+旧实现使用 `INSERT IGNORE`。并发消费者中，失败方看到 affected rows 为 0 后，仍在自己的结算事务中读取 claim；此时唯一键冲突对应的另一个事务可能尚未提交，或者当前事务快照不可见，于是偶发出现“唯一键已存在但 claim 行不可用”。在事务内做 5 次短暂 sleep 不能改变这个结构性问题。
+
+当前修复把“尝试创建新事实”和“读取已存在事实”分到两个事务阶段：唯一冲突先回滚新领取事务，外层才查询已提交结果。这样不会在失败事务的旧快照里制造“幽灵成功”，也不会靠毫秒级等待猜测另一个事务何时提交。
+
+### 5.3 为什么 Redis 收尾放在事务之后
 
 Consumer 在 `settle` 返回后才处理 Redis：
 
@@ -175,12 +188,14 @@ marker 缺失 → STOCK_RECOVERING → 禁止新 Redis 预约 → 不从 MySQL �
 
 ### 7.1 受控 bootstrap 的真实边界
 
-`mealflow.promotion.seckill.bootstrap.enabled` 默认 `false`。只有显式设为 `true` 且 marker 不存在时，应用在 `ApplicationReadyEvent`：
+`mealflow.promotion.seckill.bootstrap.enabled` 的应用默认值是 `false`。只有显式设为 `true` 且 marker 不存在时，应用在 `ApplicationReadyEvent`：
 
 1. 遍历所有券，对每个 stock key 做 `SETNX(voucher.stock)`；
 2. 全部调用完成后，最后写入 marker。
 
-任何 `DataAccessException` 都不会写 marker；marker 已存在时也会跳过，以避免覆盖活动中的状态。普通 Promotion Service 重启不会初始化库存。
+任何 `DataAccessException` 都不会写 marker；marker 已存在时也会跳过，以避免覆盖活动中的状态。使用应用默认配置时，普通 Promotion Service 重启不会初始化库存。
+
+当前 `docker-compose.yml` 为了本地空环境首次启动方便，显式设置了 `SECKILL_BOOTSTRAP_ENABLED=true`。因此在 Compose 环境里，只要 marker 仍在，重启服务会安全跳过；但如果只清空 Redis 数据而保留 MySQL，再启动 promotion，bootstrap 会自动执行。这是本地演示便利性取舍，不等价于可靠的 Redis 灾难恢复。不要在仍有旧 MQ 消息或未收敛领取时单独删除 Redis volume。
 
 这个开关只能用于：
 
@@ -212,6 +227,15 @@ marker 缺失 → STOCK_RECOVERING → 禁止新 Redis 预约 → 不从 MySQL �
 - Pending 与 MQ 重投把“Redis 已预约但消息发送/收尾失败”的窗口转化为可重试闭环。
 - 单券 stock key 单独丢失时，在 Pending 已清且 marker 连续的前提下可安全恢复。
 
+### 2026-08-29 修复后验证
+
+- H2/MyBatis 的 100 用户/库存 10 测试在修复后曾验证得到 10 个 `CLAIMED`、90 个 `SOLD_OUT`；但本次严格复验时整组测试出现 1 次主键 `DuplicateKeyException`，随后单独重跑同一用例又通过，说明它仍是偶发失败，不能登记为稳定通过。
+- 重复消息测试：同一 eventKey 并发结算 20 次，只扣减一次数据库库存、只生成一张用户券，所有调用收敛到 `CLAIMED`。
+- Redis 收尾失败重投：MySQL 已提交而首次 `complete`/`compensate` 失败时，重复消费继续执行相同收尾，不重复扣库或发券。
+- 真实 Redis + RocketMQ + MySQL：20 个用户抢库存 10，最终为 10 个 `CLAIMED`、10 个 `SOLD_OUT`。
+
+这些结果证明当前测试范围内的一人一券、防超卖和重复消费幂等；它们不是多实例、大规模压测或全故障点混沌测试的替代品。
+
 ### 当前刻意接受的边界
 
 - Producer 名字带 Outbox，但没有持久化 outbox；首次 MQ 发送可靠性依赖 Redis Pending 仍存在。
@@ -220,6 +244,29 @@ marker 缺失 → STOCK_RECOVERING → 禁止新 Redis 预约 → 不从 MySQL �
 - `voucher_claim_retry` 记录的是恢复任务的发布尝试，不能替代 Redis Pending 或数据库结算事实。
 - 成功结算后 MySQL commit 与 Redis 收尾仍是两个步骤；系统依赖 MQ 重复投递和幂等收尾实现最终收敛，而不是提供严格的跨库原子提交。
 - 领券成功后的订单使用/锁券是另一条 `user_voucher` / `voucher_lock` 链路，不属于 Redis 秒杀预约闭环。
+- 受控 bootstrap 只恢复 stock 和 marker，不重建历史用户 Set；当前 Compose 自动开启 bootstrap 只适合本地首次启动或确认链路静默后的恢复。
+- Pending 调度没有多实例原子抢占；当前单实例本地部署允许偶发重复发布，并由数据库幂等吸收。
+
+### 2026-08-29 严格复核发现的未解决项
+
+#### 已有用户券与 Redis users Set 不一致
+
+当前受控 bootstrap 只初始化 stock 和 marker，不把已有 `user_voucher`/`voucher_claim` 回填到 Redis users Set。与此同时，`data.sql` 为用户 100、券 1000 直接种了一条 `user_voucher`，但没有对应 `voucher_claim`。
+
+因此存在两种后果：
+
+- 已有 `CLAIMED` 记录但 users Set 缺失的用户再次请求，会重新消耗一次 Redis 预约库存；Consumer 读取已有 `CLAIMED` 后只执行 `complete`，不会归还这次多余预约，导致 Redis stock 小于 MySQL stock。
+- 只有 `user_voucher`、没有 claim 的种子用户再次请求时，内层事务会在插入 `user_voucher` 处触发唯一键冲突并整体回滚；外层把所有 `DuplicateKeyException` 都按“claim 插入冲突”处理，却查不到已有 claim，于是消息持续失败、Pending 无法正常收尾。
+
+这不会突破 MySQL 条件扣库存和唯一约束，所以不会超卖或重复发券；但会造成 Redis 可预约库存虚减、请求长期 `PENDING` 和重复重投。修复时应同时处理两个事实：受控 bootstrap 必须重建历史已领用户标记，且结算层必须区分 claim 唯一冲突与 `user_voucher` 唯一冲突（或先把种子/迁移数据补齐为一致的 claim 事实）。在修复前，不能把“Redis 整体恢复后可直接重新开放秒杀”作为已实现能力。
+
+#### `DuplicateKeyException` 的捕获范围仍过宽
+
+`VoucherClaimSettlementService` 当前捕获 `settleNew` 抛出的所有 `DuplicateKeyException`，默认它们都来自 `voucher_claim` 的 eventKey 或用户+券唯一约束。但异常也可能来自 `voucher_claim.id` 主键、`user_voucher(user_id, voucher_id)` 或其他完整性约束。
+
+本次执行 promotion 定向测试时，100 用户并发用例曾出现不同 eventKey 的 `voucher_claim.id` 主键冲突；外层把它误判为业务重复领取，随后按当前 command 查不到 claim，于是报出 `duplicate claim conflict but persisted claim is unavailable`。同一用例单独重跑通过，证明这是偶发测试失败。项目当前使用的 H2 2.2.224 在嵌入式并发 `AUTO_INCREMENT` 场景有同类已知问题（[H2 issue #3950](https://github.com/h2database/h2database/issues/3950)），所以这次主键碰撞更可能是测试数据库缺陷，而不是 MySQL 自增行为；但“把任意唯一冲突当成 claim 重复”本身仍是实现缺口，并与前述种子 `user_voucher` 冲突问题共用同一错误分支。
+
+后续修复应只把可确认来自 `voucher_claim` 两个业务唯一键的冲突交给已有结果查询；其他主键/用户券冲突必须单独处理或原样抛出，避免掩盖真实数据问题。修复前，promotion 全量定向测试不能标记为稳定通过。
 
 ## 10. 面试时可直接回答的三句话
 

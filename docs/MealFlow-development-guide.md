@@ -890,8 +890,8 @@ seckill_voucher
 voucher_claim
 Redis Lua
 库存预热
-VoucherClaimAcceptedEvent
-领取补偿任务
+SeckillClaimRequested
+Pending 重投与幂等收尾
 ```
 
 验收：
@@ -900,7 +900,7 @@ VoucherClaimAcceptedEvent
 不超卖
 一人一券
 重复请求不会重复入账
-Lua 成功 DB 失败可补偿
+首次发消息或 Redis 收尾失败可由 Pending 重投收敛
 ```
 
 提交建议：
@@ -1435,7 +1435,7 @@ PaymentSuccessEvent
 OrderCreatedFromTicketEvent
 QueueTicketReadyEvent
 MerchantCapacityReleaseRequestedEvent
-VoucherClaimAcceptedEvent
+SeckillClaimRequested
 MealReadyEvent
 ```
 
@@ -1524,17 +1524,17 @@ ZPOPMIN waiting ZSet
 
 ## 16. 秒杀券怎么实现
 
-推荐校招实现版：
+当前已实现的校招版：
 
 ```text
 请求进入 promotion-service
 校验活动存在和时间
-执行 Redis Lua
-Lua 成功后同步写 voucher_claim + local_event
-返回 PROCESSING
-Outbox 投递 VoucherClaimAcceptedEvent
-消费者创建 user_voucher
-更新 voucher_claim 为 CLAIMED
+检查 Redis 连续性 marker
+执行 Redis Lua：扣预约库存、写 users Set、写 Pending ZSet
+发布 SeckillClaimRequested，接口返回 PENDING
+消费者在 MySQL 新领取事务中写 voucher_claim PROCESSING
+条件扣减 DB 最终库存，创建 user_voucher，claim -> CLAIMED/SOLD_OUT
+事务提交后清理 Pending；SOLD_OUT 幂等补偿 Redis 预约
 ```
 
 Lua 做：
@@ -1544,27 +1544,31 @@ Lua 做：
 判断用户是否已领
 扣 Redis 库存
 用户加入领取 Set
+用户加入 Pending ZSet
 返回成功
 ```
 
 MySQL 做：
 
 ```text
-voucher_claim 记录资格流水
+voucher_claim 记录最终结算流水
+voucher.stock 条件扣减作为最终库存防线
 user_voucher 入券包
-唯一索引防重复
-补偿任务对账 Redis 和 DB
+event_key、用户+券双唯一索引防重复
 ```
+
+消息首次发送失败和 MySQL 提交后 Redis 收尾失败都由 Pending 重投闭环处理。当前没有 MySQL `local_event`/Outbox，也没有全量 Redis-DB 对账任务。重复消费时，普通 INSERT 的唯一键冲突先使新领取事务回滚，再由外层协调器读取已提交 claim；不要使用 `INSERT IGNORE + 同事务 sleep 轮询`。
 
 用户展示状态：
 
 ```text
-PROCESSING    已获得资格，入账中
-SUCCESS       已入券包
+PENDING       Redis 已预约，等待异步结算
+CLAIMED       已入券包
+ALREADY_CLAIMED 已领取
 FAILED        失败
 SOLD_OUT      已抢完
-DUPLICATE     已领取
-EXPIRED       活动结束
+NOT_STARTED   活动未开始
+STOCK_RECOVERING Redis 状态不连续，暂不开放新预约
 ```
 
 ## 17. 下单链路怎么实现

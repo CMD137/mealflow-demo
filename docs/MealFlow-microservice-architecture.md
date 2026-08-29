@@ -258,24 +258,23 @@ delivery_fee
 
 ### 4.3 VoucherClaim 优惠券领取
 
-秒杀券领取状态：
+当前 `voucher_claim` 数据库状态：
 
 ```text
-ACCEPTED       已通过 Redis 资格校验
+PROCESSING     新领取事务处理中
 CLAIMED        已入用户券包
-DUPLICATE      重复领取
-FAILED         创建失败
-COMPENSATING   补偿中
-COMPENSATED    已补偿
+SOLD_OUT       MySQL 最终库存不足
 ```
 
 MySQL 唯一索引：
 
 ```text
-uk_user_voucher(user_id, voucher_id)
+voucher_claim(event_key)
+voucher_claim(user_id, voucher_id)
+user_voucher(user_id, voucher_id)
 ```
 
-用于兜底一人一券。
+分别用于同事件幂等、同用户同券幂等，以及最终券包一人一券。
 
 ### 4.4 Payment 支付单
 
@@ -571,46 +570,45 @@ CREATE TABLE consumer_record (
 Redis Key：
 
 ```text
-voucher:stock:{voucherId}
-voucher:user:{voucherId}
-voucher:claim:flow:{flowId}
+seckill:{voucherId}:stock
+seckill:{voucherId}:users
+seckill:{voucherId}:pending
+seckill:state:initialized
 ```
 
 Lua 原子校验：
 
 ```text
-校验活动时间
 校验库存 > 0
 校验用户未领取
 库存 - 1
 用户加入领取集合
-记录领取流水
-返回 flowId
+用户加入 Pending ZSet
 ```
 
 异步流程：
 
 ```text
-返回 accepted
--> 写 voucher_claim flow
--> 写 VoucherClaimAcceptedEvent
--> promotion-service 异步落库
--> MySQL 唯一索引兜底
--> 失败则补偿 Redis 库存和用户集合
+发布 SeckillClaimRequested
+-> 返回 PENDING
+-> Consumer 新事务写 voucher_claim PROCESSING
+-> DB 条件扣减最终库存
+-> 成功创建 user_voucher，claim -> CLAIMED
+-> 无库存 claim -> SOLD_OUT
+-> 事务提交后清理 Pending；SOLD_OUT 幂等归还 Redis 预约
 ```
 
-注意：Outbox 只能保证“数据库本地事务 + 消息”一致，不能天然保证“Redis Lua + 数据库 Outbox”一致。因此秒杀资格必须采用以下两种闭环之一：
+当前秒杀链路没有持久化 Outbox，也没有 Redis Stream 或全量 Redis-DB 对账。Redis Pending 保存“预约收尾尚未确认”的用户；首次发送失败或提交后收尾失败时，调度器重发相同 eventKey。
 
-- 方案 A：Lua 扣库存后写 Redis Stream，消费者从 Stream 落库，Stream 是 Redis 侧资格流水。
-- 方案 B：Lua 成功后请求线程同步写 `voucher_claim` 和 `local_event`，二者在 MySQL 本地事务中提交。
-
-本项目推荐校招实现版使用方案 B，并补偿扫描 Redis 领取集合和 `voucher_claim`，处理“Lua 成功但 DB/Outbox 未写入”的资格悬挂。
+数据库结算使用无事务外层协调器和有事务内层新领取服务。普通 INSERT 唯一冲突先回滚内层事务，外层再读已提交结果，避免 `INSERT IGNORE + 同事务短轮询` 的可见性竞态。
 
 异常补偿：
 
-- Redis 成功，DB 失败：补偿库存和用户领取集合。
-- MQ 投递失败：Outbox 重试。
-- MQ 重复消费：消费幂等表 + MySQL 唯一索引。
+- 首次 MQ 投递失败：保留 Pending，调度器重投。
+- DB 临时失败：RocketMQ 重投，Pending 仍保留。
+- DB 最终 `SOLD_OUT`：归还 Redis 预约库存并删除 users/Pending。
+- MySQL 已提交但 Redis 收尾失败：重复消费读取已有 claim 后再次收尾。
+- MQ 重复消费：`voucher_claim` 双唯一约束 + `user_voucher` 唯一约束。
 - 用户重复请求：Lua 中 Set 校验。
 
 ## 9. 订单状态机与 Redisson 锁
@@ -1038,9 +1036,9 @@ GET  /vouchers                     查询可领取优惠券
 POST /vouchers/{id}/claim          领取普通券
 POST /vouchers/{id}/seckill        秒杀领取
 GET  /users/me/vouchers            我的券包
-POST /internal/vouchers/lock       下单锁定优惠券
-POST /internal/vouchers/confirm    支付成功确认核销
-POST /internal/vouchers/release    订单取消释放优惠券
+POST /vouchers/internal/lock       下单锁定优惠券
+POST /vouchers/internal/confirm    支付成功确认核销
+POST /vouchers/internal/release    订单取消释放优惠券
 ```
 
 优惠券使用不是简单扣状态，应拆成：
@@ -1131,24 +1129,27 @@ queue-service 创建 QueueTicket
 
 ```text
 用户点击抢券
--> gateway 用户限流
 -> promotion-service 校验活动基础信息
--> Redis Lua 原子扣减资格库存
--> 写 claim flow
--> 返回 accepted
--> outbox/RocketMQ 异步创建 user_voucher
--> DB 唯一索引兜底一人一券
+-> Redis Lua 原子扣减预约库存并写 users/Pending
+-> 发布 SeckillClaimRequested，返回 PENDING
+-> RocketMQ 消费者在 MySQL 事务中写 voucher_claim
+-> DB 条件扣减最终库存并创建 user_voucher
+-> claim 进入 CLAIMED/SOLD_OUT
+-> MySQL 提交后完成 Redis Pending 收尾
 ```
+
+当前秒杀发送端没有持久化 Outbox；首次发送失败由 Redis Pending 定时重投。普通 INSERT 唯一冲突先回滚新领取事务，外层再读取已提交 claim，避免旧版 `INSERT IGNORE + 同事务轮询` 的可见性竞态。
 
 用户看到的状态不应只有“成功/失败”，而应区分：
 
 ```text
-ACCEPTED     已获得资格，等待入账
+PENDING      Redis 已预约，等待入账
 CLAIMED      已入券包
-DUPLICATE    已领取
+ALREADY_CLAIMED 已领取
 SOLD_OUT     已抢完
-EXPIRED      活动结束
-COMPENSATING 系统补偿中
+NOT_STARTED  活动未开始
+STOCK_RECOVERING Redis 状态不连续，暂不开放新预约
+FAILED       活动禁用或结束
 ```
 
 ## 22. 一致性边界设计
@@ -1161,7 +1162,7 @@ COMPENSATING 系统补偿中
 | 订单状态流转和状态日志 | 强一致 | 同库事务 + 状态机 |
 | 支付成功和订单改为已支付 | 最终一致可接受，但必须可补偿 | 支付事件 + 定时对账 |
 | 秒杀资格扣减 | Redis 原子一致 | Lua |
-| 秒杀资格落库 | 最终一致 | MQ + 唯一索引 + 补偿 |
+| 秒杀资格落库 | 最终一致 | Redis Pending + MQ 重投 + DB 条件扣库存/唯一索引 + 幂等收尾 |
 | 优惠券锁定和订单提交 | 尽量强一致 | Try-Lock-Confirm/Release |
 | 排队票据和 Redis 等待队列 | MySQL 为准，Redis 可重建 | 双写 + 补偿扫描 |
 | 通知消息 | 最终一致 | MQ + 重试 |
@@ -1272,7 +1273,7 @@ RocketMQ：
 | order-service 创建订单失败 | 用户排到但未成单 | ticket 标记 FAILED，释放库存和券，通知用户 |
 | 支付成功事件重复 | 订单重复流转 | 订单状态机 + consumer_record |
 | 商户接单重复点击 | 状态重复修改 | Redisson 锁 + 状态转换表 |
-| 秒杀 Redis 成功 DB 失败 | 用户资格悬挂 | claim_flow 补偿任务回滚或重试落库 |
+| 秒杀 Redis 成功但消息/DB/收尾失败 | 用户预约暂处于 Pending | 相同 eventKey 重投；DB 幂等结算；CLAIMED 清 Pending，SOLD_OUT 幂等归还 Redis 预约 |
 | MQ 积压 | 通知延迟 | 核心状态仍可查询，增加消费者或降级非核心通知 |
 | Redis 宕机 | 排队位置不可快速计算 | MySQL 查询兜底，Redis 恢复后重建 |
 
@@ -1631,7 +1632,7 @@ Browser/App
 | MQ 消息丢失怎么办？ | Outbox 重试，READY 超时扫描补发 |
 | MQ 重复消费怎么办？ | consumer_record + 业务状态机 |
 | Redis 宕机怎么办？ | MySQL 是事实源，Redis 可重建 |
-| 秒杀超卖怎么办？ | Lua 原子扣库存，DB 唯一索引兜底 |
+| 秒杀超卖怎么办？ | Lua 原子预约，DB 条件扣最终库存；双唯一索引保证同事件和一人一券幂等 |
 | 用户重复下单怎么办？ | requestId 幂等表 |
 | 优惠券被锁后订单取消怎么办？ | LOCKED 超时释放 |
 | 支付成功但订单没改状态怎么办？ | 支付对账 + PaymentSuccessEvent 补偿 |
