@@ -589,6 +589,7 @@ Lua 原子校验：
 异步流程：
 
 ```text
+入口先查持久化 claim/钱包券，历史已领取用户不再占 Redis 库存
 发布 SeckillClaimRequested
 -> 返回 PENDING
 -> Consumer 新事务写 voucher_claim PROCESSING
@@ -600,7 +601,7 @@ Lua 原子校验：
 
 当前秒杀链路没有持久化 Outbox，也没有 Redis Stream 或全量 Redis-DB 对账。Redis Pending 保存“预约收尾尚未确认”的用户；首次发送失败或提交后收尾失败时，调度器重发相同 eventKey。
 
-数据库结算使用无事务外层协调器和有事务内层新领取服务。普通 INSERT 唯一冲突先回滚内层事务，外层再读已提交结果，避免 `INSERT IGNORE + 同事务短轮询` 的可见性竞态。
+数据库结算使用无事务外层协调器和有事务内层新领取服务。只有 `voucher_claim` 插入冲突会转换成重复消息信号；事务回滚后外层再读已提交结果。钱包券及其他位置的唯一键冲突原样抛出，避免掩盖数据问题，也避免 `INSERT IGNORE + 同事务短轮询` 的可见性竞态。
 
 异常补偿：
 
@@ -1130,6 +1131,7 @@ queue-service 创建 QueueTicket
 ```text
 用户点击抢券
 -> promotion-service 校验活动基础信息
+-> 查询持久化 claim/钱包券；已领取则直接返回
 -> Redis Lua 原子扣减预约库存并写 users/Pending
 -> 发布 SeckillClaimRequested，返回 PENDING
 -> RocketMQ 消费者在 MySQL 事务中写 voucher_claim
@@ -1138,7 +1140,7 @@ queue-service 创建 QueueTicket
 -> MySQL 提交后完成 Redis Pending 收尾
 ```
 
-当前秒杀发送端没有持久化 Outbox；首次发送失败由 Redis Pending 定时重投。普通 INSERT 唯一冲突先回滚新领取事务，外层再读取已提交 claim，避免旧版 `INSERT IGNORE + 同事务轮询` 的可见性竞态。
+当前秒杀发送端没有持久化 Outbox；首次发送失败由 Redis Pending 定时重投。只有 claim 插入位置的唯一键冲突会先回滚新领取事务并交给外层读取已提交 claim，其他位置的唯一键异常原样抛出，避免旧版 `INSERT IGNORE + 同事务轮询` 的可见性竞态和异常误分类。
 
 用户看到的状态不应只有“成功/失败”，而应区分：
 

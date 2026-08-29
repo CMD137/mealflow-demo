@@ -24,7 +24,7 @@
 - `meal-fulfillment` 的出餐后产能释放、排队票转单已拆为本地持久任务并可分步重试，避免网络异常造成只完成一半。
 - `meal-payment` 已通过支付宝官方 SDK 支持沙箱下单、回调验签、真实退款请求、退款渠道流水和主动退款查询；mock provider 仍用于自动化测试。
 - `meal-notify` 已支持通知模板和多渠道投递事实表，模板消息可同时生成站内信与 `SMS_MOCK` 投递记录，便于演示短信模拟和后续真实渠道扩展。
-- `meal-promotion` 秒杀领券使用 Redis Lua 原子操作 `seckill:{voucherId}:stock`、`users` Set 和 Pending ZSet；预约后发布 RocketMQ 命令，由 MySQL 事务条件扣减最终库存并写 `voucher_claim`、`user_voucher`。首次发送或 Redis 收尾失败由 Pending 重投，同一事件通过数据库唯一约束幂等收敛。
+- `meal-promotion` 秒杀领券使用 Redis Lua 原子操作 `seckill:{voucherId}:stock`、`users` Set 和 Pending ZSet；入口先用 `voucher_claim`/`user_voucher` 兜底识别历史领取，预约后发布 RocketMQ 命令，由 MySQL 事务条件扣减最终库存并写领取事实。首次发送或 Redis 收尾失败由 Pending 重投；只有 claim 插入冲突按重复消息处理，其他唯一键异常原样回滚暴露。
 - `meal-promotion` 已补齐营销券后台管理能力，支持券列表、新建券、修改券名称/类型/折扣/库存/状态；禁用券会阻止用户继续领取。
 - `meal-promotion` 的 `voucher_claim_retry` 记录 Pending 调度器的发布尝试，状态为 `RETRY` 或 `RECOVERED`；当前没有 Redis/MyBatis 全量对账任务，也没有应用层自动转 `DEAD` 的次数上限。最终领取事实仍以 `voucher_claim` 和 `user_voucher` 为准。
 - `meal-queue` 的票据、产能 token、商户产能配置已持久化；启动时可以从 MySQL 重建 WAITING 队列运行时索引和商户产能 inflight 派生计数，Docker 环境可使用 Redis ZSet 作为等待队列热索引、使用 `capacity:merchant:{merchantId}:inflight` 作为产能热计数，本地测试默认使用内存实现。
@@ -34,7 +34,7 @@
 - 所有业务服务和网关已暴露 `/actuator/prometheus`，Prometheus 默认抓取各服务指标，Grafana 自动 provision Prometheus 数据源和 `MealFlow Overview` 基础面板。
 - `meal-order`、`meal-payment`、`meal-fulfillment` 已暴露 Outbox 状态指标 `mealflow_outbox_events`，`meal-order`、`meal-notify` 已暴露 consumer_record 状态指标 `mealflow_consumer_records`，`meal-promotion` 已暴露 Pending 重投记录指标 `mealflow_voucher_claim_retries`；该指标包含 `RETRY`、`RECOVERED`、`DEAD` 标签，但当前调度实现不会主动产生新的 `DEAD` 记录。
 - `scripts/e2e-smoke.ps1` 覆盖 gateway ping、登录取 token、种子商品检查、秒杀券领取、产能限流、第一单成单、第二单排队、支付成功事件异步消费、履约出餐、产能释放后排队 ticket 自动转单。
-- `scripts/load-seckill.ps1`、`scripts/load-peak-orders.ps1` 和 `scripts/fault-demo.ps1` 已覆盖秒杀并发、高峰下单、鉴权拒绝、Redis 热索引重建和 capacity token 重复释放幂等演示。
+- `scripts/load-seckill.ps1`、`scripts/test-seckill-mysql-concurrency.ps1`、`scripts/load-peak-orders.ps1` 和 `scripts/fault-demo.ps1` 已覆盖真实 MySQL/Redis/RocketMQ 秒杀并发与账目收敛、高峰下单、鉴权拒绝、Redis 热索引重建和 capacity token 重复释放幂等演示。
 - `meal-app` 已从默认 Maven reactor 移出，仅保留在 `legacy-demo` profile 下作为本地内存版演示模块，避免与当前微服务主线混淆。
 - 可选智能客服由 `meal-support` Java 桥与 `meal-support-agent-runtime` Python 运行时组成；内部双向 token 默认 fail-closed，本地 Compose 提供开发值，生产 Compose 强制显式配置两个方向的独立 token。
 - GitHub Actions 已覆盖后端全量测试、两个前端构建、Python Agent 测试以及本地/生产 Compose 配置校验。
@@ -47,7 +47,7 @@
 - **CI 容器级 E2E**：`e2e-compose` job 打包全部服务后启动 Compose，运行 `scripts/e2e-smoke.sh`（登录/秒杀/排队/支付事件/履约/转单全链路，含内部签名链路回归），失败自动转储容器日志。
 - 最近一次后端主线全量验证通过：`mvn -q test`、`mvn -q -DskipTests package`、`docker compose config`、`docker compose up -d --build`、`scripts/e2e-smoke.ps1`。
 - 本轮新增管理端能力已验证通过：`mvn -q -pl meal-auth-user -am test`、`mvn -q -pl meal-catalog -am test`、`mvn -q -pl meal-order -am test`、`mvn -q -pl meal-promotion -am test`、`mvn -q test`、`mvn -q -DskipTests package`。
-- 2026-08-29 秒杀严格复验发现：promotion 定向测试 26 个用例中有 1 个并发用例偶发报 `voucher_claim.id` 主键冲突，单独重跑同一用例通过。当前不能把 promotion 并发测试登记为稳定通过；详见 `seckill-design.md` 的“严格复核发现的未解决项”。
+- 2026-08-30 秒杀复验已完成：promotion 模块 29 个测试通过；H2 只承担确定性 SQL/事务/幂等测试，不再模拟并发自增主键。真实 Docker MySQL 8 + Redis + RocketMQ 验收中，20 用户抢库存 10 精确得到 10 个 `CLAIMED`、10 个 `SOLD_OUT`，MySQL 与 Redis 库存、钱包券、users Set 和 Pending 全部收敛。历史钱包券已通过启动 users Set 对账、入口持久化兜底和幂等 claim 迁移修复。
 - Docker 复验已通过：已修复旧 MySQL 表结构下 `data.sql` 先于启动迁移执行导致的 catalog/auth-user/promotion 初始化兼容问题；`meal-queue`、`gateway`、`payment`、`fulfillment` 已用干净 Maven 依赖重建容器，完整 `scripts/e2e-smoke.ps1` 已覆盖 gateway ping、商品浏览、登录、秒杀领券、产能限流、下单排队、支付事件消费、履约出餐和排队 ticket 转单。
 
 ## 剩余增强方向
@@ -56,11 +56,11 @@
 - Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order、domain event 到 notify 的真实 MQ 消费均已接入 consumer_record，持久化消费模板已支持 PROCESSING 超时抢占重试和基于保存 payload 的本地重放，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。
 - Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua、Pending 重投、数据库幂等结算和单 stock key 安全恢复已在 `meal-promotion` 接入。后续可继续扩展多实例 Pending 原子抢占、应用层 DEAD 策略和更多 Redis/MQ 故障注入断言。
 - Prometheus/Grafana、业务积压指标、告警规则和基础压测/故障脚本已完成；后续可继续扩展队列等待 P90/P99、秒杀失败原因分布、Alertmanager 通知通道和故障注入自动断言。
-- traceId 透传、统一异常契约、内部 HMAC 服务身份、分页与复合索引已完成；Nacos 已真正承担服务发现与负载均衡（含多实例故障转移演示）；签到积分已落库。后续可继续扩展 OpenTelemetry 标准 `traceparent` 导出（Tempo/Jaeger）、跨实例 nonce 去重（Redis）、Testcontainers 并发/故障回归和真实压测报告。
+- traceId 透传、统一异常契约、内部 HMAC 服务身份、分页与复合索引已完成；Nacos 已真正承担服务发现与负载均衡（含多实例故障转移演示）；签到积分已落库。后续可继续扩展 OpenTelemetry 标准 `traceparent` 导出（Tempo/Jaeger）、跨实例 nonce 去重（Redis）和真实压测报告；秒杀并发回归继续复用现有 Docker MySQL 验收脚本，不额外引入 Testcontainers。
 
 ## 后续实施顺序
 
 1. 默认后端微服务主线、管理后台和用户端 H5 已完成闭环；下一步应优先把 e2e 从脚本验收扩展到浏览器验收。
 2. 继续完善用户端地址簿编辑、订单取消、再来一单、支付状态轮询等体验增强。
 3. 继续完善管理后台筛选条件持久化、更细粒度表单校验、大表游标分页与运维可视化。
-4. 在不扩大当前实现复杂度的前提下，逐步补 OTel 导出、Alertmanager 通知、Testcontainers 回归和真实压测基线。
+4. 在不扩大当前实现复杂度的前提下，逐步补 OTel 导出、Alertmanager 通知和真实压测基线；数据库并发回归优先复用现有 Docker 环境。

@@ -458,6 +458,9 @@ NOT_FOUND      仅查询接口可能返回
 请求线程：
 
 ```text
+校验活动时间，并先查询 voucher_claim / user_voucher 持久化领取事实
+已有领取事实：直接返回 CLAIMED / ALREADY_CLAIMED，不占 Redis 库存
+无领取事实：
 执行 Lua：
   校验库存
   校验用户未领取
@@ -493,7 +496,7 @@ UNIQUE voucher_claim(user_id, voucher_id)
 UNIQUE user_voucher(user_id, voucher_id)
 ```
 
-`VoucherClaimTransactionService` 只负责第一次领取的事务。普通 INSERT 发生唯一键冲突时，该事务先回滚；无事务外层 `VoucherClaimSettlementService` 再查询已提交 claim 并返回 `CLAIMED`/`SOLD_OUT`。禁止恢复为 `INSERT IGNORE + 同事务短轮询`，因为唯一键已冲突不代表当前事务快照一定能读到对方记录。
+`VoucherClaimTransactionService` 只负责第一次领取的事务。只有插入 `voucher_claim` 发生唯一键冲突时，才转换为内部重复 claim 异常并先回滚事务；无事务外层 `VoucherClaimSettlementService` 再查询已提交 claim 并返回 `CLAIMED`/`SOLD_OUT`。`user_voucher` 或其他位置的唯一键冲突原样抛出。禁止恢复为 `INSERT IGNORE + 同事务短轮询`，因为唯一键已冲突不代表当前事务快照一定能读到对方记录。
 
 ### 8.3 失败恢复边界
 
@@ -501,7 +504,7 @@ UNIQUE user_voucher(user_id, voucher_id)
 - MySQL 已提交但 Redis 收尾失败：MQ 重投读取已有 claim，再次执行幂等收尾。
 - 单个 stock key 丢失且 marker 连续、该券 Pending 为 0：从 MySQL 当前 stock 使用 `SETNX` 恢复。
 - 全局 marker 丢失：返回 `STOCK_RECOVERING`，禁止自动从 MySQL 开放新预约。
-- 当前本地 Compose 显式开启 bootstrap 方便空环境初始化；它只能在确认旧消息与领取均已收敛时使用，不是通用 Redis 灾难恢复。
+- 当前本地 Compose 显式开启 bootstrap：marker 缺失时用 MySQL stock `SETNX` 初始化，始终从秒杀钱包券幂等补 users Set，最后才补 marker；它不能恢复丢失的 Pending，只能在确认旧消息与领取均已收敛时使用。
 
 ## 9. 订单表与 QueueTicket 幂等
 

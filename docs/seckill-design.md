@@ -59,8 +59,11 @@ seckill:{voucherId}:{userId}
 
 1. 查询券；非 `ACTIVE` 或已经结束，返回 `FAILED`。
 2. 开始时间在未来，返回 `NOT_STARTED`，不访问 Redis。
-3. 检查 `seckill:state:initialized`。不存在时返回 `STOCK_RECOVERING`，不创建任何预约。
-4. 执行 Redis Lua：一次脚本同时检查库存、一人一领，并在成功时扣减库存、写用户 Set、写 Pending ZSet。
+3. 先查询 MySQL 持久化事实：已有最终 claim 时直接返回；若没有 claim 但已有 `user_voucher`，也按已领取处理，不再占用 Redis 库存。
+4. 检查 `seckill:state:initialized`。不存在时返回 `STOCK_RECOVERING`，不创建任何预约。
+5. 执行 Redis Lua：一次脚本同时检查库存、一人一领，并在成功时扣减库存、写用户 Set、写 Pending ZSet。
+
+第 3 步是 Redis users Set 之外的持久化兜底。它主要覆盖旧数据迁移、Redis 用户集合曾缺失等情况；正常新请求仍由 Lua 承担并发入口的一人一领原子判定。
 
 Lua 返回值和内部含义：
 
@@ -130,13 +133,13 @@ Consumer 只处理 `eventType = SeckillClaimRequested` 的消息，并校验消�
 3. 扣减失败：将 claim 改为 `SOLD_OUT`，提交事务；
 4. 扣减成功：插入 `user_voucher(AVAILABLE)`，再将 claim 改为 `CLAIMED` 并保存 `user_voucher_id`，提交事务。
 
-同一事件或同一用户同一券并发处理时，数据库唯一约束抛出 `DuplicateKeyException`。这会使**内层新领取事务先完整回滚**；异常回到外层协调器后，外层再按 `event_key`、其次按 `(user_id, voucher_id)` 查询已经提交的 claim：
+只有第 1 步插入 `voucher_claim` 抛出的 `DuplicateKeyException`，才会被转换成内部 `DuplicateClaimException`，表示可能是同一事件或同一用户同一券的重复消息。这会使**内层新领取事务先完整回滚**；异常回到外层协调器后，外层再按 `event_key`、其次按 `(user_id, voucher_id)` 查询已经提交的 claim：
 
 - 已是 `CLAIMED` / `SOLD_OUT`：直接返回已有最终结果，不再扣数据库库存、不再插入用户券；
 - 仍是 `PROCESSING`：抛异常，由 MQ 稍后重投；
-- 唯一冲突后仍查不到记录：抛出带 eventKey、userId、voucherId 的异常，不伪造成功结果。
+- claim 插入冲突后仍查不到记录：原样抛出底层 `DuplicateKeyException`，不伪造成功结果。
 
-因此当前实现**不使用 `INSERT IGNORE`，也不在同一个事务快照中 sleep 轮询**。幂等不是依赖 JVM 内存，也不是假设“MQ 只投一次”，而是依赖确定 eventKey、数据库双唯一约束，以及“冲突事务回滚后再查询”的事务边界。
+`user_voucher` 插入或其他位置抛出的唯一键异常不会被当成重复 claim；它会使事务回滚并按真实数据异常向外传播。因此当前实现**不使用 `INSERT IGNORE`，也不在同一个事务快照中 sleep 轮询**。幂等不是依赖 JVM 内存，也不是假设“MQ 只投一次”，而是依赖确定 eventKey、数据库双唯一约束，以及“claim 冲突事务回滚后再查询”的事务边界。
 
 ### 5.2 本次修复的竞态
 
@@ -188,21 +191,22 @@ marker 缺失 → STOCK_RECOVERING → 禁止新 Redis 预约 → 不从 MySQL �
 
 ### 7.1 受控 bootstrap 的真实边界
 
-`mealflow.promotion.seckill.bootstrap.enabled` 的应用默认值是 `false`。只有显式设为 `true` 且 marker 不存在时，应用在 `ApplicationReadyEvent`：
+`mealflow.promotion.seckill.bootstrap.enabled` 的应用默认值是 `false`。显式设为 `true` 后，应用在 `ApplicationReadyEvent`：
 
-1. 遍历所有券，对每个 stock key 做 `SETNX(voucher.stock)`；
-2. 全部调用完成后，最后写入 marker。
+1. 读取 marker；若 marker 不存在，遍历所有券，对每个 stock key 做 `SETNX(voucher.stock)`；
+2. 无论 marker 原先是否存在，都遍历所有秒杀 `user_voucher`，用幂等 `SADD` 补齐各券 users Set；
+3. marker 原先不存在时，以上步骤全部完成后才写入 marker；marker 已存在时不修改 stock 和 marker。
 
-任何 `DataAccessException` 都不会写 marker；marker 已存在时也会跳过，以避免覆盖活动中的状态。使用应用默认配置时，普通 Promotion Service 重启不会初始化库存。
+marker 不存在时，任何 `DataAccessException` 都不会写 marker；marker 已存在时即使对账失败，也不会覆盖活动中的 stock。使用应用默认配置时，普通 Promotion Service 重启不会执行这段 bootstrap/对账逻辑。
 
-当前 `docker-compose.yml` 为了本地空环境首次启动方便，显式设置了 `SECKILL_BOOTSTRAP_ENABLED=true`。因此在 Compose 环境里，只要 marker 仍在，重启服务会安全跳过；但如果只清空 Redis 数据而保留 MySQL，再启动 promotion，bootstrap 会自动执行。这是本地演示便利性取舍，不等价于可靠的 Redis 灾难恢复。不要在仍有旧 MQ 消息或未收敛领取时单独删除 Redis volume。
+当前 `docker-compose.yml` 为了本地环境首次启动和历史 users Set 对账方便，显式设置了 `SECKILL_BOOTSTRAP_ENABLED=true`。因此 marker 仍在时，重启只补齐 users Set，不覆盖实时 stock；如果只清空 Redis 数据而保留 MySQL，再启动 promotion，则会从 MySQL 当前库存和已有钱包券重建 stock、users 与 marker。这仍是本地演示便利性取舍，不等价于完整的在线 Redis 灾难恢复。不要在仍有旧 MQ 消息或未收敛领取时单独删除 Redis volume。
 
 这个开关只能用于：
 
 - 全新环境首次初始化；或
 - 人工确认旧 MQ/Consumer 秒杀链路已经完全静默、MySQL 已收敛后的受控恢复。
 
-它**不是** Redis 整体丢失后的普通恢复按钮。当前 bootstrap 只初始化 stock key 和 marker；代码不会自动重建历史用户 Set、Pending 或未完成预约。因此不能把它表述为“Redis 灾难后自动恢复”。
+它**不是** Redis 整体丢失后的普通恢复按钮。当前 bootstrap 能重建 stock、历史已领 users Set 和 marker，但不能找回已经丢失的 Pending 或当时未完成的 Redis 预约；所以执行前仍必须确认旧消息和结算已经收敛。
 
 ## 8. 对外状态的面试表达
 
@@ -211,7 +215,7 @@ marker 缺失 → STOCK_RECOVERING → 禁止新 Redis 预约 → 不从 MySQL �
 | `NOT_STARTED` | 当前时间早于券开始时间，尚未进入 Redis。 |
 | `PENDING` | Redis 已预约，等待 MQ/MySQL 结算，或首次消息发送失败后等待 Pending 重投。 |
 | `CLAIMED` | 查询到数据库结算完成，用户券已创建。 |
-| `ALREADY_CLAIMED` | 再次请求时 Redis 判重，且数据库已确认 `CLAIMED`。 |
+| `ALREADY_CLAIMED` | 再次请求时，数据库 claim 或钱包券已确认领取；也可能是 Redis 判重后回查到该事实。 |
 | `SOLD_OUT` | Redis 无库存，或 MySQL 最终条件扣减失败后的结算结果。 |
 | `STOCK_RECOVERING` | marker 缺失、单 stock key 缺失但 Pending 未清、或一次安全恢复后仍无法预约。 |
 | `FAILED` | 券非活动状态或已结束。 |
@@ -227,14 +231,17 @@ marker 缺失 → STOCK_RECOVERING → 禁止新 Redis 预约 → 不从 MySQL �
 - Pending 与 MQ 重投把“Redis 已预约但消息发送/收尾失败”的窗口转化为可重试闭环。
 - 单券 stock key 单独丢失时，在 Pending 已清且 marker 连续的前提下可安全恢复。
 
-### 2026-08-29 修复后验证
+### 2026-08-30 修复后验证
 
-- H2/MyBatis 的 100 用户/库存 10 测试在修复后曾验证得到 10 个 `CLAIMED`、90 个 `SOLD_OUT`；但本次严格复验时整组测试出现 1 次主键 `DuplicateKeyException`，随后单独重跑同一用例又通过，说明它仍是偶发失败，不能登记为稳定通过。
-- 重复消息测试：同一 eventKey 并发结算 20 次，只扣减一次数据库库存、只生成一张用户券，所有调用收敛到 `CLAIMED`。
-- Redis 收尾失败重投：MySQL 已提交而首次 `complete`/`compensate` 失败时，重复消费继续执行相同收尾，不重复扣库或发券。
-- 真实 Redis + RocketMQ + MySQL：20 个用户抢库存 10，最终为 10 个 `CLAIMED`、10 个 `SOLD_OUT`。
+- promotion 模块 29 个测试通过。H2/MyBatis 保留确定性持久化测试：顺序结算 100 个不同用户、库存 10，得到 10 个 `CLAIMED`、90 个数据库 `SOLD_OUT`；同一 eventKey 顺序重复 20 次只扣一次库存、只生成一张用户券。
+- 历史钱包券回归：数据库只有 `user_voucher`、没有 claim 时，秒杀入口直接返回 `ALREADY_CLAIMED`，不会调用 Redis 或 MQ；状态查询返回 `CLAIMED`。
+- 异常分类回归：预置钱包券后直接触发结算，`user_voucher` 唯一键冲突按 `DuplicateKeyException` 暴露，事务中的 claim 和库存扣减均回滚，不再伪装成重复 claim。
+- Redis 启动对账：marker 不存在时按“stock → users → marker”顺序初始化；marker 已存在时只补 users Set、不覆盖 stock。
+- 真实 Redis + RocketMQ + MySQL：`scripts/test-seckill-mysql-concurrency.ps1` 创建隔离库存 10 的券，20 个用户经网关并发领取，HTTP 最终精确得到 10 个 `CLAIMED`、10 个 `SOLD_OUT`；MySQL 为 stock=0、10 条成功 claim、10 张钱包券，Redis 为 stock=0、users=10、Pending=0；成功用户再次请求返回 `ALREADY_CLAIMED` 且库存不变。
+- 历史回填迁移连续执行两次，`seckill:1000:100` 仍只有一条 `CLAIMED`，证明脚本幂等。
+- 部署后重放原历史用户 100 / 券 1000 请求，返回 `ALREADY_CLAIMED`（claim 关联钱包券 300），Redis stock 前后均为 100；全量 Maven 本轮生成 18 份测试报告，共 81 个测试，0 failure / 0 error。
 
-这些结果证明当前测试范围内的一人一券、防超卖和重复消费幂等；它们不是多实例、大规模压测或全故障点混沌测试的替代品。
+这些结果证明当前本地单实例测试范围内的一人一券、防超卖、重复消息幂等与 Redis/MySQL 收敛；它们不是多实例、大规模压测或全故障点混沌测试的替代品。
 
 ### 当前刻意接受的边界
 
@@ -244,29 +251,14 @@ marker 缺失 → STOCK_RECOVERING → 禁止新 Redis 预约 → 不从 MySQL �
 - `voucher_claim_retry` 记录的是恢复任务的发布尝试，不能替代 Redis Pending 或数据库结算事实。
 - 成功结算后 MySQL commit 与 Redis 收尾仍是两个步骤；系统依赖 MQ 重复投递和幂等收尾实现最终收敛，而不是提供严格的跨库原子提交。
 - 领券成功后的订单使用/锁券是另一条 `user_voucher` / `voucher_lock` 链路，不属于 Redis 秒杀预约闭环。
-- 受控 bootstrap 只恢复 stock 和 marker，不重建历史用户 Set；当前 Compose 自动开启 bootstrap 只适合本地首次启动或确认链路静默后的恢复。
+- 受控 bootstrap 可恢复 stock、历史 users Set 和 marker，但不能重建已经丢失的 Pending；当前 Compose 自动开启只适合本地首次启动或确认链路静默后的恢复。
 - Pending 调度没有多实例原子抢占；当前单实例本地部署允许偶发重复发布，并由数据库幂等吸收。
 
-### 2026-08-29 严格复核发现的未解决项
+### 已修复问题与 H2 测试边界
 
-#### 已有用户券与 Redis users Set 不一致
-
-当前受控 bootstrap 只初始化 stock 和 marker，不把已有 `user_voucher`/`voucher_claim` 回填到 Redis users Set。与此同时，`data.sql` 为用户 100、券 1000 直接种了一条 `user_voucher`，但没有对应 `voucher_claim`。
-
-因此存在两种后果：
-
-- 已有 `CLAIMED` 记录但 users Set 缺失的用户再次请求，会重新消耗一次 Redis 预约库存；Consumer 读取已有 `CLAIMED` 后只执行 `complete`，不会归还这次多余预约，导致 Redis stock 小于 MySQL stock。
-- 只有 `user_voucher`、没有 claim 的种子用户再次请求时，内层事务会在插入 `user_voucher` 处触发唯一键冲突并整体回滚；外层把所有 `DuplicateKeyException` 都按“claim 插入冲突”处理，却查不到已有 claim，于是消息持续失败、Pending 无法正常收尾。
-
-这不会突破 MySQL 条件扣库存和唯一约束，所以不会超卖或重复发券；但会造成 Redis 可预约库存虚减、请求长期 `PENDING` 和重复重投。修复时应同时处理两个事实：受控 bootstrap 必须重建历史已领用户标记，且结算层必须区分 claim 唯一冲突与 `user_voucher` 唯一冲突（或先把种子/迁移数据补齐为一致的 claim 事实）。在修复前，不能把“Redis 整体恢复后可直接重新开放秒杀”作为已实现能力。
-
-#### `DuplicateKeyException` 的捕获范围仍过宽
-
-`VoucherClaimSettlementService` 当前捕获 `settleNew` 抛出的所有 `DuplicateKeyException`，默认它们都来自 `voucher_claim` 的 eventKey 或用户+券唯一约束。但异常也可能来自 `voucher_claim.id` 主键、`user_voucher(user_id, voucher_id)` 或其他完整性约束。
-
-本次执行 promotion 定向测试时，100 用户并发用例曾出现不同 eventKey 的 `voucher_claim.id` 主键冲突；外层把它误判为业务重复领取，随后按当前 command 查不到 claim，于是报出 `duplicate claim conflict but persisted claim is unavailable`。同一用例单独重跑通过，证明这是偶发测试失败。项目当前使用的 H2 2.2.224 在嵌入式并发 `AUTO_INCREMENT` 场景有同类已知问题（[H2 issue #3950](https://github.com/h2database/h2database/issues/3950)），所以这次主键碰撞更可能是测试数据库缺陷，而不是 MySQL 自增行为；但“把任意唯一冲突当成 claim 重复”本身仍是实现缺口，并与前述种子 `user_voucher` 冲突问题共用同一错误分支。
-
-后续修复应只把可确认来自 `voucher_claim` 两个业务唯一键的冲突交给已有结果查询；其他主键/用户券冲突必须单独处理或原样抛出，避免掩盖真实数据问题。修复前，promotion 全量定向测试不能标记为稳定通过。
+- **历史领取状态不一致**：启动对账会从 `user_voucher` 幂等补 Redis users Set；入口在 Redis 前查询 claim/钱包券；首次种子补齐 claim，已有库使用 `20260830-promotion-claim-backfill.sql` 幂等迁移。三层防线共同避免历史用户再次虚减 Redis 库存。
+- **唯一键异常误分类**：`VoucherClaimTransactionService` 只在 claim 插入语句附近捕获并转换唯一键冲突；`VoucherClaimSettlementService` 只处理这个明确类型。钱包券冲突、其他完整性冲突原样抛出并回滚。
+- **H2 偶发并发主键碰撞**：H2 2.2.224 的嵌入式并发 `AUTO_INCREMENT` 存在同类已知问题（[H2 issue #3950](https://github.com/h2database/h2database/issues/3950)）。因此 H2 现在只验证 SQL 映射、事务回滚、条件扣库存和顺序幂等；并发正确性改由项目已有 Docker MySQL 8 + Redis + RocketMQ 的独立脚本验证，不为此引入 Testcontainers 或新的基础设施。
 
 ## 10. 面试时可直接回答的三句话
 

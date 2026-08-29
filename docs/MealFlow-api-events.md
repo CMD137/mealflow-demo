@@ -325,6 +325,7 @@ seckill:{voucherId}:{userId}
 当前真实链路：
 
 ```text
+先查 voucher_claim / user_voucher；已有领取事实直接返回，不占 Redis 库存
 Redis Lua 原子校验库存和一人一券
 -> 扣 Redis 预约库存，写 users Set 与 Pending ZSet
 -> 发布 SeckillClaimRequested 到 RocketMQ
@@ -335,7 +336,7 @@ Redis Lua 原子校验库存和一人一券
 -> 事务提交后完成 Redis Pending 收尾或售罄补偿
 ```
 
-秒杀发送端虽然复用了名为 `RocketMqOutboxClient` 的发送封装，但当前没有 MySQL `local_event`/Outbox 记录。首次发送失败由 Redis Pending 定时重投；重复事件由 `voucher_claim.event_key`、`voucher_claim(user_id, voucher_id)` 和 `user_voucher(user_id, voucher_id)` 唯一约束收敛。
+秒杀发送端虽然复用了名为 `RocketMqOutboxClient` 的发送封装，但当前没有 MySQL `local_event`/Outbox 记录。首次发送失败由 Redis Pending 定时重投；重复事件由 `voucher_claim.event_key`、`voucher_claim(user_id, voucher_id)` 和 `user_voucher(user_id, voucher_id)` 唯一约束收敛。结算层只把 `voucher_claim` 插入位置的唯一键冲突解释为重复消息，其他唯一键异常会回滚并原样暴露。
 
 ### 4.2 锁定优惠券
 
