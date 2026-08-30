@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.PaymentView;
 import com.mealflow.payment.mapper.LocalEventMapper;
+import com.mealflow.payment.mapper.PaymentMapper;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
     properties = {
         "spring.cloud.nacos.discovery.enabled=false",
         "mealflow.outbox.scheduler-enabled=false",
-        "mealflow.payment.provider=mock-wechat"
+        "mealflow.payment.provider=alipay-sandbox"
     }
 )
 class PaymentPersistenceTest {
@@ -24,6 +25,9 @@ class PaymentPersistenceTest {
 
   @Autowired
   private LocalEventMapper localEventMapper;
+
+  @Autowired
+  private PaymentMapper paymentMapper;
 
   @Test
   void createsAndPaysOrderInDatabase() {
@@ -35,6 +39,7 @@ class PaymentPersistenceTest {
 
     assertThat(paid.status()).isEqualTo("PAID");
     assertThat(paymentService.get(created.payOrderId()).status()).isEqualTo("PAID");
+    assertThat(paymentMapper.findById(created.payOrderId()).getProvider()).isEqualTo("mock-wechat");
     String eventKey = "payment:PaymentPaid:" + created.payOrderId() + ":1";
     assertThat(paymentService.events().stream().filter(event -> event.eventKey().equals(eventKey)).toList())
         .singleElement()
