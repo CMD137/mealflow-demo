@@ -5,6 +5,7 @@ import AppShell from '@/components/AppShell.vue';
 import { walletApi, vouchersApi } from '@/api/promotion';
 import { addressesApi } from '@/api/auth';
 import { submitOrderApi } from '@/api/orders';
+import { errorMessage as apiErrorMessage } from '@/api/http';
 import { useCartStore } from '@/stores/cart';
 import { buildSkuMapByCart } from '@/utils/catalog';
 import { formatMoney } from '@/utils/format';
@@ -23,6 +24,22 @@ const form = reactive({
   addressId: undefined as number | undefined,
   remark: ''
 });
+
+function submitErrorMessage(error: unknown) {
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? String(error.code) : '';
+  switch (code) {
+    case 'STOCK_NOT_ENOUGH':
+      return '商品库存不足，已为你保留购物车，请调整后重试';
+    case 'VOUCHER_UNAVAILABLE':
+    case 'SOLD_OUT':
+      return '优惠券已不可用，请重新选择后提交订单';
+    case 'IDEMPOTENT_PROCESSING':
+      return '订单正在提交，请勿重复操作';
+    default:
+      return apiErrorMessage(error, '提交订单失败，请稍后重试');
+  }
+}
 
 const selected = computed(() => cart.selectedItems);
 const discountCent = computed(() => {
@@ -75,6 +92,8 @@ async function submit() {
     await Promise.all(selected.value.map((item) => cart.remove(item.cartItemId)));
     sessionStorage.setItem('mealflow.lastOrderResult', JSON.stringify(result));
     router.push('/order-result');
+  } catch (error) {
+    errorMessage.value = submitErrorMessage(error);
   } finally {
     submitting.value = false;
   }
