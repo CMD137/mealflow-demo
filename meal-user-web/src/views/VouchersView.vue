@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import AppShell from '@/components/AppShell.vue';
 import { claimStatusApi, claimVoucherApi, vouchersApi, walletApi } from '@/api/promotion';
 import { formatMoney } from '@/utils/format';
+import { errorMessage } from '@/api/http';
 import type { UserVoucherView, VoucherView } from '@/types/api';
 
 const loading = ref(false);
@@ -20,6 +21,8 @@ async function load() {
     const [voucherData, walletData] = await Promise.all([vouchersApi(), walletApi()]);
     vouchers.value = voucherData;
     wallet.value = walletData;
+  } catch (error) {
+    message.value = errorMessage(error, '优惠券加载失败');
   } finally {
     loading.value = false;
   }
@@ -54,6 +57,8 @@ async function claim(voucher: VoucherView) {
       message.value = '活动已结束或暂不可领取';
     }
     await load();
+  } catch (error) {
+    message.value = errorMessage(error, '抢券失败，请稍后重试');
   } finally {
     claimingId.value = null;
   }
@@ -78,6 +83,10 @@ function voucherMeta(voucherId: number) {
   return vouchers.value.find((voucher) => voucher.voucherId === voucherId);
 }
 
+function hasClaimed(voucherId: number) {
+  return wallet.value.some((item) => item.voucherId === voucherId);
+}
+
 function claimPeriod(voucher: VoucherView) {
   const start = voucher.startTime ? formatDateTime(voucher.startTime) : '即刻';
   const end = voucher.endTime ? formatDateTime(voucher.endTime) : '长期有效';
@@ -96,12 +105,15 @@ function canClaim(voucher: VoucherView) {
   const now = Date.now();
   const started = !voucher.startTime || new Date(voucher.startTime).getTime() <= now;
   const notEnded = !voucher.endTime || new Date(voucher.endTime).getTime() > now;
-  return voucher.status === 'ACTIVE' && voucher.stock > 0 && started && notEnded;
+  return voucher.status === 'ACTIVE' && voucher.stock > 0 && started && notEnded && !hasClaimed(voucher.voucherId);
 }
 
 function claimButtonText(voucher: VoucherView) {
   if (claimingId.value === voucher.voucherId) {
     return '抢券中...';
+  }
+  if (hasClaimed(voucher.voucherId)) {
+    return '已领取';
   }
   if (voucher.status !== 'ACTIVE') {
     return '已暂停';

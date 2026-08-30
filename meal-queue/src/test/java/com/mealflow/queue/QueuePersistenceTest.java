@@ -54,6 +54,12 @@ class QueuePersistenceTest {
         .hasMessageContaining("does not belong to current user");
     assertThat(queueService.getTicket(second.ticketId(), 2L).ticketId()).isEqualTo(second.ticketId());
     assertThat(queueService.metrics(10L)).containsEntry("held", 1);
+    assertThat(queueService.recoverableTickets(10))
+        .singleElement()
+        .satisfies(ticket -> {
+          assertThat(ticket.ticketId()).isEqualTo(second.ticketId());
+          assertThat(ticket.capacityTokenId()).isEqualTo(release.readyTicket().capacityTokenId());
+        });
 
     ReleaseCapacityResponse duplicateRelease = queueService.releaseCapacity(first.capacityTokenId(), "TEST_RELEASE_AGAIN");
 

@@ -10,6 +10,7 @@ import com.mealflow.queue.api.QueueTicketSnapshot;
 import com.mealflow.queue.api.QueueTicketView;
 import com.mealflow.queue.api.ReleaseCapacityRequest;
 import com.mealflow.queue.api.ReleaseCapacityResponse;
+import com.mealflow.queue.api.RecoverableQueueTicket;
 import com.mealflow.queue.api.SetMerchantLimitRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -94,6 +95,12 @@ public class QueueController {
   @GetMapping("/internal/tickets")
   public Result<List<QueueTicketView>> tickets() {
     return Result.ok(queueService.tickets());
+  }
+
+  @GetMapping("/internal/tickets/recoverable")
+  public Result<List<RecoverableQueueTicket>> recoverableTickets(
+      @org.springframework.web.bind.annotation.RequestParam(defaultValue = "50") int limit) {
+    return Result.ok(queueService.recoverableTickets(limit));
   }
 
   @GetMapping("/internal/capacity/tokens")

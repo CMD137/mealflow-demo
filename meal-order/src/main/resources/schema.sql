@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS customer_order (
   INDEX idx_customer_order_status (status),
   INDEX idx_customer_order_payment_expire (status, payment_expire_time),
   INDEX idx_customer_order_merchant_status_time (merchant_id, status, create_time),
-  INDEX idx_customer_order_queue_ticket_id (queue_ticket_id)
+  INDEX idx_customer_order_queue_ticket_id (queue_ticket_id),
+  UNIQUE KEY uk_customer_order_queue_ticket_id (queue_ticket_id)
 );
 
 CREATE TABLE IF NOT EXISTS order_local_event (
@@ -103,6 +104,8 @@ CREATE TABLE IF NOT EXISTS order_saga_step (
   next_retry_time TIMESTAMP NULL,
   lease_until TIMESTAMP NULL,
   last_error VARCHAR(512) NULL,
+  promoted_ticket_id BIGINT NULL,
+  promoted_capacity_token_id BIGINT NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   UNIQUE KEY uk_order_saga_step (order_id, saga_type, step_name),

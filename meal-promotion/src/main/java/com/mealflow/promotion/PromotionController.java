@@ -96,6 +96,12 @@ public class PromotionController {
     return Result.ok();
   }
 
+  @PostMapping("/internal/revert-confirmed")
+  public Result<Void> revertConfirmed(@Valid @RequestBody VoucherTransitionRequest request) {
+    promotionService.revertConfirmed(request.voucherLockId());
+    return Result.ok();
+  }
+
   @GetMapping("/internal/claims")
   public Result<List<VoucherClaimView>> claims() {
     return Result.ok(promotionService.claims());

@@ -173,6 +173,19 @@ public class CatalogService {
     }
   }
 
+  /** Reverses stock already consumed by a paid order. This is deliberately separate from releasing a pending hold. */
+  @Transactional
+  public void revertConfirmed(List<Long> reservationIds) {
+    for (Long id : reservationIds) {
+      StockReservationRow reservation = findReservation(id);
+      int affected = catalogMapper.releaseReservation(id, StockReservationStatus.RELEASED.code(),
+          StockReservationStatus.CONFIRMED.code(), LocalDateTime.now());
+      if (affected == 1) {
+        catalogMapper.restoreStock(reservation.getSkuId(), reservation.getQuantity());
+      }
+    }
+  }
+
   public List<StockReservationView> reservations() {
     return catalogMapper.findReservations().stream()
         .map(row -> new StockReservationView(row.getId(), row.getSkuId(), row.getQuantity(),

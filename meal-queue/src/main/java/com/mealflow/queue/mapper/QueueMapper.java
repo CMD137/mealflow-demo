@@ -103,6 +103,17 @@ public interface QueueMapper {
   @ResultMap("ticketMap")
   List<QueueTicketRow> findExpiredTickets(@Param("now") LocalDateTime now);
 
+  @Select("""
+      SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
+             estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
+      FROM queue_ticket
+      WHERE status IN ('READY', 'PROCESSING') AND order_id IS NULL AND expire_time > #{now}
+      ORDER BY ready_time, id
+      LIMIT #{limit}
+      """)
+  @ResultMap("ticketMap")
+  List<QueueTicketRow> findRecoverableTickets(@Param("now") LocalDateTime now, @Param("limit") int limit);
+
   @Select("SELECT id FROM queue_ticket ORDER BY id")
   List<Long> findTicketIds();
 

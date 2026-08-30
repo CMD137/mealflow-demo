@@ -153,6 +153,12 @@ public class CatalogController {
     return Result.ok();
   }
 
+  @PostMapping("/internal/stocks/revert-confirmed")
+  public Result<Void> revertConfirmed(@Valid @RequestBody StockTransitionRequest request) {
+    catalogService.revertConfirmed(request.reservationIds());
+    return Result.ok();
+  }
+
   @GetMapping("/internal/stocks/reservations")
   public Result<List<StockReservationView>> reservations() {
     return Result.ok(catalogService.reservations());

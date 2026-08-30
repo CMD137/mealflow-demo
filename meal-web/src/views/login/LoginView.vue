@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useAuthStore } from '@/stores/auth';
 import { requestLoginCodeApi } from '@/api/auth';
+import { errorMessage } from '@/api/http';
 
 const route = useRoute();
 const router = useRouter();
@@ -20,6 +21,8 @@ async function requestCode() {
   try {
     await requestLoginCodeApi(form.phone);
     ElMessage.success('验证码已发送，请在开发服务日志中查看');
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '验证码发送失败'));
   } finally {
     codeLoading.value = false;
   }
@@ -31,6 +34,8 @@ async function submit() {
     await auth.login(form);
     ElMessage.success('登录成功');
     router.push((route.query.redirect as string) || '/dashboard');
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '验证码错误、已过期或尚未获取，请先获取验证码'));
   } finally {
     loading.value = false;
   }

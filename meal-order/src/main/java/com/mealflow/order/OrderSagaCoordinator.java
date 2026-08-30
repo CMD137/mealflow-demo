@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
@@ -45,12 +46,13 @@ public class OrderSagaCoordinator {
   private final PaymentClient paymentClient;
   private final DatabaseIdGenerator idGenerator;
   private final ObjectMapper objectMapper;
+  private final OrderService orderService;
   private final TransactionTemplate transactionTemplate;
 
   public OrderSagaCoordinator(OrderSagaMapper sagaMapper, OrderMapper orderMapper, LocalEventMapper localEventMapper,
       CatalogClient catalogClient, PromotionClient promotionClient, QueueClient queueClient,
       PaymentClient paymentClient, DatabaseIdGenerator idGenerator, ObjectMapper objectMapper,
-      PlatformTransactionManager transactionManager) {
+      PlatformTransactionManager transactionManager, @Lazy OrderService orderService) {
     this.sagaMapper = sagaMapper;
     this.orderMapper = orderMapper;
     this.localEventMapper = localEventMapper;
@@ -60,6 +62,7 @@ public class OrderSagaCoordinator {
     this.paymentClient = paymentClient;
     this.idGenerator = idGenerator;
     this.objectMapper = objectMapper;
+    this.orderService = orderService;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
     this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
   }
@@ -83,10 +86,10 @@ public class OrderSagaCoordinator {
     }
     if (status == OrderStatus.PENDING_PAYMENT) {
       insertSteps(order, CANCEL_UNPAID, reason, "CLOSE_PAYMENT", "RELEASE_STOCK", "RELEASE_VOUCHER",
-          "RELEASE_CAPACITY", "CANCEL_ORDER");
+          "RELEASE_CAPACITY", "CREATE_PROMOTED_QUEUE_ORDER", "CANCEL_ORDER");
     } else {
-      insertSteps(order, CANCEL_PAID, reason, "REFUND_PAYMENT", "RELEASE_STOCK", "RELEASE_VOUCHER",
-          "RELEASE_CAPACITY", "CANCEL_ORDER");
+      insertSteps(order, CANCEL_PAID, reason, "REFUND_PAYMENT", "REVERT_STOCK", "REVERT_VOUCHER",
+          "RELEASE_CAPACITY", "CREATE_PROMOTED_QUEUE_ORDER", "CANCEL_ORDER");
     }
   }
 
@@ -172,12 +175,31 @@ public class OrderSagaCoordinator {
           "stock-release:" + order.getId(), reservationIds(order), order.getId(), step.getReason()));
       case "RELEASE_VOUCHER" -> promotionClient.release(new PromotionClient.VoucherTransitionRequest(
           "voucher-release:" + order.getId(), order.getVoucherLockId(), order.getId(), step.getReason()));
-      case "RELEASE_CAPACITY" -> queueClient.release(order.getCapacityTokenId(),
-          new QueueClient.ReleaseCapacityRequest("capacity-release:" + order.getId(), "ORDER_CANCELLED"));
+      case "REVERT_STOCK" -> catalogClient.revertConfirmed(new CatalogClient.StockTransitionRequest(
+          "stock-revert:" + order.getId(), reservationIds(order), order.getId(), step.getReason()));
+      case "REVERT_VOUCHER" -> promotionClient.revertConfirmed(new PromotionClient.VoucherTransitionRequest(
+          "voucher-revert:" + order.getId(), order.getVoucherLockId(), order.getId(), step.getReason()));
+      case "RELEASE_CAPACITY" -> persistPromotionResult(step, queueClient.release(order.getCapacityTokenId(),
+          new QueueClient.ReleaseCapacityRequest("capacity-release:" + order.getId(), "ORDER_CANCELLED")));
+      case "CREATE_PROMOTED_QUEUE_ORDER" -> createPromotedOrder(step);
       case "ADVANCE_ORDER" -> completeOrder(order, OrderStatus.PENDING_PAYMENT,
           OrderStatus.WAIT_MERCHANT_ACCEPT, "OrderPaid");
       case "CANCEL_ORDER" -> completeCancellation(order);
       default -> throw new IllegalStateException("unsupported order saga step: " + step.getStepName());
+    }
+  }
+
+  private void persistPromotionResult(OrderSagaStepRow step, QueueClient.ReleaseCapacityResponse release) {
+    QueueClient.QueueReadyTicket ticket = release.readyTicket();
+    transactionTemplate.executeWithoutResult(status -> sagaMapper.savePromotionResult(step.getId(),
+        ticket == null ? null : ticket.ticketId(), ticket == null ? null : ticket.capacityTokenId(),
+        LocalDateTime.now()));
+  }
+
+  private void createPromotedOrder(OrderSagaStepRow step) {
+    OrderSagaStepRow release = sagaMapper.findPromotionResult(step.getOrderId(), step.getSagaType());
+    if (release != null && release.getPromotedTicketId() != null && release.getPromotedCapacityTokenId() != null) {
+      orderService.createOrderFromTicket(release.getPromotedTicketId(), release.getPromotedCapacityTokenId());
     }
   }
 

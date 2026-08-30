@@ -42,6 +42,11 @@ public class PromotionClient {
         Result.class));
   }
 
+  public void revertConfirmed(VoucherTransitionRequest request) {
+    requireSuccess(restTemplate.postForObject(endpoints.promotion() + "/vouchers/internal/revert-confirmed", request,
+        Result.class));
+  }
+
   private void requireSuccess(Result<?> result) {
     if (result == null || !result.success()) {
       throw new IllegalStateException(result == null ? "promotion call failed" : result.message());

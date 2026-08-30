@@ -61,6 +61,13 @@ public class QueueClient {
         + "/order-created", request, Result.class), "queue order created failed");
   }
 
+  public List<RecoverableQueueTicket> recoverableTickets(int limit) {
+    Result<List<RecoverableQueueTicket>> result = restTemplate.exchange(
+        endpoints.queue() + "/queue/internal/tickets/recoverable?limit=" + limit,
+        HttpMethod.GET, HttpEntity.EMPTY, new ParameterizedTypeReference<Result<List<RecoverableQueueTicket>>>() { }).getBody();
+    return requireData(result, "queue recovery query failed");
+  }
+
   private static <T> T requireData(Result<T> result, String fallback) {
     if (result == null || !result.success()) {
       throw new IllegalStateException(result == null ? fallback : result.message());
@@ -91,5 +98,8 @@ public class QueueClient {
   }
 
   public record QueueReadyTicket(long ticketId, String ticketNo, long capacityTokenId, QueueTicketSnapshot snapshot) {
+  }
+
+  public record RecoverableQueueTicket(long ticketId, long capacityTokenId) {
   }
 }

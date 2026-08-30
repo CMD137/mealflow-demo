@@ -162,6 +162,21 @@ public class OrderService {
     return consumerRecordTemplate.recoverProcessingTimeouts();
   }
 
+  /** Backstop for a service interruption after Queue committed a promoted ticket. */
+  @Transactional
+  public int recoverPromotedQueueOrders(int limit) {
+    int recovered = 0;
+    for (QueueClient.RecoverableQueueTicket ticket : queueClient.recoverableTickets(limit)) {
+      try {
+        createOrderFromTicket(ticket.ticketId(), ticket.capacityTokenId());
+        recovered++;
+      } catch (RuntimeException ignored) {
+        // The ticket remains recoverable; the normal saga retry/backoff will try again.
+      }
+    }
+    return recovered;
+  }
+
   @Transactional
   public Boolean replayPaymentConsumerRecord(String eventKey, String consumerGroup) {
     ConsumerRecordRow row = requireConsumerRecord(eventKey, consumerGroup);

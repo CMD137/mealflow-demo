@@ -68,6 +68,11 @@ public class CatalogClient {
     return result.data();
   }
 
+  public void revertConfirmed(StockTransitionRequest request) {
+    requireData(restTemplate.postForObject(endpoints.catalog() + "/catalog/internal/stocks/revert-confirmed", request,
+        Result.class));
+  }
+
   public record ReserveStockRequest(String requestId, long userId, long merchantId, Long ticketId, Long orderId,
                                     List<OrderSkuItem> items, LocalDateTime expireTime) {
   }

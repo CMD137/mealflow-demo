@@ -213,6 +213,20 @@ public class PromotionService {
     }
   }
 
+  /** Returns a voucher consumed by a paid order; pending-order unlocks use {@link #release(Long)} instead. */
+  @Transactional
+  public void revertConfirmed(Long voucherLockId) {
+    if (voucherLockId == null) {
+      return;
+    }
+    VoucherLock lock = requireLock(voucherLockId);
+    if (promotionMapper.releaseLock(voucherLockId, VoucherLockStatus.RELEASED.name(),
+        VoucherLockStatus.CONFIRMED.name(), LocalDateTime.now()) == 1) {
+      promotionMapper.updateUserVoucherStatusIfCurrent(lock.userVoucherId(), UserVoucherStatus.AVAILABLE.name(),
+          UserVoucherStatus.USED.name(), LocalDateTime.now());
+    }
+  }
+
   public List<UserVoucherView> wallet(long userId) {
     return promotionMapper.findWallet(userId).stream()
         .map(voucher -> new UserVoucherView(voucher.getId(), voucher.getVoucherId(), voucher.getStatus())).toList();

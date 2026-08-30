@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { requestLoginCodeApi } from '@/api/auth';
+import { errorMessage } from '@/api/http';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,7 +23,7 @@ async function requestCode() {
     await requestLoginCodeApi(form.phone);
     error.value = '验证码已发送，请在开发服务日志中查看。';
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '验证码发送失败';
+    error.value = errorMessage(err, '验证码发送失败');
   } finally {
     codeLoading.value = false;
   }
@@ -35,7 +36,7 @@ async function submit() {
     await auth.login(form);
     router.replace(String(route.query.redirect || '/'));
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '登录失败';
+    error.value = errorMessage(err, '验证码错误、已过期或尚未获取，请先获取验证码');
   } finally {
     loading.value = false;
   }

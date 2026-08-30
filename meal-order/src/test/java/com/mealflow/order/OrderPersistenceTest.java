@@ -3,6 +3,7 @@ package com.mealflow.order;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -212,5 +213,36 @@ class OrderPersistenceTest {
     assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
     assertThat(orderSagaMapper.findByOrderId(response.orderId()))
         .extracting("status").containsOnly("SUCCESS");
+  }
+
+  @Test
+  void paidCancellationRevertsConfirmedResourcesAndFinishesTheQueuePromotionStep() {
+    when(catalogClient.snapshots(eq(10L), anyList()))
+        .thenReturn(List.of(new OrderItemSnapshot(1L, "退款盖饭", 1200, 1)));
+    when(catalogClient.reserve(any()))
+        .thenReturn(new CatalogClient.ReserveStockResponse(List.of(8301L), "RESERVED"));
+    when(promotionClient.lock(any()))
+        .thenReturn(new PromotionClient.VoucherLockResponse(7301L, "LOCKED", 0));
+    when(queueClient.apply(any()))
+        .thenReturn(new QueueClient.QueueApplyResponse("READY", 6301L, null, null, 0, 0, null));
+    when(queueClient.release(anyLong(), any()))
+        .thenReturn(new QueueClient.ReleaseCapacityResponse(true, null));
+    when(paymentClient.create(any()))
+        .thenReturn(new PaymentClient.PaymentView(5301L, 10301L, 101L, 1200, "UNPAID"));
+
+    SubmitOrderResponse response = submissionCoordinator.submit(101L,
+        new SubmitOrderRequest("order-paid-cancel", 10L, 20L, null,
+            List.of(new OrderSkuItem(1L, 1)), 7301L, "paid cancel"));
+    orderService.markPaid(response.orderId());
+    orderService.cancel(response.orderId(), "USER_CANCELLED");
+
+    assertThat(orderService.get(response.orderId()).status()).isEqualTo("CANCELLED");
+    verify(paymentClient).refund(response.payOrderId());
+    verify(catalogClient).revertConfirmed(any());
+    verify(promotionClient).revertConfirmed(any());
+    assertThat(orderSagaMapper.findByOrderId(response.orderId()))
+        .extracting("stepName")
+        .containsSequence("REFUND_PAYMENT", "REVERT_STOCK", "REVERT_VOUCHER", "RELEASE_CAPACITY",
+            "CREATE_PROMOTED_QUEUE_ORDER", "CANCEL_ORDER");
   }
 }

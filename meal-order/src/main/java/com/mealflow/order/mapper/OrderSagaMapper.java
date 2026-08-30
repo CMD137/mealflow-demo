@@ -15,10 +15,11 @@ public interface OrderSagaMapper {
   @Insert("""
       INSERT INTO order_saga_step (
         id, order_id, pay_order_id, saga_type, step_name, step_order, reason, status,
-        retry_count, next_retry_time, lease_until, last_error, create_time, update_time
+        retry_count, next_retry_time, lease_until, last_error, promoted_ticket_id, promoted_capacity_token_id,
+        create_time, update_time
       ) VALUES (
         #{id}, #{orderId}, #{payOrderId}, #{sagaType}, #{stepName}, #{stepOrder}, #{reason},
-        'NEW', 0, NULL, NULL, NULL, #{now}, #{now}
+        'NEW', 0, NULL, NULL, NULL, NULL, NULL, #{now}, #{now}
       )
       ON DUPLICATE KEY UPDATE id = id
       """)
@@ -29,7 +30,8 @@ public interface OrderSagaMapper {
 
   @Select("""
       SELECT s.id, s.order_id, s.pay_order_id, s.saga_type, s.step_name, s.step_order,
-             s.reason, s.status, s.retry_count, s.next_retry_time, s.lease_until, s.last_error
+             s.reason, s.status, s.retry_count, s.next_retry_time, s.lease_until, s.last_error,
+             s.promoted_ticket_id, s.promoted_capacity_token_id
       FROM order_saga_step s
       WHERE s.status IN ('NEW', 'FAILED')
         AND (s.next_retry_time IS NULL OR s.next_retry_time <= #{now})
@@ -53,13 +55,16 @@ public interface OrderSagaMapper {
       @Result(column = "retry_count", property = "retryCount"),
       @Result(column = "next_retry_time", property = "nextRetryTime"),
       @Result(column = "lease_until", property = "leaseUntil"),
-      @Result(column = "last_error", property = "lastError")
+      @Result(column = "last_error", property = "lastError"),
+      @Result(column = "promoted_ticket_id", property = "promotedTicketId"),
+      @Result(column = "promoted_capacity_token_id", property = "promotedCapacityTokenId")
   })
   List<OrderSagaStepRow> findReady(@Param("now") LocalDateTime now, @Param("limit") int limit);
 
   @Select("""
       SELECT s.id, s.order_id, s.pay_order_id, s.saga_type, s.step_name, s.step_order,
-             s.reason, s.status, s.retry_count, s.next_retry_time, s.lease_until, s.last_error
+             s.reason, s.status, s.retry_count, s.next_retry_time, s.lease_until, s.last_error,
+             s.promoted_ticket_id, s.promoted_capacity_token_id
       FROM order_saga_step s
       WHERE s.order_id = #{orderId} AND s.status IN ('NEW', 'FAILED')
         AND (s.next_retry_time IS NULL OR s.next_retry_time <= #{now})
@@ -83,7 +88,9 @@ public interface OrderSagaMapper {
       @Result(column = "retry_count", property = "retryCount"),
       @Result(column = "next_retry_time", property = "nextRetryTime"),
       @Result(column = "lease_until", property = "leaseUntil"),
-      @Result(column = "last_error", property = "lastError")
+      @Result(column = "last_error", property = "lastError"),
+      @Result(column = "promoted_ticket_id", property = "promotedTicketId"),
+      @Result(column = "promoted_capacity_token_id", property = "promotedCapacityTokenId")
   })
   OrderSagaStepRow findReadyForOrder(@Param("orderId") long orderId, @Param("now") LocalDateTime now);
 
@@ -115,6 +122,32 @@ public interface OrderSagaMapper {
 
   @Update("""
       UPDATE order_saga_step
+      SET promoted_ticket_id = #{ticketId}, promoted_capacity_token_id = #{capacityTokenId}, update_time = #{now}
+      WHERE id = #{id} AND status = 'PROCESSING'
+      """)
+  int savePromotionResult(@Param("id") long id, @Param("ticketId") Long ticketId,
+      @Param("capacityTokenId") Long capacityTokenId, @Param("now") LocalDateTime now);
+
+  @Select("""
+      SELECT id, order_id, pay_order_id, saga_type, step_name, step_order, reason, status,
+             retry_count, next_retry_time, lease_until, last_error, promoted_ticket_id, promoted_capacity_token_id
+      FROM order_saga_step
+      WHERE order_id = #{orderId} AND saga_type = #{sagaType} AND step_name = 'RELEASE_CAPACITY'
+      """)
+  @Results(id = "promotionResultMap", value = {
+      @Result(column = "id", property = "id"), @Result(column = "order_id", property = "orderId"),
+      @Result(column = "pay_order_id", property = "payOrderId"), @Result(column = "saga_type", property = "sagaType"),
+      @Result(column = "step_name", property = "stepName"), @Result(column = "step_order", property = "stepOrder"),
+      @Result(column = "reason", property = "reason"), @Result(column = "status", property = "status"),
+      @Result(column = "retry_count", property = "retryCount"), @Result(column = "next_retry_time", property = "nextRetryTime"),
+      @Result(column = "lease_until", property = "leaseUntil"), @Result(column = "last_error", property = "lastError"),
+      @Result(column = "promoted_ticket_id", property = "promotedTicketId"),
+      @Result(column = "promoted_capacity_token_id", property = "promotedCapacityTokenId")
+  })
+  OrderSagaStepRow findPromotionResult(@Param("orderId") long orderId, @Param("sagaType") String sagaType);
+
+  @Update("""
+      UPDATE order_saga_step
       SET status = 'FAILED', next_retry_time = #{now}, lease_until = NULL,
           last_error = 'PROCESSING_TIMEOUT', update_time = #{now}
       WHERE status = 'PROCESSING' AND lease_until < #{now}
@@ -130,7 +163,7 @@ public interface OrderSagaMapper {
 
   @Select("""
       SELECT id, order_id, pay_order_id, saga_type, step_name, step_order, reason, status,
-             retry_count, next_retry_time, lease_until, last_error
+             retry_count, next_retry_time, lease_until, last_error, promoted_ticket_id, promoted_capacity_token_id
       FROM order_saga_step WHERE order_id = #{orderId} ORDER BY id
       """)
   @Results(id = "orderSagaStepsByOrderMap", value = {
@@ -143,7 +176,9 @@ public interface OrderSagaMapper {
       @Result(column = "retry_count", property = "retryCount"),
       @Result(column = "next_retry_time", property = "nextRetryTime"),
       @Result(column = "lease_until", property = "leaseUntil"),
-      @Result(column = "last_error", property = "lastError")
+      @Result(column = "last_error", property = "lastError"),
+      @Result(column = "promoted_ticket_id", property = "promotedTicketId"),
+      @Result(column = "promoted_capacity_token_id", property = "promotedCapacityTokenId")
   })
   List<OrderSagaStepRow> findByOrderId(long orderId);
 

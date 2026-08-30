@@ -6,20 +6,26 @@ import { cancelOrderApi, orderApi } from '@/api/orders';
 import { checkoutApi, paymentApi } from '@/api/payments';
 import { formatMoney, orderStatusText, statusClass } from '@/utils/format';
 import type { OrderView, PaymentView } from '@/types/api';
+import { errorMessage } from '@/api/http';
 
 const route = useRoute();
 const orderId = Number(route.params.orderId);
 const loading = ref(false);
 const order = ref<OrderView | null>(null);
 const payment = ref<PaymentView | null>(null);
+const loadError = ref('');
+const CANCELLABLE_STATUSES = new Set(['PENDING_PAYMENT', 'WAIT_MERCHANT_ACCEPT']);
 
 async function load() {
   loading.value = true;
+  loadError.value = '';
   try {
     order.value = await orderApi(orderId);
     if (order.value?.payOrderId) {
       payment.value = await paymentApi(order.value.payOrderId).catch(() => null);
     }
+  } catch (error) {
+    loadError.value = errorMessage(error, '订单不存在或无权访问');
   } finally {
     loading.value = false;
   }
@@ -27,14 +33,22 @@ async function load() {
 
 async function pay() {
   if (!order.value?.payOrderId) return;
-  const checkout = await checkoutApi(order.value.payOrderId);
-  window.location.assign(checkout.checkoutUrl);
+  try {
+    const checkout = await checkoutApi(order.value.payOrderId);
+    window.location.assign(checkout.checkoutUrl);
+  } catch (error) {
+    loadError.value = errorMessage(error, '无法发起支付，请稍后重试');
+  }
 }
 
 async function cancel() {
   if (!order.value) return;
-  await cancelOrderApi(order.value.orderId, '用户端取消订单');
-  await load();
+  try {
+    await cancelOrderApi(order.value.orderId, '用户端取消订单');
+    await load();
+  } catch (error) {
+    loadError.value = errorMessage(error, '取消订单失败');
+  }
 }
 
 onMounted(load);
@@ -42,6 +56,7 @@ onMounted(load);
 
 <template>
   <AppShell title="订单详情" subtitle="支付、排队与履约进度" :show-nav="false">
+    <p v-if="loadError" class="error">{{ loadError }}</p>
     <section v-if="order" class="card detail">
       <div class="detail-head">
         <h2>订单 {{ order.orderId }}</h2>
@@ -71,7 +86,7 @@ onMounted(load);
 
       <div class="actions">
         <button v-if="order.status === 'PENDING_PAYMENT'" class="primary-button" @click="pay">前往支付宝支付</button>
-        <button v-if="!['CANCELLED', 'COMPLETED', 'DELIVERED'].includes(order.status)" class="danger-button" @click="cancel">取消订单</button>
+        <button v-if="CANCELLABLE_STATUSES.has(order.status)" class="danger-button" @click="cancel">取消订单</button>
         <RouterLink class="ghost-button" to="/orders">返回订单</RouterLink>
       </div>
 

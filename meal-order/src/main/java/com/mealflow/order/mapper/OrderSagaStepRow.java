@@ -15,6 +15,8 @@ public class OrderSagaStepRow {
   private LocalDateTime nextRetryTime;
   private LocalDateTime leaseUntil;
   private String lastError;
+  private Long promotedTicketId;
+  private Long promotedCapacityTokenId;
 
   public long getId() { return id; }
   public void setId(long id) { this.id = id; }
@@ -40,4 +42,10 @@ public class OrderSagaStepRow {
   public void setLeaseUntil(LocalDateTime leaseUntil) { this.leaseUntil = leaseUntil; }
   public String getLastError() { return lastError; }
   public void setLastError(String lastError) { this.lastError = lastError; }
+  public Long getPromotedTicketId() { return promotedTicketId; }
+  public void setPromotedTicketId(Long promotedTicketId) { this.promotedTicketId = promotedTicketId; }
+  public Long getPromotedCapacityTokenId() { return promotedCapacityTokenId; }
+  public void setPromotedCapacityTokenId(Long promotedCapacityTokenId) {
+    this.promotedCapacityTokenId = promotedCapacityTokenId;
+  }
 }

@@ -23,6 +23,7 @@ public class OutboxDispatchScheduler {
   public void dispatch() {
     orderService.expirePendingPayments(100);
     sagaCoordinator.dispatchReady(100);
+    orderService.recoverPromotedQueueOrders(50);
     orderService.dispatchPendingEvents(100);
   }
 }

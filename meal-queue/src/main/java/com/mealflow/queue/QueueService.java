@@ -11,6 +11,7 @@ import com.mealflow.queue.api.CapacityTokenView;
 import com.mealflow.queue.api.QueueApplyRequest;
 import com.mealflow.queue.api.QueueApplyResponse;
 import com.mealflow.queue.api.QueueReadyTicket;
+import com.mealflow.queue.api.RecoverableQueueTicket;
 import com.mealflow.queue.api.QueueTicketSnapshot;
 import com.mealflow.queue.api.QueueTicketView;
 import com.mealflow.queue.api.ReleaseCapacityResponse;
@@ -276,6 +277,16 @@ public class QueueService {
     return queueMapper.findTicketIds().stream().map(this::getTicket).toList();
   }
 
+  public List<RecoverableQueueTicket> recoverableTickets(int limit) {
+    return queueMapper.findRecoverableTickets(LocalDateTime.now(), Math.max(1, Math.min(limit, 100))).stream()
+        .map(this::mapTicket)
+        .map(ticket -> findTokenByTicket(ticket.id)
+            .map(token -> new RecoverableQueueTicket(ticket.id, token.id))
+            .orElse(null))
+        .filter(Objects::nonNull)
+        .toList();
+  }
+
   public List<CapacityTokenView> tokens() {
     return queueMapper.findTokens().stream()
         .map(token -> new CapacityTokenView(token.getId(), token.getMerchantId(), token.getTicketId(),
@@ -398,7 +409,7 @@ public class QueueService {
   }
 
   private int estimateWaitSeconds(int aheadCount, long merchantId) {
-    return (int) Math.ceil((double) aheadCount / limit(merchantId)) * AVG_PREPARE_SECONDS;
+    return (int) Math.ceil((aheadCount + 1.0) / limit(merchantId)) * AVG_PREPARE_SECONDS;
   }
 
   private int aheadCount(QueueTicket ticket) {

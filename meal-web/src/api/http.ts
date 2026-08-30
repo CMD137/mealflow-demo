@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { ElMessage } from 'element-plus';
 import type { Result } from '@/types/api';
 
 const TOKEN_KEY = 'mealflow.token';
@@ -9,6 +8,31 @@ export const http = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000
 });
+
+export interface ApiError {
+  status?: number;
+  code?: string;
+  message: string;
+}
+
+export function errorMessage(error: unknown, fallback = '请求失败') {
+  return typeof error === 'object' && error !== null && 'message' in error
+    ? String(error.message || fallback) : fallback;
+}
+
+function toApiError(error: unknown): ApiError {
+  if (axios.isAxiosError(error)) {
+    return {
+      status: error.response?.status,
+      code: error.response?.data?.code,
+      message: error.response?.data?.message || error.message || '网络请求失败'
+    };
+  }
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return error as ApiError;
+  }
+  return { message: '请求失败' };
+}
 
 http.interceptors.request.use((config) => {
   const token = sessionStorage.getItem(TOKEN_KEY);
@@ -23,8 +47,7 @@ http.interceptors.response.use(
     const body = response.data as Result<unknown>;
     if (body && typeof body.success === 'boolean') {
       if (!body.success) {
-        ElMessage.error(body.message || body.code || '请求失败');
-        return Promise.reject(new Error(body.message || body.code));
+        return Promise.reject({ code: body.code, message: body.message || body.code || '请求失败' } satisfies ApiError);
       }
       return body.data;
     }
@@ -37,8 +60,7 @@ http.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    ElMessage.error(error.response?.data?.message || error.message || '网络请求失败');
-    return Promise.reject(error);
+    return Promise.reject(toApiError(error));
   }
 );
 

@@ -5,6 +5,7 @@ import { adminOrdersApi, merchantCancelOrderApi } from '@/api/orders';
 import { useAuthStore } from '@/stores/auth';
 import type { OrderView } from '@/types/api';
 import { formatMoney, statusType } from '@/utils/format';
+import { errorMessage } from '@/api/http';
 
 const auth = useAuthStore();
 const loading = ref(false);
@@ -30,6 +31,8 @@ async function load() {
       });
     rows.value = orderData.items;
     total.value = orderData.total;
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '订单加载失败'));
   } finally {
     loading.value = false;
   }
@@ -46,10 +49,16 @@ function handleQuery() {
 }
 
 async function cancel(row: OrderView) {
-  await ElMessageBox.confirm(`确认取消订单 ${row.orderId}？`, '取消订单', { type: 'warning' });
-  await merchantCancelOrderApi(row.orderId, '商家后台取消');
-  ElMessage.success('订单已取消');
-  load();
+  try {
+    await ElMessageBox.confirm(`确认取消订单 ${row.orderId}？`, '取消订单', { type: 'warning' });
+    await merchantCancelOrderApi(row.orderId, '商家后台取消');
+    ElMessage.success('订单已取消');
+    await load();
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(errorMessage(error, '取消订单失败'));
+    }
+  }
 }
 
 onMounted(load);
@@ -103,7 +112,7 @@ onMounted(load);
         <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" @click="selected = row">详情</el-button>
-            <el-button text type="danger" :disabled="row.status === 'CANCELLED' || row.status === 'DELIVERED'" @click="cancel(row)">取消</el-button>
+            <el-button text type="danger" :disabled="!['PENDING_PAYMENT', 'WAIT_MERCHANT_ACCEPT'].includes(row.status)" @click="cancel(row)">取消</el-button>
           </template>
         </el-table-column>
       </el-table>

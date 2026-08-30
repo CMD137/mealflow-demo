@@ -9,6 +9,31 @@ export const http = axios.create({
   timeout: 12000
 });
 
+export interface ApiError {
+  status?: number;
+  code?: string;
+  message: string;
+}
+
+export function errorMessage(error: unknown, fallback = '请求失败') {
+  return typeof error === 'object' && error !== null && 'message' in error
+    ? String(error.message || fallback) : fallback;
+}
+
+function toApiError(error: unknown): ApiError {
+  if (axios.isAxiosError(error)) {
+    return {
+      status: error.response?.status,
+      code: error.response?.data?.code,
+      message: error.response?.data?.message || error.message || '网络请求失败'
+    };
+  }
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return error as ApiError;
+  }
+  return { message: '请求失败' };
+}
+
 http.interceptors.request.use((config) => {
   const token = readToken();
   if (token) {
@@ -22,9 +47,7 @@ http.interceptors.response.use(
     const payload = response.data as Result<unknown>;
     if (payload && typeof payload === 'object' && 'success' in payload) {
       if (!payload.success) {
-        const error = new Error(payload.message || payload.code || '请求失败') as Error & { code?: string };
-        error.code = payload.code;
-        return Promise.reject(error);
+        return Promise.reject({ code: payload.code, message: payload.message || payload.code || '请求失败' } satisfies ApiError);
       }
       return payload.data;
     }
@@ -37,7 +60,7 @@ http.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    return Promise.reject(error);
+    return Promise.reject(toApiError(error));
   }
 );
 
