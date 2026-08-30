@@ -28,7 +28,7 @@ public class HttpClientConfig {
   @LoadBalanced
   public RestTemplate restTemplate() {
     RestTemplate restTemplate = InternalHttpClientFactory.restTemplate(internalAuthProperties,
-        Duration.ofMillis(500), Duration.ofSeconds(2));
+        Duration.ofMillis(500), Duration.ofSeconds(5));
     restTemplate.setErrorHandler(new DefaultResponseErrorHandler() {
       @Override
       protected boolean hasError(HttpStatusCode statusCode) {
