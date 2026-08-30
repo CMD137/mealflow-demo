@@ -31,8 +31,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class PaymentService {
-  private static final String MOCK_PAYMENT_PROVIDER = "mock-wechat";
-
   private final Duration outboxLease;
   private final int outboxMaxAttempts;
 
@@ -82,10 +80,6 @@ public class PaymentService {
 
   @Transactional
   public PaymentView mockPay(long payOrderId) {
-    return markPaid(payOrderId, true);
-  }
-
-  private PaymentView markPaid(long payOrderId, boolean mockPayment) {
     PaymentView payment = requirePayment(payOrderId);
     PaymentStatus status = PaymentStatus.valueOf(payment.status());
     if (status == PaymentStatus.PAID) {
@@ -94,11 +88,8 @@ public class PaymentService {
     if (status != PaymentStatus.UNPAID && status != PaymentStatus.PAYING) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is not payable");
     }
-    int updated = mockPayment
-        ? paymentMapper.updatePayableStatusWithProvider(payOrderId, PaymentStatus.PAID.name(), PaymentStatus.UNPAID.name(),
-            PaymentStatus.PAYING.name(), MOCK_PAYMENT_PROVIDER, LocalDateTime.now())
-        : paymentMapper.updatePayableStatus(payOrderId, PaymentStatus.PAID.name(), PaymentStatus.UNPAID.name(),
-            PaymentStatus.PAYING.name(), LocalDateTime.now());
+    int updated = paymentMapper.updatePayableStatus(payOrderId, PaymentStatus.PAID.name(), PaymentStatus.UNPAID.name(),
+        PaymentStatus.PAYING.name(), LocalDateTime.now());
     if (updated > 0) {
       PaymentView paid = requirePayment(payOrderId);
       appendPaymentPaidEvent(paid);
@@ -192,7 +183,7 @@ public class PaymentService {
     }
     paymentMapper.recordCallback(payment.payOrderId(), parameters.get("trade_no"), callbackDigest(parameters),
         parameters.get("trade_status"), LocalDateTime.now());
-    markPaid(payment.payOrderId(), false);
+    mockPay(payment.payOrderId());
     return true;
   }
 

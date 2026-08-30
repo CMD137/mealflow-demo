@@ -34,15 +34,6 @@ public interface PaymentMapper {
   int updatePayableStatus(@Param("id") long id, @Param("status") String status,
       @Param("unpaid") String unpaid, @Param("paying") String paying, @Param("now") LocalDateTime now);
 
-  @Update("""
-      UPDATE payment_order
-      SET status = #{status}, provider = #{provider}, update_time = #{now}
-      WHERE id = #{id} AND status IN (#{unpaid}, #{paying})
-      """)
-  int updatePayableStatusWithProvider(@Param("id") long id, @Param("status") String status,
-      @Param("unpaid") String unpaid, @Param("paying") String paying, @Param("provider") String provider,
-      @Param("now") LocalDateTime now);
-
   @Update("UPDATE payment_order SET status = #{refunded}, update_time = #{now} WHERE id = #{id} AND status = #{paid}")
   int markRefunded(@Param("id") long id, @Param("paid") String paid, @Param("refunded") String refunded,
       @Param("now") LocalDateTime now);
