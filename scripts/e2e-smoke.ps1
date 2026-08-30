@@ -24,8 +24,8 @@ function Invoke-MealFlow {
   }
 
   if ($null -ne $Body) {
-    $params.ContentType = "application/json"
-    $params.Body = ($Body | ConvertTo-Json -Depth 20)
+    $params.ContentType = "application/json; charset=utf-8"
+    $params.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 20 -Compress))
   }
 
   $attempts = 0
@@ -139,6 +139,22 @@ function New-AuthHeaders {
   return @{ Authorization = "Bearer $Token" }
 }
 
+function Remove-E2EVoucherData {
+  param([long]$VoucherId)
+
+  & docker compose exec -T redis redis-cli DEL "seckill:{$VoucherId}:stock" "seckill:{$VoucherId}:users" "seckill:{$VoucherId}:pending" | Out-Null
+  & docker compose exec -T -e MYSQL_PWD=mealflow mysql mysql -uroot mealflow -e @"
+DELETE FROM voucher_lock WHERE user_voucher_id IN (SELECT id FROM user_voucher WHERE voucher_id = $VoucherId);
+DELETE FROM voucher_claim_retry WHERE voucher_id = $VoucherId;
+DELETE FROM voucher_claim WHERE voucher_id = $VoucherId;
+DELETE FROM user_voucher WHERE voucher_id = $VoucherId;
+DELETE FROM voucher WHERE id = $VoucherId;
+"@ | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to clean E2E voucher data for voucher $VoucherId"
+  }
+}
+
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
 Step "checking gateway and service pings"
@@ -216,6 +232,7 @@ $testVoucher = (Invoke-MealFlow -Method POST -Path "/vouchers/admin" -Headers $a
 }).data
 $testVoucherId = $testVoucher.voucherId
 
+try {
 Step "claiming seckill voucher through promotion service"
 $seckill = (Invoke-MealFlow -Method POST -Path "/vouchers/$testVoucherId/seckill" -Body @{
   requestId = "e2e-seckill-$stamp"
@@ -377,8 +394,13 @@ Step "smoke test passed: firstOrder=$($firstSubmit.orderId), queuedTicket=$($sec
     }
   }
 
-  Invoke-MealFlow -Method POST -Path "/merchants/10/capacity" -Body @{
-    baseCapacity = $originalMerchant.baseCapacity
-    manualFactor = $originalMerchant.manualFactor
-  } -Headers $adminHeaders | Out-Null
+  if ($null -ne $originalMerchant) {
+    Invoke-MealFlow -Method POST -Path "/merchants/10/capacity" -Body @{
+      baseCapacity = $originalMerchant.baseCapacity
+      manualFactor = $originalMerchant.manualFactor
+    } -Headers $adminHeaders | Out-Null
+  }
+}
+} finally {
+  Remove-E2EVoucherData -VoucherId $testVoucherId
 }
