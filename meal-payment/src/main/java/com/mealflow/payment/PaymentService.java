@@ -48,7 +48,7 @@ public class PaymentService {
   public PaymentService(PaymentMapper paymentMapper, PaymentRefundMapper paymentRefundMapper,
       LocalEventMapper localEventMapper,
       OutboxEventPublisher outboxEventPublisher, ObjectMapper objectMapper, List<PaymentProviderPort> paymentProviders,
-      @org.springframework.beans.factory.annotation.Value("${mealflow.payment.provider:mock-wechat}") String provider,
+      @org.springframework.beans.factory.annotation.Value("${mealflow.payment.provider:alipay-sandbox}") String provider,
       @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.lease-seconds:60}") long outboxLeaseSeconds,
       @org.springframework.beans.factory.annotation.Value("${mealflow.outbox.max-attempts:5}") int outboxMaxAttempts,
       PaymentIdempotencyService idempotencyService, PaymentDatabaseIdGenerator idGenerator,

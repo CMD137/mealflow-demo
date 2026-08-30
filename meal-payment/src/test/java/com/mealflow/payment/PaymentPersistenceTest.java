@@ -5,17 +5,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.mealflow.payment.api.CreatePaymentRequest;
 import com.mealflow.payment.api.PaymentView;
 import com.mealflow.payment.mapper.LocalEventMapper;
+import com.mealflow.payment.provider.AlipaySandboxAdapter;
+import com.mealflow.payment.provider.PaymentProviderPort;
 import java.time.LocalDateTime;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {
         "spring.cloud.nacos.discovery.enabled=false",
         "mealflow.outbox.scheduler-enabled=false",
-        "mealflow.payment.provider=mock-wechat"
+        "mealflow.payment.provider=alipay-sandbox"
     }
 )
 class PaymentPersistenceTest {
@@ -24,6 +33,16 @@ class PaymentPersistenceTest {
 
   @Autowired
   private LocalEventMapper localEventMapper;
+
+  @MockBean(answer = Answers.CALLS_REAL_METHODS)
+  private AlipaySandboxAdapter alipaySandboxAdapter;
+
+  @BeforeEach
+  void mockAlipayRefund() {
+    doReturn(new PaymentProviderPort.RefundResult(true, false, "ALIPAY-TEST-TRADE",
+        "ALIPAY-TEST-REFUND", "success", "{}"))
+        .when(alipaySandboxAdapter).refund(anyString(), anyString(), anyInt());
+  }
 
   @Test
   void createsAndPaysOrderInDatabase() {
