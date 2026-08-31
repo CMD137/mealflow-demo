@@ -75,4 +75,13 @@ class AlipaySandboxAdapterTest {
         "tampered response must not verify");
   }
 
+  @Test
+  void closeTreatsSandboxExpiredTradeAsAlreadyClosedButNeverAsPaid() {
+    AlipaySandboxAdapter adapter = new AlipaySandboxAdapter("", "", "", "", "");
+    assertTrue(adapter.isIdempotentlyClosed("ACQ.TRADE_NOT_EXIST"));
+    assertTrue(adapter.isIdempotentlyClosed("TRADE_NOT_EXIST"));
+    assertFalse(adapter.isIdempotentlyClosed("ACQ.TRADE_HAS_SUCCESS"));
+    assertFalse(adapter.isIdempotentlyClosed("ACQ.SYSTEM_ERROR"));
+  }
+
 }

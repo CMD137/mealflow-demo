@@ -98,7 +98,11 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
       String subCode = response.getSubCode();
       boolean alreadyPaid = "ACQ.TRADE_HAS_SUCCESS".equals(subCode) || "TRADE_HAS_SUCCESS".equals(subCode)
           || "ACQ.TRADE_HAS_FINISHED".equals(subCode) || "TRADE_HAS_FINISHED".equals(subCode);
-      return new CloseResult(response.isSuccess(), alreadyPaid, message(response.getMsg(), response.getSubMsg()),
+      // The sandbox removes an expired checkout before the local timeout saga calls trade.close.
+      // Its TRADE_NOT_EXIST response is therefore an idempotent close, never a payment success.
+      boolean alreadyClosed = isIdempotentlyClosed(subCode);
+      return new CloseResult(response.isSuccess() || alreadyClosed, alreadyPaid,
+          message(response.getMsg(), response.getSubMsg()),
           response.getBody());
     } catch (AlipayApiException ex) {
       throw new IllegalStateException("alipay close request failed", ex);
@@ -230,6 +234,10 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
   private boolean retryable(String subCode) {
     return subCode == null || subCode.isBlank() || subCode.contains("SYSTEM_ERROR")
         || subCode.contains("ACQ.SYSTEM_ERROR");
+  }
+
+  boolean isIdempotentlyClosed(String subCode) {
+    return "ACQ.TRADE_NOT_EXIST".equals(subCode) || "TRADE_NOT_EXIST".equals(subCode);
   }
 
   private String blankToNull(String value) {
