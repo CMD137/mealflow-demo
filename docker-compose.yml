@@ -335,6 +335,7 @@ services:
       ALIPAY_APP_ID: ${ALIPAY_APP_ID:-}
       ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:-}
       ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:-}
+      ALIPAY_RETURN_URL: ${ALIPAY_RETURN_URL:-http://localhost:5174/order-result?source=alipay}
       NGROK_URL: ${NGROK_URL:-}
       TZ: Asia/Shanghai
       # Multi-NIC container: pin the Nacos-registered IP to the private (10.200.x) network so

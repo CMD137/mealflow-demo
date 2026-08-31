@@ -44,6 +44,7 @@ mealflow:
       private-key: ${ALIPAY_PRIVATE_KEY:}
       public-key: ${ALIPAY_PUBLIC_KEY:}
       notify-url: ${ALIPAY_NOTIFY_URL:https://${NGROK_URL:}/payments/alipay/callback}
+      return-url: ${ALIPAY_RETURN_URL:http://localhost:5174/order-result?source=alipay}
   internal:
     auth:
       enabled: ${INTERNAL_AUTH_ENABLED:true}

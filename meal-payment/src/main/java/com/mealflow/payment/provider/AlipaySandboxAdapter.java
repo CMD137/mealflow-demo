@@ -52,15 +52,18 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
   private final String privateKey;
   private final String publicKey;
   private final String notifyUrl;
+  private final String returnUrl;
 
   public AlipaySandboxAdapter(@Value("${mealflow.payment.alipay.app-id:}") String appId,
       @Value("${mealflow.payment.alipay.private-key:}") String privateKey,
       @Value("${mealflow.payment.alipay.public-key:}") String publicKey,
-      @Value("${mealflow.payment.alipay.notify-url:}") String notifyUrl) {
+      @Value("${mealflow.payment.alipay.notify-url:}") String notifyUrl,
+      @Value("${mealflow.payment.alipay.return-url:}") String returnUrl) {
     this.appId = appId;
     this.privateKey = privateKey;
     this.publicKey = publicKey;
     this.notifyUrl = notifyUrl;
+    this.returnUrl = returnUrl;
   }
 
   @Override
@@ -73,6 +76,7 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
     requireCheckoutConfiguration();
     AlipayTradePagePayRequest request = new AlipayTradePagePayRequest();
     request.setNotifyUrl(notifyUrl);
+    request.setReturnUrl(returnUrl);
     request.setBizContent("{\"out_trade_no\":\"MF" + payOrderId
         + "\",\"product_code\":\"FAST_INSTANT_TRADE_PAY\",\"total_amount\":\""
         + amount(amountCent) + "\",\"subject\":\"MealFlow order " + payOrderId
@@ -212,8 +216,8 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
   }
 
   private void requireCheckoutConfiguration() {
-    if (appId.isBlank() || privateKey.isBlank() || notifyUrl.isBlank()) {
-      throw new IllegalStateException("alipay sandbox credentials or callback URL are missing");
+    if (appId.isBlank() || privateKey.isBlank() || notifyUrl.isBlank() || returnUrl.isBlank()) {
+      throw new IllegalStateException("alipay sandbox credentials, callback URL, or return URL are missing");
     }
   }
 

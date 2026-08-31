@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import AppShell from '@/components/AppShell.vue';
 import { errorMessage } from '@/api/http';
-import { checkoutApi } from '@/api/payments';
+import { checkoutApi, paymentApi } from '@/api/payments';
 import { formatWait } from '@/utils/format';
 import type { SubmitOrderResponse } from '@/types/api';
 
@@ -10,8 +11,18 @@ const result = computed<SubmitOrderResponse | null>(() => {
   const raw = sessionStorage.getItem('mealflow.lastOrderResult');
   return raw ? JSON.parse(raw) as SubmitOrderResponse : null;
 });
+const route = useRoute();
+const router = useRouter();
 const payError = ref('');
 const paying = ref(false);
+const returnMessage = ref('');
+const confirmingReturn = ref(false);
+
+function returnedPayOrderId() {
+  const outTradeNo = String(route.query.out_trade_no || '');
+  if (/^MF\d+$/.test(outTradeNo)) return Number(outTradeNo.substring(2));
+  return result.value?.payOrderId || null;
+}
 
 async function pay() {
   if (!result.value?.payOrderId) return;
@@ -26,6 +37,32 @@ async function pay() {
     paying.value = false;
   }
 }
+
+async function confirmReturnedPayment() {
+  const payOrderId = returnedPayOrderId();
+  if (!payOrderId) return;
+  confirmingReturn.value = true;
+  returnMessage.value = '正在确认支付宝支付结果…';
+  try {
+    const payment = await paymentApi(payOrderId);
+    if (payment.status === 'PAID') {
+      returnMessage.value = '支付已确认，正在打开订单详情…';
+      await router.replace({ path: `/orders/${payment.orderId}`, query: { payment: 'success' } });
+      return;
+    }
+    returnMessage.value = '支付宝已返回，但支付结果尚未确认。请稍后刷新订单状态。';
+  } catch (error) {
+    returnMessage.value = errorMessage(error, '无法确认支付结果，请在订单详情中稍后刷新。');
+  } finally {
+    confirmingReturn.value = false;
+  }
+}
+
+onMounted(() => {
+  if (route.query.source === 'alipay' || route.query.out_trade_no) {
+    void confirmReturnedPayment();
+  }
+});
 </script>
 
 <template>
@@ -39,10 +76,12 @@ async function pay() {
       <p v-else>
         排队号 {{ result.ticketNo }}，前方 {{ result.aheadCount }} 单，预计等待 {{ formatWait(result.estimatedWaitSeconds) }}。
       </p>
+      <p v-if="returnMessage" class="return-message">{{ returnMessage }}</p>
       <p v-if="payError" class="inline-error">{{ payError }}</p>
       <button v-if="result.payOrderId" class="primary-button" :disabled="paying" @click="pay">
         {{ paying ? '正在跳转支付宝…' : '前往支付宝支付' }}
       </button>
+      <button v-if="returnMessage && !confirmingReturn" class="ghost-button" @click="confirmReturnedPayment">刷新支付状态</button>
       <RouterLink v-if="result.orderId" class="ghost-button" :to="`/orders/${result.orderId}`">查看订单</RouterLink>
       <RouterLink class="ghost-button" to="/orders">订单列表</RouterLink>
     </section>
@@ -79,5 +118,9 @@ async function pay() {
   margin: 0;
   color: #64748b;
   line-height: 1.7;
+}
+
+.return-message {
+  color: #1d4ed8 !important;
 }
 </style>

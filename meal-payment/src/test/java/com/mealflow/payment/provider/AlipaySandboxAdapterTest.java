@@ -27,7 +27,7 @@ class AlipaySandboxAdapterTest {
     generator.initialize(1024);
     String privateKey = Base64.getEncoder().encodeToString(generator.generateKeyPair().getPrivate().getEncoded());
     AlipaySandboxAdapter adapter = new AlipaySandboxAdapter(
-        "test-app", privateKey, "", "https://example.test/callback");
+        "test-app", privateKey, "", "https://example.test/callback", "https://web.example.test/order-result?source=alipay");
 
     LocalDateTime before = LocalDateTime.now().minusSeconds(2);
     LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
@@ -42,6 +42,7 @@ class AlipaySandboxAdapterTest {
     assertEquals("alipay.trade.page.pay", query.get("method"));
     assertEquals("RSA2", query.get("sign_type"));
     assertEquals("https://example.test/callback", query.get("notify_url"));
+    assertEquals("https://web.example.test/order-result?source=alipay", query.get("return_url"));
     assertTrue(query.get("alipay_sdk").startsWith("alipay-sdk-java-"));
     assertTrue(query.get("biz_content").contains("\"total_amount\":\"0.01\""));
     assertTrue(query.get("biz_content").contains("\"time_expire\":\"" + FORMAT.format(expiresAt) + "\""));
@@ -58,7 +59,7 @@ class AlipaySandboxAdapterTest {
     java.security.KeyPair pair = generator.generateKeyPair();
     String privateKey = Base64.getEncoder().encodeToString(pair.getPrivate().getEncoded());
     String publicKey = Base64.getEncoder().encodeToString(pair.getPublic().getEncoded());
-    AlipaySandboxAdapter adapter = new AlipaySandboxAdapter("test-app", privateKey, publicKey, "");
+    AlipaySandboxAdapter adapter = new AlipaySandboxAdapter("test-app", privateKey, publicKey, "", "");
 
     String responseJson = "{\"code\":\"10000\",\"msg\":\"Success\",\"trade_no\":\"T123\","
         + "\"out_trade_no\":\"MF1\",\"fund_change\":\"Y\",\"refund_fee\":\"0.01\"}";
