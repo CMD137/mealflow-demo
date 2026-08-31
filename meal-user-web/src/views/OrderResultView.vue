@@ -30,7 +30,9 @@ async function pay() {
   payError.value = '';
   try {
     const checkout = await checkoutApi(result.value.payOrderId);
-    window.location.assign(checkout.checkoutUrl);
+    if (!window.open(checkout.checkoutUrl, '_blank', 'noopener,noreferrer')) {
+      payError.value = '浏览器阻止了支付宝新标签页，请允许弹出窗口后重试。';
+    }
   } catch (error) {
     payError.value = errorMessage(error, '无法发起支付，请稍后重试');
   } finally {
