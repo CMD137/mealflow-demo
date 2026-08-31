@@ -171,6 +171,17 @@ export interface PaymentCheckoutView {
   checkoutUrl: string;
 }
 
+export interface QueueTicketView {
+  ticketId: number;
+  ticketNo: string;
+  status: string;
+  aheadCount: number;
+  estimatedWaitSeconds: number;
+  expireTime: string;
+  canCancel: boolean;
+  orderId?: number | null;
+}
+
 export interface MessageView {
   messageId: number;
   userId: number;

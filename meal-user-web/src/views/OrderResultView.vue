@@ -81,6 +81,7 @@ onMounted(() => {
       <button v-if="result.payOrderId" class="primary-button" :disabled="paying" @click="pay">
         {{ paying ? '正在跳转支付宝…' : '前往支付宝支付' }}
       </button>
+      <RouterLink v-if="result.ticketId" class="primary-button" to="/queue">查看排队进度</RouterLink>
       <button v-if="returnMessage && !confirmingReturn" class="ghost-button" @click="confirmReturnedPayment">刷新支付状态</button>
       <RouterLink v-if="result.orderId" class="ghost-button" :to="`/orders/${result.orderId}`">查看订单</RouterLink>
       <RouterLink class="ghost-button" to="/orders">订单列表</RouterLink>

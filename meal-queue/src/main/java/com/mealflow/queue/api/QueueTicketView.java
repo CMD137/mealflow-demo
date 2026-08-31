@@ -9,6 +9,7 @@ public record QueueTicketView(
     int aheadCount,
     int estimatedWaitSeconds,
     LocalDateTime expireTime,
-    boolean canCancel
+    boolean canCancel,
+    Long orderId
 ) {
 }

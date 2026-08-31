@@ -378,7 +378,7 @@ public class QueueService {
     int ahead = ticket.status == QueueTicketStatus.WAITING ? aheadCount(ticket) : 0;
     return new QueueTicketView(ticket.id, ticket.ticketNo, ticket.status.name(), ahead,
         estimateWaitSeconds(ahead, ticket.merchantId), ticket.expireTime,
-        ticket.status == QueueTicketStatus.WAITING || ticket.status == QueueTicketStatus.READY);
+        ticket.status == QueueTicketStatus.WAITING || ticket.status == QueueTicketStatus.READY, ticket.orderId);
   }
 
   private Optional<QueueTicket> findTicket(long ticketId) {

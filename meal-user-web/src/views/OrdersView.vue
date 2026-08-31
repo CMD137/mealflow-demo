@@ -2,12 +2,14 @@
 import { computed, onMounted, ref } from 'vue';
 import AppShell from '@/components/AppShell.vue';
 import { ordersApi } from '@/api/orders';
+import { activeQueueTicketApi } from '@/api/queue';
 import { formatMoney, orderStatusText, statusClass } from '@/utils/format';
 import type { OrderView } from '@/types/api';
 
 const loading = ref(false);
 const active = ref('all');
 const orders = ref<OrderView[]>([]);
+const activeTicket = ref<{ ticketNo: string; aheadCount: number } | null>(null);
 
 const tabs = [
   { key: 'all', label: '全部' },
@@ -25,7 +27,9 @@ const visibleOrders = computed(() => {
 async function load() {
   loading.value = true;
   try {
-    orders.value = (await ordersApi()).sort((a, b) => b.orderId - a.orderId);
+    const [orderList, ticket] = await Promise.all([ordersApi(), activeQueueTicketApi()]);
+    orders.value = orderList.sort((a, b) => b.orderId - a.orderId);
+    activeTicket.value = ticket;
   } finally {
     loading.value = false;
   }
@@ -41,6 +45,11 @@ onMounted(load);
         {{ tab.label }}
       </button>
     </div>
+
+    <RouterLink v-if="activeTicket" class="queue-banner card" to="/queue">
+      <strong>排队号 {{ activeTicket.ticketNo }}</strong>
+      <span>前方 {{ activeTicket.aheadCount }} 单，查看进度</span>
+    </RouterLink>
 
     <RouterLink v-for="order in visibleOrders" :key="order.orderId" class="order-card card" :to="`/orders/${order.orderId}`">
       <div class="order-head">
@@ -85,6 +94,16 @@ onMounted(load);
   display: block;
   margin-bottom: 10px;
   padding: 14px;
+}
+
+.queue-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 13px 14px;
+  color: #1d4ed8;
+  font-size: 13px;
 }
 
 .order-head,

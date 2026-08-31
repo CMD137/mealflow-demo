@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/addresses', component: () => import('@/views/AddressesView.vue') },
     { path: '/checkout', component: () => import('@/views/CheckoutView.vue') },
     { path: '/order-result', component: () => import('@/views/OrderResultView.vue') },
+    { path: '/queue', component: () => import('@/views/QueueView.vue') },
     { path: '/orders', component: () => import('@/views/OrdersView.vue') },
     { path: '/orders/:orderId', component: () => import('@/views/OrderDetailView.vue') },
     { path: '/vouchers', component: () => import('@/views/VouchersView.vue') },
