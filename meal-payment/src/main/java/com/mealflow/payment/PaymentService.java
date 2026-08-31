@@ -31,6 +31,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class PaymentService {
+  private static final Duration PAYMENT_TIMEOUT = Duration.ofMinutes(15);
   private final Duration outboxLease;
   private final int outboxMaxAttempts;
 
@@ -99,10 +100,25 @@ public class PaymentService {
   }
 
   @Transactional
-  public void close(long payOrderId) {
-    requirePayment(payOrderId);
+  public synchronized PaymentView close(long payOrderId) {
+    PaymentOrderRow payment = requirePaymentRow(payOrderId);
+    PaymentStatus status = PaymentStatus.valueOf(payment.getStatus());
+    if (status == PaymentStatus.PAID || status == PaymentStatus.CLOSED) {
+      return view(payment);
+    }
+    if (status != PaymentStatus.UNPAID && status != PaymentStatus.PAYING) {
+      return view(payment);
+    }
+    PaymentProviderPort.CloseResult result = requireProvider(payment.getProvider()).close(payment.getMerchantOrderNo());
+    if (result.alreadyPaid()) {
+      return mockPay(payOrderId);
+    }
+    if (!result.closed()) {
+      throw new IllegalStateException("payment close rejected: " + result.message());
+    }
     paymentMapper.updatePayableStatus(payOrderId, PaymentStatus.CLOSED.name(), PaymentStatus.UNPAID.name(),
         PaymentStatus.PAYING.name(), LocalDateTime.now());
+    return requirePayment(payOrderId);
   }
 
   public synchronized PaymentView refund(long payOrderId) {
@@ -155,15 +171,20 @@ public class PaymentService {
   }
 
   public PaymentCheckoutView checkout(long payOrderId) {
-    PaymentView payment = requirePayment(payOrderId);
-    if (PaymentStatus.valueOf(payment.status()) != PaymentStatus.UNPAID) {
+    PaymentOrderRow payment = requirePaymentRow(payOrderId);
+    if (PaymentStatus.valueOf(payment.getStatus()) != PaymentStatus.UNPAID) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is not payable");
+    }
+    LocalDateTime expireAt = payment.getCreateTime().plus(PAYMENT_TIMEOUT);
+    if (!LocalDateTime.now().isBefore(expireAt)) {
+      close(payOrderId);
+      throw new BizException(ErrorCode.ILLEGAL_STATUS, "payment order is expired");
     }
     PaymentProviderPort adapter = paymentProviders.get(provider);
     if (adapter == null) {
       throw new IllegalStateException("unsupported payment provider: " + provider);
     }
-    return new PaymentCheckoutView(payOrderId, provider, adapter.checkoutUrl(payOrderId, payment.amountCent()));
+    return new PaymentCheckoutView(payOrderId, provider, adapter.checkoutUrl(payOrderId, payment.getAmountCent(), expireAt));
   }
 
   @Transactional

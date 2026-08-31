@@ -31,9 +31,14 @@ public class PaymentClient {
     return result.data();
   }
 
-  public void close(long payOrderId, ClosePaymentRequest request) {
-    requireSuccess(restTemplate.postForObject(endpoints.payment() + "/payments/internal/" + payOrderId + "/close",
-        request, Result.class), "payment close failed");
+  public PaymentView close(long payOrderId, ClosePaymentRequest request) {
+    Result<PaymentView> result = restTemplate.exchange(
+        endpoints.payment() + "/payments/internal/" + payOrderId + "/close",
+        HttpMethod.POST, new HttpEntity<>(request), new ParameterizedTypeReference<Result<PaymentView>>() { }).getBody();
+    if (result == null || !result.success() || result.data() == null) {
+      throw new IllegalStateException(result == null ? "payment close failed" : result.message());
+    }
+    return result.data();
   }
 
   public void refund(long payOrderId) {

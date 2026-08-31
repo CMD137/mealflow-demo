@@ -41,9 +41,8 @@ public class PaymentController {
   }
 
   @PostMapping("/internal/{payOrderId}/close")
-  public Result<Void> close(@PathVariable long payOrderId, @Valid @RequestBody ClosePaymentRequest request) {
-    paymentService.close(payOrderId);
-    return Result.ok();
+  public Result<PaymentView> close(@PathVariable long payOrderId, @Valid @RequestBody ClosePaymentRequest request) {
+    return Result.ok(paymentService.close(payOrderId));
   }
 
   @PostMapping("/internal/{payOrderId}/refund")

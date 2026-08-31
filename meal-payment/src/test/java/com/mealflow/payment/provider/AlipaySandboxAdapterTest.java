@@ -30,7 +30,8 @@ class AlipaySandboxAdapterTest {
         "test-app", privateKey, "", "https://example.test/callback");
 
     LocalDateTime before = LocalDateTime.now().minusSeconds(2);
-    String checkoutUrl = adapter.checkoutUrl(10001L, 1);
+    LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
+    String checkoutUrl = adapter.checkoutUrl(10001L, 1, expiresAt);
     LocalDateTime after = LocalDateTime.now().plusSeconds(2);
     Map<String, String> query = Stream.of(URI.create(checkoutUrl).getRawQuery().split("&"))
         .map(value -> value.split("=", 2))
@@ -43,6 +44,7 @@ class AlipaySandboxAdapterTest {
     assertEquals("https://example.test/callback", query.get("notify_url"));
     assertTrue(query.get("alipay_sdk").startsWith("alipay-sdk-java-"));
     assertTrue(query.get("biz_content").contains("\"total_amount\":\"0.01\""));
+    assertTrue(query.get("biz_content").contains("\"time_expire\":\"" + FORMAT.format(expiresAt) + "\""));
     assertFalse(timestamp.isBefore(before));
     assertTrue(timestamp.isBefore(after));
   }

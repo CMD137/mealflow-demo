@@ -18,6 +18,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -42,6 +43,8 @@ class PaymentPersistenceTest {
     doReturn(new PaymentProviderPort.RefundResult(true, false, "ALIPAY-TEST-TRADE",
         "ALIPAY-TEST-REFUND", "success", "{}"))
         .when(alipaySandboxAdapter).refund(anyString(), anyString(), anyInt());
+    doReturn(new PaymentProviderPort.CloseResult(true, false, "closed", "{}"))
+        .when(alipaySandboxAdapter).close(anyString());
   }
 
   @Test
@@ -111,5 +114,28 @@ class PaymentPersistenceTest {
 
     assertThat(refunded.status()).isEqualTo("REFUNDED");
     assertThat(paymentService.refund(created.payOrderId()).status()).isEqualTo("REFUNDED");
+  }
+
+  @Test
+  void closesProviderBeforeClosingLocalPayment() {
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-close", 2004L, 101L, 990));
+
+    PaymentView closed = paymentService.close(created.payOrderId());
+
+    assertThat(closed.status()).isEqualTo("CLOSED");
+    verify(alipaySandboxAdapter).close("MF" + created.payOrderId());
+  }
+
+  @Test
+  void treatsProviderAlreadyPaidAsPaidAndPublishesPaymentEvent() {
+    PaymentView created = paymentService.create(new CreatePaymentRequest("payment-test-late-payment", 2005L, 101L, 990));
+    doReturn(new PaymentProviderPort.CloseResult(false, true, "already paid", "{}"))
+        .when(alipaySandboxAdapter).close("MF" + created.payOrderId());
+
+    PaymentView paid = paymentService.close(created.payOrderId());
+
+    assertThat(paid.status()).isEqualTo("PAID");
+    assertThat(paymentService.events()).anyMatch(event -> event.eventKey()
+        .equals("payment:PaymentPaid:" + created.payOrderId() + ":1"));
   }
 }

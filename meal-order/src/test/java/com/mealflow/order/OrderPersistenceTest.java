@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doReturn;
 
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
@@ -79,6 +80,8 @@ class OrderPersistenceTest {
         .thenReturn(new AuthUserClient.AddressView(20L, 101L, "Test User", "13800000000", "Test Road 1", true));
     when(merchantClient.requireAcceptingOrders(org.mockito.ArgumentMatchers.anyLong()))
         .thenReturn(new MerchantClient.MerchantView(10L, "Test Merchant", "OPEN", 1, 1));
+    doReturn(new PaymentClient.PaymentView(0L, 0L, 0L, 0, "CLOSED"))
+        .when(paymentClient).close(anyLong(), any());
   }
 
   @Test
@@ -106,7 +109,7 @@ class OrderPersistenceTest {
     assertThat(created.items()).hasSize(1);
     assertThat(created.contactName()).isEqualTo("Test User");
     assertThat(created.deliveryAddress()).isEqualTo("Test Road 1");
-    assertThat(orderService.events())
+    assertThat(orderService.events().stream().filter(event -> event.aggregateId() == response.orderId()).toList())
         .singleElement()
         .satisfies(event -> {
           assertThat(event.eventKey()).isEqualTo("order:OrderCreated:" + response.orderId() + ":1");
@@ -124,11 +127,11 @@ class OrderPersistenceTest {
     OrderStatisticsView statistics = orderService.adminStatistics(new AdminOrderQuery(10L, null, null, null, null, 1, 1));
     assertThat(statistics.totalCount()).isGreaterThanOrEqualTo(1);
     assertThat(statistics.waitingAcceptCount()).isGreaterThanOrEqualTo(1);
-    assertThat(orderService.events())
+    assertThat(orderService.events().stream().filter(event -> event.aggregateId() == response.orderId()).toList())
         .extracting("eventType")
         .containsExactly("OrderCreated", "OrderPaid");
-    assertThat(orderService.dispatchPendingEvents(10)).isEqualTo(2);
-    assertThat(orderService.events())
+    assertThat(orderService.dispatchPendingEvents(10)).isGreaterThanOrEqualTo(2);
+    assertThat(orderService.events().stream().filter(event -> event.aggregateId() == response.orderId()).toList())
         .extracting("status")
         .containsExactly("SENT", "SENT");
     verify(catalogClient).confirm(any());
@@ -244,5 +247,36 @@ class OrderPersistenceTest {
         .extracting("stepName")
         .containsSequence("REFUND_PAYMENT", "REVERT_STOCK", "REVERT_VOUCHER", "RELEASE_CAPACITY",
             "CREATE_PROMOTED_QUEUE_ORDER", "CANCEL_ORDER");
+  }
+
+  @Test
+  void paymentDetectedDuringCloseStopsUnpaidCancellationAndThenConfirmsOrder() {
+    when(catalogClient.snapshots(eq(10L), anyList()))
+        .thenReturn(List.of(new OrderItemSnapshot(1L, "迟到支付盖饭", 1200, 1)));
+    when(catalogClient.reserve(any()))
+        .thenReturn(new CatalogClient.ReserveStockResponse(List.of(8401L), "RESERVED"));
+    when(promotionClient.lock(any()))
+        .thenReturn(new PromotionClient.VoucherLockResponse(7401L, "LOCKED", 0));
+    when(queueClient.apply(any()))
+        .thenReturn(new QueueClient.QueueApplyResponse("READY", 6401L, null, null, 0, 0, null));
+    when(paymentClient.create(any()))
+        .thenReturn(new PaymentClient.PaymentView(5401L, 10401L, 101L, 1200, "UNPAID"));
+    doReturn(new PaymentClient.PaymentView(5401L, 10401L, 101L, 1200, "PAID"))
+        .when(paymentClient).close(anyLong(), any());
+
+    SubmitOrderResponse response = submissionCoordinator.submit(101L,
+        new SubmitOrderRequest("order-late-payment", 10L, 20L, null,
+            List.of(new OrderSkuItem(1L, 1)), null, "late payment"));
+    orderService.cancel(response.orderId(), "PAYMENT_TIMEOUT");
+
+    assertThat(orderService.get(response.orderId()).status()).isEqualTo("PENDING_PAYMENT");
+    assertThat(orderSagaMapper.findByOrderId(response.orderId()))
+        .extracting("status").containsOnly("SUCCESS");
+    verify(catalogClient, org.mockito.Mockito.never()).release(any());
+    verify(promotionClient, org.mockito.Mockito.never()).release(any());
+
+    orderService.markPaid(response.orderId());
+
+    assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
   }
 }

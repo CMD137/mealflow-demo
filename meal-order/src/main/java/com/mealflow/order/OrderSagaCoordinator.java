@@ -7,6 +7,7 @@ import com.mealflow.common.api.ErrorCode;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.LocalEventStatus;
 import com.mealflow.common.status.OrderStatus;
+import com.mealflow.common.status.PaymentStatus;
 import com.mealflow.infra.event.EventKey;
 import com.mealflow.order.client.CatalogClient;
 import com.mealflow.order.client.PaymentClient;
@@ -168,8 +169,7 @@ public class OrderSagaCoordinator {
           "stock-confirm:" + order.getId(), reservationIds(order), order.getId(), "PAYMENT_SUCCESS"));
       case "CONFIRM_VOUCHER" -> promotionClient.confirm(new PromotionClient.VoucherTransitionRequest(
           "voucher-confirm:" + order.getId(), order.getVoucherLockId(), order.getId(), "PAYMENT_SUCCESS"));
-      case "CLOSE_PAYMENT" -> paymentClient.close(order.getPayOrderId(), new PaymentClient.ClosePaymentRequest(
-          "payment-close:" + order.getId(), step.getReason()));
+      case "CLOSE_PAYMENT" -> closePaymentOrStopCancellation(order, step);
       case "REFUND_PAYMENT" -> paymentClient.refund(order.getPayOrderId());
       case "RELEASE_STOCK" -> catalogClient.release(new CatalogClient.StockTransitionRequest(
           "stock-release:" + order.getId(), reservationIds(order), order.getId(), step.getReason()));
@@ -186,6 +186,15 @@ public class OrderSagaCoordinator {
           OrderStatus.WAIT_MERCHANT_ACCEPT, "OrderPaid");
       case "CANCEL_ORDER" -> completeCancellation(order);
       default -> throw new IllegalStateException("unsupported order saga step: " + step.getStepName());
+    }
+  }
+
+  private void closePaymentOrStopCancellation(OrderRow order, OrderSagaStepRow step) {
+    PaymentClient.PaymentView payment = paymentClient.close(order.getPayOrderId(), new PaymentClient.ClosePaymentRequest(
+        "payment-close:" + order.getId(), step.getReason()));
+    if (PaymentStatus.PAID.name().equals(payment.status()) && CANCEL_UNPAID.equals(step.getSagaType())) {
+      transactionTemplate.executeWithoutResult(status -> sagaMapper.skipRemainingAfterPayment(order.getId(),
+          step.getSagaType(), step.getStepOrder(), LocalDateTime.now()));
     }
   }
 

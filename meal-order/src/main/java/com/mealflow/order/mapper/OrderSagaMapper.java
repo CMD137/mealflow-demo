@@ -113,6 +113,15 @@ public interface OrderSagaMapper {
 
   @Update("""
       UPDATE order_saga_step
+      SET status = 'SUCCESS', next_retry_time = NULL, lease_until = NULL,
+          last_error = 'PAYMENT_ALREADY_PAID', update_time = #{now}
+      WHERE order_id = #{orderId} AND saga_type = #{sagaType} AND step_order > #{stepOrder}
+        AND status IN ('NEW', 'FAILED')
+      """)
+  int skipRemainingAfterPayment(long orderId, String sagaType, int stepOrder, LocalDateTime now);
+
+  @Update("""
+      UPDATE order_saga_step
       SET status = 'FAILED', next_retry_time = #{nextRetryTime}, lease_until = NULL,
           last_error = #{lastError}, update_time = #{now}
       WHERE id = #{id} AND status = 'PROCESSING'

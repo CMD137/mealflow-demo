@@ -10,11 +10,15 @@ import com.alipay.api.SignItem;
 import com.alipay.api.internal.parser.json.ObjectJsonParser;
 import com.alipay.api.internal.util.AlipaySignature;
 import com.alipay.api.request.AlipayTradeFastpayRefundQueryRequest;
+import com.alipay.api.request.AlipayTradeCloseRequest;
 import com.alipay.api.request.AlipayTradePagePayRequest;
 import com.alipay.api.request.AlipayTradeRefundRequest;
 import com.alipay.api.response.AlipayTradeFastpayRefundQueryResponse;
+import com.alipay.api.response.AlipayTradeCloseResponse;
 import com.alipay.api.response.AlipayTradeRefundResponse;
 import java.util.Map;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,6 +46,7 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
   private static final String GATEWAY = "https://openapi-sandbox.dl.alipaydev.com/gateway.do";
   private static final String CHARSET = "UTF-8";
   private static final String SIGN_TYPE = "RSA2";
+  private static final DateTimeFormatter ALIPAY_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
   private final String appId;
   private final String privateKey;
@@ -64,17 +69,35 @@ public class AlipaySandboxAdapter implements PaymentProviderPort {
   }
 
   @Override
-  public String checkoutUrl(long payOrderId, int amountCent) {
+  public String checkoutUrl(long payOrderId, int amountCent, LocalDateTime expireAt) {
     requireCheckoutConfiguration();
     AlipayTradePagePayRequest request = new AlipayTradePagePayRequest();
     request.setNotifyUrl(notifyUrl);
     request.setBizContent("{\"out_trade_no\":\"MF" + payOrderId
         + "\",\"product_code\":\"FAST_INSTANT_TRADE_PAY\",\"total_amount\":\""
-        + amount(amountCent) + "\",\"subject\":\"MealFlow order " + payOrderId + "\"}");
+        + amount(amountCent) + "\",\"subject\":\"MealFlow order " + payOrderId
+        + "\",\"time_expire\":\"" + ALIPAY_TIME.format(expireAt) + "\"}");
     try {
       return client().pageExecute(request, "GET").getBody();
     } catch (AlipayApiException ex) {
       throw new IllegalStateException("failed to create alipay checkout request", ex);
+    }
+  }
+
+  @Override
+  public CloseResult close(String merchantOrderNo) {
+    requireApiConfiguration();
+    AlipayTradeCloseRequest request = new AlipayTradeCloseRequest();
+    request.setBizContent("{\"out_trade_no\":\"" + merchantOrderNo + "\"}");
+    try {
+      AlipayTradeCloseResponse response = executeWithoutStrictVerification(request);
+      String subCode = response.getSubCode();
+      boolean alreadyPaid = "ACQ.TRADE_HAS_SUCCESS".equals(subCode) || "TRADE_HAS_SUCCESS".equals(subCode)
+          || "ACQ.TRADE_HAS_FINISHED".equals(subCode) || "TRADE_HAS_FINISHED".equals(subCode);
+      return new CloseResult(response.isSuccess(), alreadyPaid, message(response.getMsg(), response.getSubMsg()),
+          response.getBody());
+    } catch (AlipayApiException ex) {
+      throw new IllegalStateException("alipay close request failed", ex);
     }
   }
 

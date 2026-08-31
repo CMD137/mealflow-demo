@@ -47,7 +47,7 @@ public interface PaymentMapper {
       @Param("refunded") String refunded, @Param("now") LocalDateTime now);
 
   @Select("""
-      SELECT id, order_id, user_id, provider, merchant_order_no, channel_transaction_no, amount_cent, status
+      SELECT id, order_id, user_id, provider, merchant_order_no, channel_transaction_no, amount_cent, status, create_time
       FROM payment_order
       WHERE id = #{id}
       """)
@@ -59,12 +59,13 @@ public interface PaymentMapper {
       @Result(column = "merchant_order_no", property = "merchantOrderNo"),
       @Result(column = "channel_transaction_no", property = "channelTransactionNo"),
       @Result(column = "amount_cent", property = "amountCent"),
-      @Result(column = "status", property = "status")
+      @Result(column = "status", property = "status"),
+      @Result(column = "create_time", property = "createTime")
   })
   PaymentOrderRow findById(long id);
 
   @Select("""
-      SELECT id, order_id, user_id, provider, merchant_order_no, channel_transaction_no, amount_cent, status
+      SELECT id, order_id, user_id, provider, merchant_order_no, channel_transaction_no, amount_cent, status, create_time
       FROM payment_order
       ORDER BY id
       """)

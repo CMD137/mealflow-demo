@@ -1,5 +1,7 @@
 package com.mealflow.payment.mapper;
 
+import java.time.LocalDateTime;
+
 public class PaymentOrderRow {
   private long id;
   private long orderId;
@@ -9,6 +11,7 @@ public class PaymentOrderRow {
   private String provider;
   private String merchantOrderNo;
   private String channelTransactionNo;
+  private LocalDateTime createTime;
 
   public long getId() {
     return id;
@@ -56,4 +59,6 @@ public class PaymentOrderRow {
   public void setMerchantOrderNo(String merchantOrderNo) { this.merchantOrderNo = merchantOrderNo; }
   public String getChannelTransactionNo() { return channelTransactionNo; }
   public void setChannelTransactionNo(String channelTransactionNo) { this.channelTransactionNo = channelTransactionNo; }
+  public LocalDateTime getCreateTime() { return createTime; }
+  public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
 }
