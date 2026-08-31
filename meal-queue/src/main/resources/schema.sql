@@ -27,7 +27,19 @@ CREATE TABLE IF NOT EXISTS queue_ticket (
   update_time TIMESTAMP NOT NULL,
   UNIQUE KEY uk_queue_ticket_request (request_id),
   INDEX idx_queue_ticket_merchant_status (merchant_id, status),
-  INDEX idx_queue_ticket_status_score (status, score)
+  INDEX idx_queue_ticket_status_score (status, score),
+  INDEX idx_queue_ticket_user_create (user_id, create_time)
+);
+
+CREATE TABLE IF NOT EXISTS queue_timeout_notification (
+  ticket_id BIGINT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error VARCHAR(512) NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL,
+  INDEX idx_queue_timeout_notification_status_ticket (status, ticket_id)
 );
 
 CREATE TABLE IF NOT EXISTS capacity_token (

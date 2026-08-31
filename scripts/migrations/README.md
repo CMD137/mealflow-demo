@@ -21,6 +21,7 @@
 | `20260827-auth-single-merchant.sql` | 允许同一员工账号关联多个商户的旧库 | 人工确认无冲突后，增加 `user_id` 全局唯一约束并移除内部运维权限 |
 | `20260829-notify-recipient.sql` | 只有 `user_id` 的旧通知表 | 增加统一收件人类型/ID，回填用户通知并增加商户通知查询索引 |
 | `20260830-promotion-claim-backfill.sql` | 已有秒杀钱包券但缺少 claim 的旧库 | 幂等回填 `CLAIMED` 领取事实，补齐用户/券事件键与钱包券关联 |
+| `20260903-queue-history-timeout-notification.sql` | 尚未支持用户排队历史与超时通知的旧库 | 新增用户历史查询索引和可重试的排队超时通知记录表 |
 
 ## 已知仍需按实际库结构人工补的差异
 

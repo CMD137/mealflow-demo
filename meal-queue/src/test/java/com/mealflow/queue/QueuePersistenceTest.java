@@ -2,6 +2,7 @@ package com.mealflow.queue;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 
 import com.mealflow.queue.api.QueueApplyRequest;
 import com.mealflow.queue.api.QueueApplyResponse;
@@ -13,14 +14,24 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = "spring.cloud.nacos.discovery.enabled=false"
+    properties = {
+        "spring.cloud.nacos.discovery.enabled=false",
+        "mealflow.queue.timeout-notify.initial-delay-ms=600000"
+    }
 )
 class QueuePersistenceTest {
   @Autowired
   private QueueService queueService;
+
+  @Autowired
+  private QueueTimeoutNotificationDispatcher timeoutNotificationDispatcher;
+
+  @MockBean
+  private QueueTimeoutNotificationClient timeoutNotificationClient;
 
   @Test
   void persistsTicketAndPromotesItWhenCapacityIsReleased() {
@@ -53,6 +64,9 @@ class QueuePersistenceTest {
     assertThatThrownBy(() -> queueService.getTicket(second.ticketId(), 1L))
         .hasMessageContaining("does not belong to current user");
     assertThat(queueService.getTicket(second.ticketId(), 2L).ticketId()).isEqualTo(second.ticketId());
+    assertThat(queueService.ticketHistory(2L, 10))
+        .extracting(ticket -> ticket.ticketId())
+        .contains(second.ticketId());
     assertThat(queueService.metrics(10L)).containsEntry("held", 1);
     assertThat(queueService.recoverableTickets(10))
         .singleElement()
@@ -79,5 +93,35 @@ class QueuePersistenceTest {
     queueService.setMerchantLimit(10L, 0);
 
     assertThat(queueService.metrics(10L)).containsEntry("limit", 1);
+  }
+
+  @Test
+  void notifiesOnceWhenAWaitingTicketTimesOut() {
+    QueueTicketSnapshot snapshot = new QueueTicketSnapshot(
+        List.of(Map.of("skuId", 102L, "quantity", 1)),
+        List.of(),
+        null,
+        1800,
+        "timeout test",
+        41L,
+        11L,
+        "Timeout User",
+        "13800000002",
+        "Queue Road 2"
+    );
+    QueueApplyResponse occupying = queueService.apply(new QueueApplyRequest("queue-timeout-occupying", 41L, 11L,
+        snapshot, LocalDateTime.now().plusMinutes(10), 0, 1));
+    QueueApplyResponse waiting = queueService.apply(new QueueApplyRequest("queue-timeout-waiting", 42L, 11L,
+        snapshot, LocalDateTime.now().minusSeconds(1), 0, 1));
+
+    assertThat(occupying.result()).isEqualTo("READY");
+    assertThat(waiting.result()).isEqualTo("QUEUED");
+
+    queueService.expireStaleResources();
+
+    assertThat(queueService.getTicket(waiting.ticketId()).status()).isEqualTo("TIMEOUT");
+    assertThat(timeoutNotificationDispatcher.dispatchPending(10)).isEqualTo(1);
+    verify(timeoutNotificationClient).sendTimeout(waiting.ticketId(), 42L, waiting.ticketNo());
+    assertThat(timeoutNotificationDispatcher.dispatchPending(10)).isZero();
   }
 }

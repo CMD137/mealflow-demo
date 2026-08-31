@@ -86,7 +86,7 @@ public class QueueService {
     LocalDateTime now = LocalDateTime.now();
     for (QueueTicketRow row : queueMapper.findExpiredTickets(now)) {
       QueueTicket ticket = mapTicket(row);
-      if (queueMapper.expireTicket(ticket.id, ticket.status.name(), QueueTicketStatus.TIMEOUT.name(), now) != 1) {
+      if (!timeoutTicket(ticket, now)) {
         continue;
       }
       if (ticket.status == QueueTicketStatus.WAITING) {
@@ -158,7 +158,7 @@ public class QueueService {
         continue;
       }
       if (ticket.expireTime.isBefore(LocalDateTime.now())) {
-        updateTicketStatus(ticket.id, QueueTicketStatus.TIMEOUT, null, null, null);
+        timeoutTicket(ticket, LocalDateTime.now());
         maybeWaiting = waitingQueueStore.poll(token.merchantId);
         continue;
       }
@@ -262,6 +262,13 @@ public class QueueService {
     return row == null ? null : ticketView(mapTicket(row));
   }
 
+  public List<QueueTicketView> ticketHistory(long userId, int limit) {
+    return queueMapper.findRecentTicketsByUser(userId, Math.max(1, Math.min(limit, 50))).stream()
+        .map(this::mapTicket)
+        .map(this::ticketView)
+        .toList();
+  }
+
   public synchronized QueueTicketView getTicket(long ticketId) {
     QueueTicket ticket = requireTicket(ticketId);
     return ticketView(ticket);
@@ -355,6 +362,14 @@ public class QueueService {
   private void updateTicketStatus(long ticketId, QueueTicketStatus status, Long orderId, LocalDateTime readyTime,
       LocalDateTime processingTime) {
     queueMapper.updateTicketStatus(ticketId, status.name(), orderId, readyTime, processingTime, LocalDateTime.now());
+  }
+
+  private boolean timeoutTicket(QueueTicket ticket, LocalDateTime now) {
+    if (queueMapper.expireTicket(ticket.id, ticket.status.name(), QueueTicketStatus.TIMEOUT.name(), now) != 1) {
+      return false;
+    }
+    queueMapper.enqueueTimeoutNotification(ticket.id, ticket.userId, now);
+    return true;
   }
 
   private QueueTicket requireTicket(long ticketId) {

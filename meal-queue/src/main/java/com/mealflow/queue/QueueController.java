@@ -71,6 +71,13 @@ public class QueueController {
     return Result.ok(queueService.activeTicket(RequestIdentity.requireUser(userId)));
   }
 
+  @GetMapping("/tickets/history")
+  public Result<List<QueueTicketView>> ticketHistory(
+      @RequestHeader(value = "X-User-Id", required = false) Long userId,
+      @org.springframework.web.bind.annotation.RequestParam(defaultValue = "10") int limit) {
+    return Result.ok(queueService.ticketHistory(RequestIdentity.requireUser(userId), limit));
+  }
+
   @PostMapping("/tickets/{ticketId}/cancel")
   public Result<Void> cancel(@PathVariable long ticketId,
       @RequestHeader(value = "X-User-Id", required = false) Long userId) {

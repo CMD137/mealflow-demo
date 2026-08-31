@@ -85,6 +85,17 @@ public interface QueueMapper {
       SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
              estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
       FROM queue_ticket
+      WHERE user_id = #{userId}
+      ORDER BY create_time DESC, id DESC
+      LIMIT #{limit}
+      """)
+  @ResultMap("ticketMap")
+  List<QueueTicketRow> findRecentTicketsByUser(@Param("userId") long userId, @Param("limit") int limit);
+
+  @Select("""
+      SELECT id, ticket_no, request_id, user_id, merchant_id, status, score, ahead_count_snapshot,
+             estimated_wait_seconds, expire_time, snapshot_json, order_id, ready_time, processing_time
+      FROM queue_ticket
       WHERE user_id = #{userId} AND request_id = #{requestId}
         AND status IN ('WAITING', 'READY', 'PROCESSING') AND expire_time > #{now}
       ORDER BY id DESC LIMIT 1
@@ -130,6 +141,57 @@ public interface QueueMapper {
   @Update("UPDATE queue_ticket SET status = #{targetStatus}, update_time = #{now} WHERE id = #{id} AND status = #{expectedStatus}")
   int expireTicket(@Param("id") long id, @Param("expectedStatus") String expectedStatus,
       @Param("targetStatus") String targetStatus, @Param("now") LocalDateTime now);
+
+  @Insert("""
+      INSERT INTO queue_timeout_notification (ticket_id, user_id, status, retry_count, create_time, update_time)
+      VALUES (#{ticketId}, #{userId}, 'NEW', 0, #{now}, #{now})
+      """)
+  int enqueueTimeoutNotification(@Param("ticketId") long ticketId, @Param("userId") long userId,
+      @Param("now") LocalDateTime now);
+
+  @Select("""
+      SELECT notification.ticket_id, notification.user_id, ticket.ticket_no
+      FROM queue_timeout_notification notification
+      JOIN queue_ticket ticket ON ticket.id = notification.ticket_id
+      WHERE notification.status IN ('NEW', 'FAILED')
+      ORDER BY notification.ticket_id
+      LIMIT #{limit}
+      """)
+  @Results(id = "timeoutNotificationMap", value = {
+      @Result(column = "ticket_id", property = "ticketId"),
+      @Result(column = "user_id", property = "userId"),
+      @Result(column = "ticket_no", property = "ticketNo")
+  })
+  List<QueueTimeoutNotificationRow> findDispatchableTimeoutNotifications(@Param("limit") int limit);
+
+  @Update("""
+      UPDATE queue_timeout_notification
+      SET status = 'SENDING', retry_count = retry_count + 1, update_time = #{now}
+      WHERE ticket_id = #{ticketId} AND status IN ('NEW', 'FAILED')
+      """)
+  int markTimeoutNotificationSending(@Param("ticketId") long ticketId, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE queue_timeout_notification
+      SET status = 'SENT', last_error = NULL, update_time = #{now}
+      WHERE ticket_id = #{ticketId} AND status = 'SENDING'
+      """)
+  int markTimeoutNotificationSent(@Param("ticketId") long ticketId, @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE queue_timeout_notification
+      SET status = 'FAILED', last_error = #{lastError}, update_time = #{now}
+      WHERE ticket_id = #{ticketId} AND status = 'SENDING'
+      """)
+  int markTimeoutNotificationFailed(@Param("ticketId") long ticketId, @Param("lastError") String lastError,
+      @Param("now") LocalDateTime now);
+
+  @Update("""
+      UPDATE queue_timeout_notification
+      SET status = 'FAILED', last_error = 'SENDING_TIMEOUT', update_time = #{now}
+      WHERE status = 'SENDING' AND update_time < #{before}
+      """)
+  int recoverStaleTimeoutNotifications(@Param("before") LocalDateTime before, @Param("now") LocalDateTime now);
 
   @Insert("""
       INSERT INTO capacity_token (

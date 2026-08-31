@@ -36,6 +36,11 @@ mealflow:
       enabled: ${QUEUE_INFLIGHT_RECONCILE_ENABLED:false}
       initial-delay-ms: ${QUEUE_INFLIGHT_RECONCILE_INITIAL_DELAY_MS:30000}
       fixed-delay-ms: ${QUEUE_INFLIGHT_RECONCILE_FIXED_DELAY_MS:30000}
+    timeout-notify:
+      initial-delay-ms: ${QUEUE_TIMEOUT_NOTIFY_INITIAL_DELAY_MS:5000}
+      fixed-delay-ms: ${QUEUE_TIMEOUT_NOTIFY_FIXED_DELAY_MS:5000}
+  services:
+    notify: ${MEAL_NOTIFY_URI:http://meal-notify}
   internal:
     auth:
       enabled: ${INTERNAL_AUTH_ENABLED:true}
