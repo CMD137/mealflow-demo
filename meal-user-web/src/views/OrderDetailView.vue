@@ -35,8 +35,11 @@ async function pay() {
   if (!order.value?.payOrderId) return;
   try {
     const checkout = await checkoutApi(order.value.payOrderId);
-    if (!window.open(checkout.checkoutUrl, '_blank', 'noopener,noreferrer')) {
+    const paymentWindow = window.open(checkout.checkoutUrl, '_blank');
+    if (!paymentWindow) {
       loadError.value = '浏览器阻止了支付宝新标签页，请允许弹出窗口后重试。';
+    } else {
+      paymentWindow.opener = null;
     }
   } catch (error) {
     loadError.value = errorMessage(error, '无法发起支付，请稍后重试');
