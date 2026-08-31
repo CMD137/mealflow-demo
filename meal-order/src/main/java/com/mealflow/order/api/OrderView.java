@@ -14,6 +14,7 @@ public record OrderView(
     List<OrderItemSnapshot> items,
     String contactName,
     String contactPhone,
-    String deliveryAddress
+    String deliveryAddress,
+    String remark
 ) {
 }

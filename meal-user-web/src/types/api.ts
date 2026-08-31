@@ -141,6 +141,10 @@ export interface OrderView {
   payOrderId: number;
   amountCent: number;
   items: OrderItemSnapshot[];
+  contactName: string;
+  contactPhone: string;
+  deliveryAddress: string;
+  remark?: string | null;
 }
 
 export interface PaymentView {

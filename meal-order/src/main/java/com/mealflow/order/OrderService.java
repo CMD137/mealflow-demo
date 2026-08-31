@@ -334,13 +334,13 @@ public class OrderService {
     OrderRecord order = new OrderRecord(orderId, userId, merchantId, OrderStatus.PENDING_PAYMENT, ticketId,
         capacityTokenId, payment.payOrderId(), snapshot.reservationIds(), snapshot.voucherLockId(), items,
         snapshot.totalAmount(), snapshot.contactName(), snapshot.contactPhone(), snapshot.deliveryAddress(),
-        paymentExpireTime);
+        snapshot.remark(), paymentExpireTime);
     LocalDateTime now = LocalDateTime.now();
     try {
       orderMapper.insert(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
           order.capacityTokenId, order.payOrderId, toJson(order.reservationIds), order.voucherLockId,
           toJson(order.items), order.amountCent, order.contactName, order.contactPhone, order.deliveryAddress,
-          order.paymentExpireTime, now);
+          order.remark, order.paymentExpireTime, now);
       queueClient.bindOrder(capacityTokenId, new QueueClient.BindOrderRequest("bind-token-order:" + orderId, orderId));
     } catch (RuntimeException failure) {
       // The payment service is outside this transaction; close it before the local order insert rolls back.
@@ -421,13 +421,13 @@ public class OrderService {
         OrderStatus.valueOf(row.getStatus()), row.getQueueTicketId(), row.getCapacityTokenId(),
         row.getPayOrderId(), fromJson(row.getReservationIdsJson(), LONG_LIST), row.getVoucherLockId(),
         fromJson(row.getItemsJson(), ITEM_LIST), row.getAmountCent(), row.getContactName(), row.getContactPhone(),
-        row.getDeliveryAddress(), row.getPaymentExpireTime());
+        row.getDeliveryAddress(), row.getRemark(), row.getPaymentExpireTime());
   }
 
   private OrderView view(OrderRecord order) {
     return new OrderView(order.id, order.userId, order.merchantId, order.status.name(), order.queueTicketId,
         order.capacityTokenId, order.payOrderId, order.amountCent, order.items, order.contactName,
-        order.contactPhone, order.deliveryAddress);
+        order.contactPhone, order.deliveryAddress, order.remark);
   }
 
   private void appendOrderEvent(String eventType, OrderRecord order) {
@@ -498,12 +498,13 @@ public class OrderService {
     final String contactName;
     final String contactPhone;
     final String deliveryAddress;
+    final String remark;
     final LocalDateTime paymentExpireTime;
 
     OrderRecord(long id, long userId, long merchantId, OrderStatus status, Long queueTicketId,
         long capacityTokenId, long payOrderId, List<Long> reservationIds, Long voucherLockId,
         List<OrderItemSnapshot> items, int amountCent, String contactName, String contactPhone,
-        String deliveryAddress, LocalDateTime paymentExpireTime) {
+        String deliveryAddress, String remark, LocalDateTime paymentExpireTime) {
       this.id = id;
       this.userId = userId;
       this.merchantId = merchantId;
@@ -518,13 +519,14 @@ public class OrderService {
       this.contactName = contactName;
       this.contactPhone = contactPhone;
       this.deliveryAddress = deliveryAddress;
+      this.remark = remark;
       this.paymentExpireTime = paymentExpireTime;
     }
 
     OrderRecord withStatus(OrderStatus nextStatus) {
       return new OrderRecord(id, userId, merchantId, nextStatus, queueTicketId, capacityTokenId, payOrderId,
           reservationIds, voucherLockId, items, amountCent, contactName, contactPhone, deliveryAddress,
-          paymentExpireTime);
+          remark, paymentExpireTime);
     }
   }
 }

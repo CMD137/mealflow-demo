@@ -137,6 +137,9 @@ onMounted(load);
         <el-descriptions-item label="支付单">{{ selected.payOrderId || '-' }}</el-descriptions-item>
         <el-descriptions-item label="排队 ticket">{{ selected.queueTicketId || '-' }}</el-descriptions-item>
         <el-descriptions-item label="产能 token">{{ selected.capacityTokenId || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="配送联系人">{{ selected.contactName || '-' }} {{ selected.contactPhone || '' }}</el-descriptions-item>
+        <el-descriptions-item label="配送地址">{{ selected.deliveryAddress || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="用户备注">{{ selected.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
       <el-table v-if="selected?.items?.length" :data="selected.items" style="margin-top: 16px">
         <el-table-column prop="skuName" label="商品" min-width="180" />

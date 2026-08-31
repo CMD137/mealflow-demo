@@ -3,6 +3,7 @@ package com.mealflow.order.api;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record SubmitOrderRequest(
@@ -12,6 +13,6 @@ public record SubmitOrderRequest(
     List<Long> cartItemIds,
     @Valid List<OrderSkuItem> items,
     Long userVoucherId,
-    String remark
+    @Size(max = 255) String remark
 ) {
 }

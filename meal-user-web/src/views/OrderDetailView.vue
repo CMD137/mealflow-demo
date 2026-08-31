@@ -78,6 +78,16 @@ onMounted(load);
         </div>
       </div>
 
+      <div class="delivery">
+        <strong>配送信息</strong>
+        <span>{{ order.contactName }} {{ order.contactPhone }}</span>
+        <span>{{ order.deliveryAddress }}</span>
+      </div>
+      <div v-if="order.remark" class="delivery">
+        <strong>订单备注</strong>
+        <span>{{ order.remark }}</span>
+      </div>
+
       <div class="summary">
         <span>支付单 {{ order.payOrderId }}</span>
         <span v-if="order.queueTicketId">排队票 {{ order.queueTicketId }}</span>
@@ -141,6 +151,19 @@ onMounted(load);
   border-top: 1px solid #edf0f5;
   border-bottom: 1px solid #edf0f5;
   padding: 8px 0;
+}
+
+.delivery {
+  display: grid;
+  gap: 5px;
+  border-bottom: 1px solid #edf0f5;
+  padding: 12px 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.delivery strong {
+  color: #111827;
 }
 
 .line {

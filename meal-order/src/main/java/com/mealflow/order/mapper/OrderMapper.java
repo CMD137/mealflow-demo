@@ -16,7 +16,7 @@ public interface OrderMapper {
   String ORDER_COLUMNS = """
       id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
       reservation_ids_json, voucher_lock_id, items_json, amount_cent, contact_name, contact_phone,
-      delivery_address, payment_expire_time
+      delivery_address, remark, payment_expire_time
       """;
 
   @Select("SELECT COALESCE(MAX(id), 10000) FROM customer_order")
@@ -26,12 +26,12 @@ public interface OrderMapper {
       INSERT INTO customer_order (
         id, user_id, merchant_id, status, queue_ticket_id, capacity_token_id, pay_order_id,
         reservation_ids_json, voucher_lock_id, items_json, amount_cent, contact_name, contact_phone,
-        delivery_address, payment_expire_time, create_time, update_time
+        delivery_address, remark, payment_expire_time, create_time, update_time
       )
       VALUES (
         #{id}, #{userId}, #{merchantId}, #{status}, #{queueTicketId}, #{capacityTokenId}, #{payOrderId},
         #{reservationIdsJson}, #{voucherLockId}, #{itemsJson}, #{amountCent}, #{contactName}, #{contactPhone},
-        #{deliveryAddress}, #{paymentExpireTime}, #{now}, #{now}
+        #{deliveryAddress}, #{remark}, #{paymentExpireTime}, #{now}, #{now}
       )
       """)
   int insert(@Param("id") long id, @Param("userId") long userId, @Param("merchantId") long merchantId,
@@ -40,7 +40,8 @@ public interface OrderMapper {
       @Param("reservationIdsJson") String reservationIdsJson, @Param("voucherLockId") Long voucherLockId,
       @Param("itemsJson") String itemsJson, @Param("amountCent") int amountCent,
       @Param("contactName") String contactName, @Param("contactPhone") String contactPhone,
-      @Param("deliveryAddress") String deliveryAddress, @Param("paymentExpireTime") LocalDateTime paymentExpireTime,
+      @Param("deliveryAddress") String deliveryAddress, @Param("remark") String remark,
+      @Param("paymentExpireTime") LocalDateTime paymentExpireTime,
       @Param("now") LocalDateTime now);
 
   @Update("""
@@ -67,6 +68,7 @@ public interface OrderMapper {
       @Result(column = "contact_name", property = "contactName"),
       @Result(column = "contact_phone", property = "contactPhone"),
       @Result(column = "delivery_address", property = "deliveryAddress"),
+      @Result(column = "remark", property = "remark"),
       @Result(column = "payment_expire_time", property = "paymentExpireTime")
   })
   OrderRow findById(long id);

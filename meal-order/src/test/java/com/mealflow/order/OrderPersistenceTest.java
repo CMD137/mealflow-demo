@@ -109,6 +109,7 @@ class OrderPersistenceTest {
     assertThat(created.items()).hasSize(1);
     assertThat(created.contactName()).isEqualTo("Test User");
     assertThat(created.deliveryAddress()).isEqualTo("Test Road 1");
+    assertThat(created.remark()).isEqualTo("test");
     assertThat(orderService.events().stream().filter(event -> event.aggregateId() == response.orderId()).toList())
         .singleElement()
         .satisfies(event -> {

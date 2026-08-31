@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS customer_order (
   contact_name VARCHAR(64) NOT NULL,
   contact_phone VARCHAR(32) NOT NULL,
   delivery_address VARCHAR(255) NOT NULL,
+  remark VARCHAR(255) NULL,
   payment_expire_time TIMESTAMP NOT NULL,
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,

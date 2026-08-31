@@ -17,6 +17,7 @@
 | `20260826-queue-capacity-inflight.sql` | 只有 `merchant_id/limit_value/create_time/update_time` 的旧 `merchant_queue_limit` | 补 `inflight_count` 列并按 HELD token 回填派生计数 |
 | `20260901-order-admin-index.sql` | 订单/Outbox 查询性能优化前的旧库 | `customer_order` 加 `(merchant_id,status,create_time)` 复合索引;`order_local_event` 加 `(status,id)` 复合索引 |
 | `20260827-order-expiry-and-address.sql` | 未保存订单地址快照、支付/券锁无到期字段的旧库 | 补地址快照、订单支付到期和券锁到期字段 |
+| `20260831-order-remark.sql` | 已保存地址快照但未保存用户备注的订单库 | 补订单备注字段；历史订单备注保持为空 |
 | `20260827-auth-single-merchant.sql` | 允许同一员工账号关联多个商户的旧库 | 人工确认无冲突后，增加 `user_id` 全局唯一约束并移除内部运维权限 |
 | `20260829-notify-recipient.sql` | 只有 `user_id` 的旧通知表 | 增加统一收件人类型/ID，回填用户通知并增加商户通知查询索引 |
 | `20260830-promotion-claim-backfill.sql` | 已有秒杀钱包券但缺少 claim 的旧库 | 幂等回填 `CLAIMED` 领取事实，补齐用户/券事件键与钱包券关联 |

@@ -92,6 +92,10 @@ export interface OrderView {
   queueTicketId?: number | null;
   capacityTokenId: number;
   items: OrderItemSnapshot[];
+  contactName: string;
+  contactPhone: string;
+  deliveryAddress: string;
+  remark?: string | null;
 }
 
 export interface OrderItemSnapshot {

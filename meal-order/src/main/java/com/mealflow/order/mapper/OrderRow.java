@@ -17,6 +17,7 @@ public class OrderRow {
   private String contactName;
   private String contactPhone;
   private String deliveryAddress;
+  private String remark;
   private LocalDateTime paymentExpireTime;
 
   public long getId() {
@@ -113,6 +114,8 @@ public class OrderRow {
   public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
   public String getDeliveryAddress() { return deliveryAddress; }
   public void setDeliveryAddress(String deliveryAddress) { this.deliveryAddress = deliveryAddress; }
+  public String getRemark() { return remark; }
+  public void setRemark(String remark) { this.remark = remark; }
   public LocalDateTime getPaymentExpireTime() { return paymentExpireTime; }
   public void setPaymentExpireTime(LocalDateTime paymentExpireTime) { this.paymentExpireTime = paymentExpireTime; }
 }
