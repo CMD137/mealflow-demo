@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import AppShell from '@/components/AppShell.vue';
+import { errorMessage } from '@/api/http';
 import { checkoutApi } from '@/api/payments';
 import { formatWait } from '@/utils/format';
 import type { SubmitOrderResponse } from '@/types/api';
@@ -9,11 +10,21 @@ const result = computed<SubmitOrderResponse | null>(() => {
   const raw = sessionStorage.getItem('mealflow.lastOrderResult');
   return raw ? JSON.parse(raw) as SubmitOrderResponse : null;
 });
+const payError = ref('');
+const paying = ref(false);
 
 async function pay() {
   if (!result.value?.payOrderId) return;
-  const checkout = await checkoutApi(result.value.payOrderId);
-  window.location.assign(checkout.checkoutUrl);
+  paying.value = true;
+  payError.value = '';
+  try {
+    const checkout = await checkoutApi(result.value.payOrderId);
+    window.location.assign(checkout.checkoutUrl);
+  } catch (error) {
+    payError.value = errorMessage(error, '无法发起支付，请稍后重试');
+  } finally {
+    paying.value = false;
+  }
 }
 </script>
 
@@ -28,7 +39,10 @@ async function pay() {
       <p v-else>
         排队号 {{ result.ticketNo }}，前方 {{ result.aheadCount }} 单，预计等待 {{ formatWait(result.estimatedWaitSeconds) }}。
       </p>
-      <button v-if="result.payOrderId" class="primary-button" @click="pay">前往支付宝支付</button>
+      <p v-if="payError" class="inline-error">{{ payError }}</p>
+      <button v-if="result.payOrderId" class="primary-button" :disabled="paying" @click="pay">
+        {{ paying ? '正在跳转支付宝…' : '前往支付宝支付' }}
+      </button>
       <RouterLink v-if="result.orderId" class="ghost-button" :to="`/orders/${result.orderId}`">查看订单</RouterLink>
       <RouterLink class="ghost-button" to="/orders">订单列表</RouterLink>
     </section>
