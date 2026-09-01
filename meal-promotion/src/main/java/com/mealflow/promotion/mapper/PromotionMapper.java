@@ -15,34 +15,62 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface PromotionMapper {
   @Select("""
-      SELECT id, name, type, discount_cent, stock, status, start_time, end_time
+      SELECT id, name, type, discount_cent, stock, status, scope, merchant_id, start_time, end_time
       FROM voucher WHERE id = #{id}
       """)
   @Results(id = "voucherMap", value = {
       @Result(column = "id", property = "id"), @Result(column = "name", property = "name"),
       @Result(column = "type", property = "type"), @Result(column = "discount_cent", property = "discountCent"),
       @Result(column = "stock", property = "stock"), @Result(column = "status", property = "status"),
+      @Result(column = "scope", property = "scope"), @Result(column = "merchant_id", property = "merchantId"),
       @Result(column = "start_time", property = "startTime"), @Result(column = "end_time", property = "endTime")
   })
   VoucherRow findVoucher(long id);
 
-  @Select("SELECT id, name, type, discount_cent, stock, status, start_time, end_time FROM voucher ORDER BY id")
+  @Select("SELECT id, name, type, discount_cent, stock, status, scope, merchant_id, start_time, end_time FROM voucher ORDER BY id")
   @ResultMap("voucherMap")
   List<VoucherRow> findVouchers();
 
-  @Select("SELECT id, name, type, discount_cent, stock, status, start_time, end_time FROM voucher ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+  @Select("""
+      SELECT id, name, type, discount_cent, stock, status, scope, merchant_id, start_time, end_time
+      FROM voucher
+      WHERE scope = #{scope} AND ((#{merchantId} IS NULL AND merchant_id IS NULL) OR merchant_id = #{merchantId})
+      ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}
+      """)
   @ResultMap("voucherMap")
-  List<VoucherRow> findVouchersPage(@Param("limit") int limit, @Param("offset") int offset);
+  List<VoucherRow> findVouchersPage(@Param("scope") String scope, @Param("merchantId") Long merchantId,
+      @Param("limit") int limit, @Param("offset") int offset);
 
-  @Select("SELECT COUNT(*) FROM voucher")
-  long countVouchers();
+  @Select("""
+      SELECT COUNT(*) FROM voucher
+      WHERE scope = #{scope} AND ((#{merchantId} IS NULL AND merchant_id IS NULL) OR merchant_id = #{merchantId})
+      """)
+  long countVouchers(@Param("scope") String scope, @Param("merchantId") Long merchantId);
+
+  @Select("""
+      SELECT id, name, type, discount_cent, stock, status, scope, merchant_id, start_time, end_time
+      FROM voucher
+      WHERE status = 'ACTIVE' AND scope = 'PLATFORM'
+      ORDER BY id
+      """)
+  @ResultMap("voucherMap")
+  List<VoucherRow> findActivePlatformVouchers();
+
+  @Select("""
+      SELECT id, name, type, discount_cent, stock, status, scope, merchant_id, start_time, end_time
+      FROM voucher
+      WHERE status = 'ACTIVE' AND (scope = 'PLATFORM' OR (scope = 'MERCHANT' AND merchant_id = #{merchantId}))
+      ORDER BY id
+      """)
+  @ResultMap("voucherMap")
+  List<VoucherRow> findActiveVouchersForMerchant(long merchantId);
 
   @Select("SELECT id FROM voucher ORDER BY id")
   List<Long> findVoucherIds();
 
   @Insert("""
-      INSERT INTO voucher (name, type, discount_cent, stock, status, start_time, end_time, create_time, update_time)
-      VALUES (#{name}, #{type}, #{discountCent}, #{stock}, #{status}, #{startTime}, #{endTime},
+      INSERT INTO voucher (name, type, discount_cent, stock, status, scope, merchant_id, start_time, end_time, create_time, update_time)
+      VALUES (#{name}, #{type}, #{discountCent}, #{stock}, #{status}, #{scope}, #{merchantId}, #{startTime}, #{endTime},
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       """)
   @Options(useGeneratedKeys = true, keyProperty = "id")
@@ -223,10 +251,19 @@ public interface PromotionMapper {
   @ResultMap("lockMap")
   List<VoucherLockRow> findLocks();
 
-  @Select("SELECT id, voucher_id, status FROM user_voucher WHERE user_id = #{userId} ORDER BY id")
-  @Results(id = "walletMap", value = {
+  @Select("""
+      SELECT uv.id, uv.voucher_id, uv.status, v.name AS voucher_name, v.discount_cent, v.scope, v.merchant_id
+      FROM user_voucher uv
+      JOIN voucher v ON v.id = uv.voucher_id
+      WHERE uv.user_id = #{userId}
+        AND (#{merchantId} IS NULL OR v.scope = 'PLATFORM' OR v.merchant_id = #{merchantId})
+      ORDER BY uv.id
+      """)
+  @Results(id = "walletVoucherMap", value = {
       @Result(column = "id", property = "id"), @Result(column = "voucher_id", property = "voucherId"),
-      @Result(column = "status", property = "status")
+      @Result(column = "status", property = "status"), @Result(column = "voucher_name", property = "voucherName"),
+      @Result(column = "discount_cent", property = "discountCent"), @Result(column = "scope", property = "scope"),
+      @Result(column = "merchant_id", property = "merchantId")
   })
-  List<UserVoucherRow> findWallet(long userId);
+  List<WalletVoucherRow> findWallet(@Param("userId") long userId, @Param("merchantId") Long merchantId);
 }

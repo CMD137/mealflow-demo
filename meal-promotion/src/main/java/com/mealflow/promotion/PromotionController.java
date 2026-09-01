@@ -4,6 +4,7 @@ import com.mealflow.common.api.PageResult;
 import com.mealflow.common.api.Result;
 import com.mealflow.common.security.RequestIdentity;
 import com.mealflow.promotion.api.LockVoucherRequest;
+import com.mealflow.promotion.api.ValidateVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
 import com.mealflow.promotion.api.UserVoucherView;
@@ -48,35 +49,44 @@ public class PromotionController {
   @PostMapping("/{voucherId}/seckill")
   public Result<SeckillVoucherResponse> seckill(@PathVariable long voucherId,
       @RequestHeader(value = "X-User-Id", required = false) Long userId,
+      @RequestParam(required = false) Long merchantId,
       @Valid @RequestBody SeckillVoucherRequest request) {
-    return Result.ok(promotionService.seckill(RequestIdentity.requireUser(userId), voucherId, request.requestId()));
+    return Result.ok(promotionService.seckill(RequestIdentity.requireUser(userId), voucherId, merchantId,
+        request.requestId()));
   }
 
   @GetMapping("/wallet")
-  public Result<List<UserVoucherView>> wallet(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-    return Result.ok(promotionService.wallet(RequestIdentity.requireUser(userId)));
+  public Result<List<UserVoucherView>> wallet(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+      @RequestParam(required = false) Long merchantId) {
+    return Result.ok(promotionService.wallet(RequestIdentity.requireUser(userId), merchantId));
   }
 
   @GetMapping
-  public Result<List<VoucherView>> availableVouchers() {
-    return Result.ok(promotionService.activeVouchers());
+  public Result<List<VoucherView>> availableVouchers(@RequestParam(required = false) Long merchantId) {
+    return Result.ok(promotionService.activeVouchers(merchantId));
   }
 
   @GetMapping("/admin")
   public Result<PageResult<VoucherView>> vouchers(@RequestParam(defaultValue = "1") int page,
-      @RequestParam(defaultValue = "20") int pageSize) {
-    return Result.ok(promotionService.vouchers(page, pageSize));
+      @RequestParam(defaultValue = "20") int pageSize,
+      @RequestHeader(value = "X-Role", required = false) String roleCode,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    return Result.ok(promotionService.vouchers(page, pageSize, roleCode, merchantId));
   }
 
   @PostMapping("/admin")
-  public Result<VoucherView> createVoucher(@Valid @RequestBody VoucherAdminRequest request) {
-    return Result.ok(promotionService.createVoucher(request));
+  public Result<VoucherView> createVoucher(@Valid @RequestBody VoucherAdminRequest request,
+      @RequestHeader(value = "X-Role", required = false) String roleCode,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    return Result.ok(promotionService.createVoucher(request, roleCode, merchantId));
   }
 
   @PutMapping("/admin/{voucherId}")
   public Result<VoucherView> updateVoucher(@PathVariable long voucherId,
-      @Valid @RequestBody VoucherAdminRequest request) {
-    return Result.ok(promotionService.updateVoucher(voucherId, request));
+      @Valid @RequestBody VoucherAdminRequest request,
+      @RequestHeader(value = "X-Role", required = false) String roleCode,
+      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+    return Result.ok(promotionService.updateVoucher(voucherId, request, roleCode, merchantId));
   }
 
   @PostMapping("/internal/lock")
@@ -93,6 +103,12 @@ public class PromotionController {
   @PostMapping("/internal/release")
   public Result<Void> release(@Valid @RequestBody VoucherTransitionRequest request) {
     promotionService.release(request.voucherLockId());
+    return Result.ok();
+  }
+
+  @PostMapping("/internal/validate")
+  public Result<Void> validateForOrder(@Valid @RequestBody ValidateVoucherRequest request) {
+    promotionService.validateForOrder(request);
     return Result.ok();
   }
 

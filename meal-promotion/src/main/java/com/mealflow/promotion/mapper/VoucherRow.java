@@ -9,6 +9,8 @@ public class VoucherRow {
   private int discountCent;
   private int stock;
   private String status;
+  private String scope;
+  private Long merchantId;
   private LocalDateTime startTime;
   private LocalDateTime endTime;
 
@@ -58,6 +60,22 @@ public class VoucherRow {
 
   public void setStatus(String status) {
     this.status = status;
+  }
+
+  public String getScope() {
+    return scope;
+  }
+
+  public void setScope(String scope) {
+    this.scope = scope;
+  }
+
+  public Long getMerchantId() {
+    return merchantId;
+  }
+
+  public void setMerchantId(Long merchantId) {
+    this.merchantId = merchantId;
   }
 
   public LocalDateTime getStartTime() {

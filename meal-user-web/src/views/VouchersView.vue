@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import AppShell from '@/components/AppShell.vue';
 import { claimStatusApi, claimVoucherApi, vouchersApi, walletApi } from '@/api/promotion';
 import { formatMoney } from '@/utils/format';
@@ -11,6 +12,11 @@ const claimingId = ref<number | null>(null);
 const vouchers = ref<VoucherView[]>([]);
 const wallet = ref<UserVoucherView[]>([]);
 const message = ref('');
+const route = useRoute();
+const merchantId = computed(() => {
+  const value = Number(route.query.merchantId);
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+});
 
 const availableWallet = computed(() => wallet.value.filter((item) => item.status === 'AVAILABLE'));
 const claimableCount = computed(() => vouchers.value.filter((voucher) => canClaim(voucher)).length);
@@ -18,7 +24,7 @@ const claimableCount = computed(() => vouchers.value.filter((voucher) => canClai
 async function load() {
   loading.value = true;
   try {
-    const [voucherData, walletData] = await Promise.all([vouchersApi(), walletApi()]);
+    const [voucherData, walletData] = await Promise.all([vouchersApi(merchantId.value), walletApi()]);
     vouchers.value = voucherData;
     wallet.value = walletData;
   } catch (error) {
@@ -32,7 +38,7 @@ async function claim(voucher: VoucherView) {
   claimingId.value = voucher.voucherId;
   message.value = '';
   try {
-    const result = await claimVoucherApi(voucher.voucherId);
+    const result = await claimVoucherApi(voucher.voucherId, merchantId.value);
     if (result.status === 'PENDING') {
       message.value = '领取处理中…';
       const finalStatus = await pollClaim(voucher.voucherId);
@@ -77,10 +83,6 @@ async function pollClaim(voucherId: number) {
 
 function ownedCount(voucherId: number) {
   return wallet.value.filter((item) => item.voucherId === voucherId).length;
-}
-
-function voucherMeta(voucherId: number) {
-  return vouchers.value.find((voucher) => voucher.voucherId === voucherId);
 }
 
 function hasClaimed(voucherId: number) {
@@ -154,7 +156,7 @@ onMounted(load);
       <div class="voucher-main">
         <div>
           <h2>{{ voucher.name }}</h2>
-          <p>秒杀券 · 库存 {{ voucher.stock }} · 已有 {{ ownedCount(voucher.voucherId) }} 张</p>
+          <p>{{ voucher.scope === 'PLATFORM' ? '平台券' : '商家券' }} · 库存 {{ voucher.stock }} · 已有 {{ ownedCount(voucher.voucherId) }} 张</p>
           <p>领取时间：{{ claimPeriod(voucher) }}</p>
         </div>
         <strong>{{ formatMoney(voucher.discountCent) }}</strong>
@@ -177,10 +179,10 @@ onMounted(load);
 
     <section v-for="item in wallet" :key="item.userVoucherId" class="wallet-card card">
       <div>
-        <strong>{{ voucherMeta(item.voucherId)?.name || `优惠券 ${item.voucherId}` }}</strong>
-        <p>券号 {{ item.userVoucherId }} · {{ item.status }}</p>
+        <strong>{{ item.voucherName }}</strong>
+        <p>券号 {{ item.userVoucherId }} · {{ item.scope === 'PLATFORM' ? '平台券' : `商家 ${item.merchantId} 专享` }} · {{ item.status }}</p>
       </div>
-      <span>{{ formatMoney(voucherMeta(item.voucherId)?.discountCent || 0) }}</span>
+      <span>{{ formatMoney(item.discountCent) }}</span>
     </section>
   </AppShell>
 </template>

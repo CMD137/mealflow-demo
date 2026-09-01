@@ -168,6 +168,8 @@ export interface VoucherView {
   discountCent: number;
   stock: number;
   status: string;
+  scope: 'PLATFORM' | 'MERCHANT';
+  merchantId?: number | null;
 }
 
 export interface PaymentView {

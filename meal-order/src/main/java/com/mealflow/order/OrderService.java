@@ -98,12 +98,15 @@ public class OrderService {
     MerchantClient.MerchantView merchant = merchantClient.requireAcceptingOrders(request.merchantId());
     int effectiveCapacity = Math.max(1, (int) Math.round(merchant.baseCapacity() * merchant.manualFactor()));
     AuthUserClient.AddressView address = authUserClient.address(userId, request.addressId());
+    promotionClient.validateForOrder(new PromotionClient.ValidateVoucherRequest(
+        "voucher-validate:" + request.requestId(), userId, request.userVoucherId(), request.merchantId()));
     List<OrderItemSnapshot> snapshots = catalogClient.snapshots(request.merchantId(), items);
     int originAmount = snapshots.stream().mapToInt(OrderItemSnapshot::subtotalCent).sum();
     CatalogClient.ReserveStockResponse reservation = catalogClient.reserve(new CatalogClient.ReserveStockRequest(
         "stock-reserve:" + request.requestId(), userId, request.merchantId(), null, null, items, expireTime));
     PromotionClient.VoucherLockResponse voucherLock = promotionClient.lock(new PromotionClient.LockVoucherRequest(
-        "voucher-lock:" + request.requestId(), userId, request.userVoucherId(), null, null, expireTime));
+        "voucher-lock:" + request.requestId(), userId, request.userVoucherId(), request.merchantId(), null, null,
+        expireTime));
     int finalAmount = Math.max(0, originAmount - voucherLock.discountAmount());
     QueueClient.QueueTicketSnapshot snapshot = new QueueClient.QueueTicketSnapshot(
         snapshots.stream().map(item -> Map.<String, Object>of(

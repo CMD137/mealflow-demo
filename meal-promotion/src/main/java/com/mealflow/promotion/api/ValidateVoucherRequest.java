@@ -1,15 +1,12 @@
 package com.mealflow.promotion.api;
 
 import jakarta.validation.constraints.NotBlank;
-import java.time.LocalDateTime;
+import jakarta.validation.constraints.NotNull;
 
-public record LockVoucherRequest(
+public record ValidateVoucherRequest(
     @NotBlank String requestId,
     long userId,
     Long userVoucherId,
-    Long merchantId,
-    Long ticketId,
-    Long orderId,
-    LocalDateTime lockExpireTime
+    @NotNull Long merchantId
 ) {
 }

@@ -148,6 +148,9 @@ public interface AuthUserMapper {
   })
   MerchantEmployeeRow findActiveEmployeeByUserId(long userId);
 
+  @Select("SELECT user_id FROM platform_admin WHERE user_id = #{userId} AND status = 'ACTIVE'")
+  Long findActivePlatformAdminId(long userId);
+
   @Select("""
       SELECT id, merchant_id, user_id, role_code, status
       FROM merchant_employee

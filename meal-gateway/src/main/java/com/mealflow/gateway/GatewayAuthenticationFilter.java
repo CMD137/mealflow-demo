@@ -78,8 +78,7 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
           if (result == null || !result.success() || result.data() == null) {
             return writeError(exchange, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "invalid token");
           }
-          String requiredPermission = requiredPermission(request);
-          if (requiredPermission != null && !result.data().permissions().contains(requiredPermission)) {
+          if (!hasRequiredPermission(request, result.data().permissions())) {
             return writeError(exchange, HttpStatus.FORBIDDEN, "FORBIDDEN", "permission denied");
           }
           return chain.filter(withPrincipal(exchange, result.data()));
@@ -197,9 +196,6 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     if (path.startsWith("/catalog/admin/")) {
       return "CATALOG_MANAGE";
     }
-    if (path.startsWith("/vouchers/admin/") || path.equals("/vouchers/admin")) {
-      return "MERCHANT_MANAGE";
-    }
     if (path.startsWith("/merchant/") || path.startsWith("/merchants/")) {
       return "MERCHANT_MANAGE";
     }
@@ -225,6 +221,15 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
       return "USER_READ";
     }
     return null;
+  }
+
+  private boolean hasRequiredPermission(ServerHttpRequest request, List<String> permissions) {
+    String path = request.getURI().getPath();
+    if (path.startsWith("/vouchers/admin/") || path.equals("/vouchers/admin")) {
+      return permissions.contains("MERCHANT_MANAGE") || permissions.contains("PLATFORM_VOUCHER_MANAGE");
+    }
+    String requiredPermission = requiredPermission(request);
+    return requiredPermission == null || permissions.contains(requiredPermission);
   }
 
   private Mono<Void> writeError(ServerWebExchange exchange, HttpStatus status, String code, String message) {

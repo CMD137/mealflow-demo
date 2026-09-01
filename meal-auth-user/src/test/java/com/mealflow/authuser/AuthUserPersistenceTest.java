@@ -128,6 +128,18 @@ class AuthUserPersistenceTest {
   }
 
   @Test
+  void logsInPlatformAdministratorWithoutMerchantOwnership() {
+    authUserService.requestLoginCode("13800000006");
+
+    LoginResponse platformAdmin = authUserService.login(new LoginRequest("13800000006", "123456"));
+
+    assertThat(platformAdmin.roleCode()).isEqualTo("PLATFORM_ADMIN");
+    assertThat(platformAdmin.merchantId()).isNull();
+    assertThat(platformAdmin.permissions()).contains("PLATFORM_VOUCHER_MANAGE").doesNotContain("MERCHANT_MANAGE");
+    assertThat(authUserService.validateToken(platformAdmin.token()).merchantId()).isNull();
+  }
+
+  @Test
   void keepsSignInStateIsolatedByUser() {
     SignInView userA = authUserService.signIn(101L);
     SignInView userB = authUserService.signInfo(102L);

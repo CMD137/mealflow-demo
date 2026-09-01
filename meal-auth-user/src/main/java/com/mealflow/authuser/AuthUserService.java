@@ -47,6 +47,7 @@ import org.slf4j.LoggerFactory;
 public class AuthUserService {
   private static final Logger log = LoggerFactory.getLogger(AuthUserService.class);
   private static final String CUSTOMER_ROLE = "CUSTOMER";
+  private static final String PLATFORM_ADMIN_ROLE = "PLATFORM_ADMIN";
   private static final String SIGN_IN_BIZ_TYPE = "SIGN_IN";
   private static final Duration TOKEN_TTL = Duration.ofDays(7);
   private static final String SIGN_KEY_PREFIX = "sign:user:";
@@ -102,7 +103,12 @@ public class AuthUserService {
     }
     String roleCode = row.getRoleCode();
     Long merchantId = row.getMerchantId();
-    if (merchantId != null) {
+    if (PLATFORM_ADMIN_ROLE.equals(roleCode)) {
+      if (authUserMapper.findActivePlatformAdminId(row.getUserId()) == null) {
+        return null;
+      }
+      merchantId = null;
+    } else if (merchantId != null) {
       MerchantEmployeeRow employee = authUserMapper.findActiveEmployeeByUserId(row.getUserId());
       if (employee == null || employee.getMerchantId() != merchantId) {
         return null;
@@ -354,6 +360,9 @@ public class AuthUserService {
   }
 
   private TokenPrincipalView principalFor(UserAccountRow user) {
+    if (authUserMapper.findActivePlatformAdminId(user.getId()) != null) {
+      return principalView(user.getId(), user.getPhone(), user.getNickname(), PLATFORM_ADMIN_ROLE, null);
+    }
     MerchantEmployeeRow employee = authUserMapper.findActiveEmployeeByUserId(user.getId());
     String roleCode = employee == null ? CUSTOMER_ROLE : employee.getRoleCode();
     Long merchantId = employee == null ? null : employee.getMerchantId();

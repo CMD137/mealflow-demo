@@ -5,6 +5,7 @@ import com.mealflow.common.api.PageResult;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.common.status.VoucherLockStatus;
 import com.mealflow.promotion.api.LockVoucherRequest;
+import com.mealflow.promotion.api.ValidateVoucherRequest;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
 import com.mealflow.promotion.api.UserVoucherView;
 import com.mealflow.promotion.api.VoucherAdminRequest;
@@ -15,6 +16,7 @@ import com.mealflow.promotion.api.VoucherLockView;
 import com.mealflow.promotion.api.VoucherView;
 import com.mealflow.promotion.mapper.PromotionMapper;
 import com.mealflow.promotion.mapper.UserVoucherRow;
+import com.mealflow.promotion.mapper.WalletVoucherRow;
 import com.mealflow.promotion.mapper.VoucherClaimRetryRow;
 import com.mealflow.promotion.mapper.VoucherClaimRow;
 import com.mealflow.promotion.mapper.VoucherLockRow;
@@ -33,6 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PromotionService {
+  private static final String PLATFORM_SCOPE = "PLATFORM";
+  private static final String MERCHANT_SCOPE = "MERCHANT";
+  private static final String PLATFORM_ADMIN_ROLE = "PLATFORM_ADMIN";
   private final PromotionMapper promotionMapper;
   private final VoucherSeckillGuard seckillGuard;
   private final SeckillClaimPublisher claimPublisher;
@@ -48,7 +53,14 @@ public class PromotionService {
   }
 
   public SeckillVoucherResponse seckill(long userId, long voucherId, String requestId) {
+    return seckill(userId, voucherId, null, requestId);
+  }
+
+  public SeckillVoucherResponse seckill(long userId, long voucherId, Long merchantId, String requestId) {
     VoucherRow voucher = requireVoucher(voucherId);
+    if (MERCHANT_SCOPE.equals(voucher.getScope())) {
+      requireApplicableToMerchant(voucher, merchantId);
+    }
     String eventKey = SeckillClaimCommand.eventKey(voucherId, userId);
     if (!"ACTIVE".equals(voucher.getStatus())) {
       return new SeckillVoucherResponse(eventKey, "FAILED", null, null);
@@ -163,6 +175,7 @@ public class PromotionService {
       throw new BizException(ErrorCode.VOUCHER_UNAVAILABLE);
     }
     VoucherRow voucher = requireVoucher(userVoucher.getVoucherId());
+    requireApplicableToMerchant(voucher, request.merchantId());
     if (UserVoucherStatus.LOCKED.name().equals(userVoucher.getStatus())) {
       VoucherLockRow existing = promotionMapper.findActiveLockByUserVoucherId(request.userVoucherId());
       if (existing != null) {
@@ -228,8 +241,13 @@ public class PromotionService {
   }
 
   public List<UserVoucherView> wallet(long userId) {
-    return promotionMapper.findWallet(userId).stream()
-        .map(voucher -> new UserVoucherView(voucher.getId(), voucher.getVoucherId(), voucher.getStatus())).toList();
+    return wallet(userId, null);
+  }
+
+  public List<UserVoucherView> wallet(long userId, Long merchantId) {
+    return promotionMapper.findWallet(userId, merchantId).stream()
+        .map(this::userVoucherView)
+        .toList();
   }
 
   public List<VoucherView> vouchers() {
@@ -237,10 +255,25 @@ public class PromotionService {
   }
 
   public PageResult<VoucherView> vouchers(int page, int pageSize) {
+    return vouchersPage(page, pageSize, PLATFORM_SCOPE, null);
+  }
+
+  public PageResult<VoucherView> vouchers(int page, int pageSize, String roleCode, Long merchantId) {
+    if (PLATFORM_ADMIN_ROLE.equals(roleCode)) {
+      return vouchersPage(page, pageSize, PLATFORM_SCOPE, null);
+    }
+    if (merchantId == null) {
+      throw new BizException(ErrorCode.FORBIDDEN, "merchant identity is required");
+    }
+    return vouchersPage(page, pageSize, MERCHANT_SCOPE, merchantId);
+  }
+
+  private PageResult<VoucherView> vouchersPage(int page, int pageSize, String scope, Long merchantId) {
     int normalizedPageSize = Math.min(Math.max(pageSize, 1), 100);
     int normalizedPage = Math.max(page, 1);
-    long total = promotionMapper.countVouchers();
-    List<VoucherView> items = promotionMapper.findVouchersPage(normalizedPageSize, (normalizedPage - 1) * normalizedPageSize)
+    long total = promotionMapper.countVouchers(scope, merchantId);
+    List<VoucherView> items = promotionMapper.findVouchersPage(scope, merchantId, normalizedPageSize,
+            (normalizedPage - 1) * normalizedPageSize)
         .stream()
         .map(this::voucherView)
         .toList();
@@ -248,13 +281,25 @@ public class PromotionService {
   }
 
   public List<VoucherView> activeVouchers() {
-    return vouchers().stream().filter(voucher -> "ACTIVE".equals(voucher.status())).toList();
+    return promotionMapper.findActivePlatformVouchers().stream().map(this::voucherView).toList();
+  }
+
+  public List<VoucherView> activeVouchers(Long merchantId) {
+    if (merchantId == null) {
+      return activeVouchers();
+    }
+    return promotionMapper.findActiveVouchersForMerchant(merchantId).stream().map(this::voucherView).toList();
   }
 
   @Transactional
   public VoucherView createVoucher(VoucherAdminRequest request) {
+    return createVoucher(request, PLATFORM_ADMIN_ROLE, null);
+  }
+
+  @Transactional
+  public VoucherView createVoucher(VoucherAdminRequest request, String roleCode, Long merchantId) {
     validateActivityTime(request.startTime(), request.endTime());
-    VoucherRow voucher = voucherRow(null, request);
+    VoucherRow voucher = voucherRow(null, request, scopeFor(roleCode, merchantId), merchantFor(roleCode, merchantId));
     promotionMapper.insertVoucher(voucher);
     seckillGuard.syncStock(voucher.getId(), request.stock());
     return voucherView(promotionMapper.findVoucher(voucher.getId()));
@@ -262,14 +307,20 @@ public class PromotionService {
 
   @Transactional
   public VoucherView updateVoucher(long voucherId, VoucherAdminRequest request) {
+    return updateVoucher(voucherId, request, PLATFORM_ADMIN_ROLE, null);
+  }
+
+  @Transactional
+  public VoucherView updateVoucher(long voucherId, VoucherAdminRequest request, String roleCode, Long merchantId) {
     VoucherRow existing = requireVoucher(voucherId);
+    requireVoucherManagement(existing, roleCode, merchantId);
     validateActivityTime(request.startTime(), request.endTime());
     boolean stockChanged = existing.getStock() != request.stock();
     if (stockChanged && (existing.getStartTime() == null || !LocalDateTime.now().isBefore(existing.getStartTime())
         || promotionMapper.countVoucherClaims(voucherId) > 0)) {
       throw new BizException(ErrorCode.ILLEGAL_STATUS, "活动开始或已有领取后不能直接修改库存");
     }
-    VoucherRow voucher = voucherRow(voucherId, request);
+    VoucherRow voucher = voucherRow(voucherId, request, existing.getScope(), existing.getMerchantId());
     promotionMapper.updateVoucher(voucher);
     if (stockChanged) {
       seckillGuard.syncStock(voucherId, request.stock());
@@ -291,6 +342,17 @@ public class PromotionService {
     return promotionMapper.findLocks().stream()
         .map(lock -> new VoucherLockView(lock.getId(), lock.getUserVoucherId(), lock.getStatus(), lock.getTicketId(),
             lock.getOrderId())).toList();
+  }
+
+  public void validateForOrder(ValidateVoucherRequest request) {
+    if (request.userVoucherId() == null) {
+      return;
+    }
+    UserVoucherRow userVoucher = requireUserVoucher(request.userVoucherId());
+    if (userVoucher.getUserId() != request.userId() || !UserVoucherStatus.AVAILABLE.name().equals(userVoucher.getStatus())) {
+      throw new BizException(ErrorCode.VOUCHER_UNAVAILABLE);
+    }
+    requireApplicableToMerchant(requireVoucher(userVoucher.getVoucherId()), request.merchantId());
   }
 
   @Scheduled(initialDelayString = "${mealflow.promotion.lock-expire.initial-delay-ms:30000}",
@@ -331,7 +393,7 @@ public class PromotionService {
         lock.getOrderId());
   }
 
-  private VoucherRow voucherRow(Long id, VoucherAdminRequest request) {
+  private VoucherRow voucherRow(Long id, VoucherAdminRequest request, String scope, Long merchantId) {
     VoucherRow voucher = new VoucherRow();
     if (id != null) {
       voucher.setId(id);
@@ -341,6 +403,8 @@ public class PromotionService {
     voucher.setDiscountCent(request.discountCent());
     voucher.setStock(request.stock());
     voucher.setStatus(voucherStatus(request.status()));
+    voucher.setScope(scope);
+    voucher.setMerchantId(merchantId);
     voucher.setStartTime(request.startTime());
     voucher.setEndTime(request.endTime());
     return voucher;
@@ -348,7 +412,46 @@ public class PromotionService {
 
   private VoucherView voucherView(VoucherRow voucher) {
     return new VoucherView(voucher.getId(), voucher.getName(), voucher.getType(), voucher.getDiscountCent(),
-        voucher.getStock(), voucher.getStatus(), voucher.getStartTime(), voucher.getEndTime());
+        voucher.getStock(), voucher.getStatus(), voucher.getScope(), voucher.getMerchantId(), voucher.getStartTime(),
+        voucher.getEndTime());
+  }
+
+  private UserVoucherView userVoucherView(WalletVoucherRow voucher) {
+    return new UserVoucherView(voucher.getId(), voucher.getVoucherId(), voucher.getStatus(), voucher.getVoucherName(),
+        voucher.getDiscountCent(), voucher.getScope(), voucher.getMerchantId());
+  }
+
+  private String scopeFor(String roleCode, Long merchantId) {
+    return PLATFORM_ADMIN_ROLE.equals(roleCode) ? PLATFORM_SCOPE : requireMerchantScope(merchantId);
+  }
+
+  private Long merchantFor(String roleCode, Long merchantId) {
+    return PLATFORM_ADMIN_ROLE.equals(roleCode) ? null : merchantId;
+  }
+
+  private String requireMerchantScope(Long merchantId) {
+    if (merchantId == null) {
+      throw new BizException(ErrorCode.FORBIDDEN, "merchant identity is required");
+    }
+    return MERCHANT_SCOPE;
+  }
+
+  private void requireVoucherManagement(VoucherRow voucher, String roleCode, Long merchantId) {
+    if (PLATFORM_ADMIN_ROLE.equals(roleCode) && PLATFORM_SCOPE.equals(voucher.getScope())) {
+      return;
+    }
+    if (merchantId != null && MERCHANT_SCOPE.equals(voucher.getScope())
+        && merchantId.equals(voucher.getMerchantId())) {
+      return;
+    }
+    throw new BizException(ErrorCode.FORBIDDEN, "voucher does not belong to current administrator");
+  }
+
+  private void requireApplicableToMerchant(VoucherRow voucher, Long merchantId) {
+    if (merchantId == null || (MERCHANT_SCOPE.equals(voucher.getScope())
+        && !merchantId.equals(voucher.getMerchantId()))) {
+      throw new BizException(ErrorCode.VOUCHER_UNAVAILABLE);
+    }
   }
 
   private VoucherClaimRetryView claimRetryView(VoucherClaimRetryRow retry) {

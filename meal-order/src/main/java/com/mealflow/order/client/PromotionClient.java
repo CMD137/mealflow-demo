@@ -42,6 +42,11 @@ public class PromotionClient {
         Result.class));
   }
 
+  public void validateForOrder(ValidateVoucherRequest request) {
+    requireSuccess(restTemplate.postForObject(endpoints.promotion() + "/vouchers/internal/validate", request,
+        Result.class));
+  }
+
   public void revertConfirmed(VoucherTransitionRequest request) {
     requireSuccess(restTemplate.postForObject(endpoints.promotion() + "/vouchers/internal/revert-confirmed", request,
         Result.class));
@@ -53,8 +58,11 @@ public class PromotionClient {
     }
   }
 
-  public record LockVoucherRequest(String requestId, long userId, Long userVoucherId, Long ticketId, Long orderId,
-                                   LocalDateTime lockExpireTime) {
+  public record ValidateVoucherRequest(String requestId, long userId, Long userVoucherId, Long merchantId) {
+  }
+
+  public record LockVoucherRequest(String requestId, long userId, Long userVoucherId, Long merchantId, Long ticketId,
+                                   Long orderId, LocalDateTime lockExpireTime) {
   }
 
   public record VoucherLockResponse(Long voucherLockId, String status, int discountAmount) {

@@ -15,6 +15,9 @@ function filterMenu(item: AppMenuItem): AppMenuItem | null {
   if (item.permission && !auth.hasPermission(item.permission)) {
     return null;
   }
+  if (item.anyPermissions && !item.anyPermissions.some((permission) => auth.hasPermission(permission))) {
+    return null;
+  }
   const children = item.children?.map(filterMenu).filter(Boolean) as AppMenuItem[] | undefined;
   return { ...item, children };
 }
@@ -63,7 +66,8 @@ function logout() {
         <div class="account">
           <el-tag type="info">{{ auth.roleCode }}</el-tag>
           <span>{{ auth.nickname }}</span>
-          <span class="merchant">商家 {{ auth.merchantId }}</span>
+          <span v-if="auth.merchantId" class="merchant">商家 {{ auth.merchantId }}</span>
+          <span v-else class="merchant">平台运营</span>
           <el-button text type="primary" @click="logout">退出</el-button>
         </div>
       </header>

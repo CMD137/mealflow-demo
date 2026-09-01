@@ -42,10 +42,13 @@ function submitErrorMessage(error: unknown) {
 }
 
 const selected = computed(() => cart.selectedItems);
+const checkoutMerchantId = computed(() => {
+  const merchantId = selected.value[0]?.merchantId;
+  return merchantId && selected.value.every((item) => item.merchantId === merchantId) ? merchantId : undefined;
+});
 const discountCent = computed(() => {
   const userVoucher = wallet.value.find((item) => item.userVoucherId === form.userVoucherId);
-  const voucher = vouchers.value.find((item) => item.voucherId === userVoucher?.voucherId);
-  return voucher?.discountCent || 0;
+  return userVoucher?.discountCent || 0;
 });
 const payableCent = computed(() => Math.max(0, cart.selectedAmountCent - discountCent.value));
 
@@ -54,7 +57,9 @@ async function load() {
   try {
     await cart.load();
     cart.skuMap = await buildSkuMapByCart(cart.items);
-    const [voucherData, walletData, addressData] = await Promise.all([vouchersApi(), walletApi(), addressesApi()]);
+    const [voucherData, walletData, addressData] = await Promise.all([
+      vouchersApi(checkoutMerchantId.value), walletApi(checkoutMerchantId.value), addressesApi()
+    ]);
     vouchers.value = voucherData;
     wallet.value = walletData.filter((item) => item.status === 'AVAILABLE');
     addresses.value = addressData;
@@ -100,8 +105,7 @@ async function submit() {
 }
 
 function voucherName(item: UserVoucherView) {
-  const voucher = vouchers.value.find((voucherItem) => voucherItem.voucherId === item.voucherId);
-  return voucher ? `${voucher.name} - ${formatMoney(voucher.discountCent)}` : `用户券 ${item.userVoucherId}`;
+  return `${item.voucherName} - ${formatMoney(item.discountCent)}`;
 }
 
 onMounted(load);
@@ -132,6 +136,7 @@ onMounted(load);
 
     <section class="card block">
       <h2>优惠券</h2>
+      <RouterLink v-if="checkoutMerchantId" :to="`/vouchers?merchantId=${checkoutMerchantId}`" class="address-manage">领取当前商家优惠券</RouterLink>
       <select v-model.number="form.userVoucherId">
         <option :value="undefined">不使用优惠券</option>
         <option v-for="item in wallet" :key="item.userVoucherId" :value="item.userVoucherId">

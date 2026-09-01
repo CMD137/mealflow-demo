@@ -71,6 +71,8 @@ export interface VoucherView {
   discountCent: number;
   stock: number;
   status: string;
+  scope: 'PLATFORM' | 'MERCHANT';
+  merchantId?: number | null;
   startTime?: string | null;
   endTime?: string | null;
 }
@@ -79,6 +81,10 @@ export interface UserVoucherView {
   userVoucherId: number;
   voucherId: number;
   status: string;
+  voucherName: string;
+  discountCent: number;
+  scope: 'PLATFORM' | 'MERCHANT';
+  merchantId?: number | null;
 }
 
 export interface SeckillVoucherResponse {

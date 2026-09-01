@@ -74,6 +74,14 @@ CREATE TABLE IF NOT EXISTS merchant_employee (
   INDEX idx_merchant_employee_merchant_id (merchant_id)
 );
 
+-- Platform administrators are deliberately separate from merchant employees: they do not own a merchant.
+CREATE TABLE IF NOT EXISTS platform_admin (
+  user_id BIGINT PRIMARY KEY,
+  status VARCHAR(32) NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  update_time TIMESTAMP NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS merchant_role (
   role_code VARCHAR(64) PRIMARY KEY,
   role_name VARCHAR(64) NOT NULL,

@@ -18,6 +18,7 @@ export interface AppMenuItem {
   title: string;
   icon: Component;
   permission?: string;
+  anyPermissions?: string[];
   children?: AppMenuItem[];
 }
 
@@ -50,9 +51,9 @@ export const appMenus: AppMenuItem[] = [
     path: '/promotion',
     title: '优惠券',
     icon: Discount,
-    permission: 'MERCHANT_MANAGE',
+    anyPermissions: ['MERCHANT_MANAGE', 'PLATFORM_VOUCHER_MANAGE'],
     children: [
-      { path: '/promotion/vouchers', title: '优惠券管理', icon: Discount, permission: 'MERCHANT_MANAGE' },
+      { path: '/promotion/vouchers', title: '优惠券管理', icon: Discount, anyPermissions: ['MERCHANT_MANAGE', 'PLATFORM_VOUCHER_MANAGE'] },
       { path: '/promotion/wallet', title: '用户券包', icon: Tickets, permission: 'VOUCHER_USE' }
     ]
   },

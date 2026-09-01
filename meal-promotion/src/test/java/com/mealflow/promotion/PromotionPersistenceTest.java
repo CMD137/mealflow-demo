@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.mealflow.common.exception.BizException;
 import com.mealflow.promotion.api.SeckillVoucherResponse;
 import com.mealflow.promotion.api.LockVoucherRequest;
+import com.mealflow.promotion.api.ValidateVoucherRequest;
 import com.mealflow.promotion.api.VoucherAdminRequest;
 import com.mealflow.promotion.api.VoucherView;
 import com.mealflow.promotion.mapper.PromotionMapper;
@@ -97,8 +98,8 @@ class PromotionPersistenceTest {
   void releasesAnExpiredVoucherLockWithAStatusCondition() {
     VoucherView voucher = newVoucher(1);
     ClaimSettlementResult claim = settlementService.settle(SeckillClaimCommand.of(voucher.voucherId(), 20_201L));
-    promotionService.lock(new LockVoucherRequest("voucher-lock-expire-1", 20_201L, claim.userVoucherId(), null,
-        null, LocalDateTime.now().minusMinutes(1)));
+    promotionService.lock(new LockVoucherRequest("voucher-lock-expire-1", 20_201L, claim.userVoucherId(), 10L,
+        null, null, LocalDateTime.now().minusMinutes(1)));
 
     promotionService.expireLocks();
 
@@ -337,6 +338,39 @@ class PromotionPersistenceTest {
 
   private VoucherAdminRequest request(int stock, LocalDateTime start, LocalDateTime end) {
     return new VoucherAdminRequest("测试秒杀券", "SECKILL", 300, stock, "ACTIVE", start, end);
+  }
+
+  @Test
+  void scopesMerchantVouchersAcrossAdministrationDiscoveryAndOrderLocking() {
+    VoucherView merchantVoucher = promotionService.createVoucher(request(2, LocalDateTime.now().minusMinutes(1),
+        LocalDateTime.now().plusHours(1)), "MERCHANT_ADMIN", 11L);
+    UserVoucherRow userVoucher = insertUserVoucher(40_001L, merchantVoucher.voucherId());
+
+    assertThat(merchantVoucher.scope()).isEqualTo("MERCHANT");
+    assertThat(merchantVoucher.merchantId()).isEqualTo(11L);
+    assertThat(promotionService.vouchers(1, 100, "MERCHANT_ADMIN", 11L).items())
+        .extracting(VoucherView::voucherId).contains(merchantVoucher.voucherId());
+    assertThat(promotionService.vouchers(1, 100, "MERCHANT_ADMIN", 10L).items())
+        .extracting(VoucherView::voucherId).doesNotContain(merchantVoucher.voucherId());
+    assertThat(promotionService.vouchers(1, 100, "PLATFORM_ADMIN", null).items())
+        .extracting(VoucherView::voucherId).doesNotContain(merchantVoucher.voucherId());
+    assertThat(promotionService.activeVouchers(10L)).extracting(VoucherView::voucherId)
+        .doesNotContain(merchantVoucher.voucherId());
+    assertThat(promotionService.activeVouchers(11L)).extracting(VoucherView::voucherId)
+        .contains(merchantVoucher.voucherId());
+    assertThat(promotionService.wallet(40_001L, 10L)).isEmpty();
+    assertThat(promotionService.wallet(40_001L, 11L)).singleElement()
+        .extracting("userVoucherId").isEqualTo(userVoucher.getId());
+
+    assertThatThrownBy(() -> promotionService.updateVoucher(merchantVoucher.voucherId(),
+        request(2, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().plusHours(1)), "MERCHANT_ADMIN", 10L))
+        .isInstanceOf(BizException.class);
+    assertThatThrownBy(() -> promotionService.validateForOrder(new ValidateVoucherRequest("cross-store", 40_001L,
+        userVoucher.getId(), 10L))).isInstanceOf(BizException.class);
+    assertThatThrownBy(() -> promotionService.lock(new LockVoucherRequest("cross-store-lock", 40_001L,
+        userVoucher.getId(), 10L, null, null, LocalDateTime.now().plusMinutes(15))))
+        .isInstanceOf(BizException.class);
+    assertThat(promotionMapper.findUserVoucher(userVoucher.getId()).getStatus()).isEqualTo("AVAILABLE");
   }
 
   private UserVoucherRow insertUserVoucher(long userId, long voucherId) {

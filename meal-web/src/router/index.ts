@@ -21,7 +21,7 @@ const router = createRouter({
         { path: 'orders', component: () => import('@/views/orders/OrdersView.vue'), meta: { title: '订单管理', permission: 'ORDER_WRITE' } },
         { path: 'fulfillment', component: () => import('@/views/fulfillment/FulfillmentView.vue'), meta: { title: '履约工作台', permission: 'FULFILLMENT_OPERATE' } },
         { path: 'queue', component: () => import('@/views/queue/QueueView.vue'), meta: { title: '排队与产能', permission: 'INTERNAL_OPERATE' } },
-        { path: 'promotion/vouchers', component: () => import('@/views/promotion/VouchersView.vue'), meta: { title: '优惠券管理', permission: 'MERCHANT_MANAGE' } },
+        { path: 'promotion/vouchers', component: () => import('@/views/promotion/VouchersView.vue'), meta: { title: '优惠券管理', anyPermissions: ['MERCHANT_MANAGE', 'PLATFORM_VOUCHER_MANAGE'] } },
         { path: 'promotion/wallet', component: () => import('@/views/promotion/WalletView.vue'), meta: { title: '用户券包', permission: 'VOUCHER_USE' } },
         { path: 'employees', component: () => import('@/views/access/EmployeesView.vue'), meta: { title: '员工管理', permission: 'MERCHANT_MANAGE' } },
         { path: 'roles', component: () => import('@/views/access/RolesView.vue'), meta: { title: '角色权限', permission: 'MERCHANT_MANAGE' } },
@@ -51,7 +51,11 @@ router.beforeEach(async (to) => {
     }
   }
   const permission = to.meta.permission as string | undefined;
+  const anyPermissions = to.meta.anyPermissions as string[] | undefined;
   if (permission && !auth.hasPermission(permission)) {
+    return '/forbidden';
+  }
+  if (anyPermissions && !anyPermissions.some((item) => auth.hasPermission(item))) {
     return '/forbidden';
   }
   return true;

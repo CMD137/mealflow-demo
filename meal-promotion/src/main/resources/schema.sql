@@ -5,11 +5,14 @@ CREATE TABLE IF NOT EXISTS voucher (
   discount_cent INT NOT NULL,
   stock INT NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+  scope VARCHAR(16) NOT NULL DEFAULT 'PLATFORM',
+  merchant_id BIGINT NULL,
   start_time TIMESTAMP NULL,
   end_time TIMESTAMP NULL,
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_voucher_status (status)
+  INDEX idx_voucher_status (status),
+  INDEX idx_voucher_scope_merchant_status (scope, merchant_id, status)
 );
 
 CREATE TABLE IF NOT EXISTS user_voucher (
