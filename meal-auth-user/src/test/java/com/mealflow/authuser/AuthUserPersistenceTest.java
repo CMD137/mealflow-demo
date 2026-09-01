@@ -139,9 +139,9 @@ class AuthUserPersistenceTest {
 
   @Test
   void logsInSystemAdministratorWithoutMerchantOwnership() {
-    authUserService.requestLoginCode("13800000006");
+    authUserService.requestLoginCode("17739819838");
 
-    LoginResponse systemAdmin = authUserService.login(new LoginRequest("13800000006", "123456"));
+    LoginResponse systemAdmin = authUserService.login(new LoginRequest("17739819838", "123456"));
 
     assertThat(systemAdmin.roleCode()).isEqualTo("SYSTEM_ADMIN");
     assertThat(systemAdmin.merchantId()).isNull();
