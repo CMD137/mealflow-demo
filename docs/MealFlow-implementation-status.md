@@ -43,7 +43,7 @@
 - **签到积分落库**：`points_ledger` 流水表 + `user_account.points` 余额为事实源，签到唯一键去重（同一天只奖励一次），连续签到/月历/总积分全部读 MySQL（月历不再逐日 GETBIT）；Redis bitmap/计数器降级为派生缓存，事务提交后刷新、失败只告警。
 - **统一 traceId 与异常契约**：`meal-common` 自动注册 TraceFilter/TraceWebFilter，`X-Trace-Id` 进入 MDC 并回写响应头；全局 `@RestControllerAdvice` 按 ErrorCode 映射稳定 HTTP 状态码并携带 traceId，替代各服务各自为政的异常处理器。
 - **后台列表分页**：`/orders/admin`、`/vouchers/admin`、`/catalog/admin/skus`、`/auth/admin/employees` 返回 `PageResult{items,total,page,pageSize}`（pageSize 上限 100），管理端前端接入 el-pagination。
-- **告警规则与健康检查**：Prometheus 定义服务不可达/Outbox 积压/消费失败/秒杀重投记录 DEAD/5xx 五类告警规则；Compose 业务服务与网关增加端口健康检查，网关依赖改为 `service_healthy`。其中秒杀 `DEAD` 告警是预留能力，当前调度器未实现自动转 DEAD。
+- **告警规则与健康检查**：Prometheus 定义服务不可达/Outbox 积压/消费失败/秒杀重投记录 DEAD/5xx 五类告警规则；Compose 业务服务与网关增加端口健康检查，网关依赖改为 `service_healthy`。秒杀 Pending 调度器达到重试上限并完成 Redis 补偿后会写入 `DEAD`，由该告警规则暴露给运维。
 - **CI 容器级 E2E**：`e2e-compose` job 打包全部服务后启动 Compose，运行 `scripts/e2e-smoke.sh`（登录/秒杀/排队/支付事件/履约/转单全链路，含内部签名链路回归），失败自动转储容器日志。
 - 最近一次后端主线全量验证通过：`mvn -q test`、`mvn -q -DskipTests package`、`docker compose config`、`docker compose up -d --build`、`scripts/e2e-smoke.ps1`。
 - 本轮新增管理端能力已验证通过：`mvn -q -pl meal-auth-user -am test`、`mvn -q -pl meal-catalog -am test`、`mvn -q -pl meal-order -am test`、`mvn -q -pl meal-promotion -am test`、`mvn -q test`、`mvn -q -DskipTests package`。
@@ -54,7 +54,7 @@
 
 - 正式前端已实现：后台管理端位于 `meal-web`，用户端移动 H5 位于 `meal-user-web`。后续重点不再是从零补前端，而是做浏览器自动化 e2e、移动端截图验收、交互细节和生产级异常态增强。
 - Outbox 已开始落地到 order/payment/fulfillment 的 MySQL 本地事件表，并具备手动 dispatch、定时扫描、状态回写和可配置 RocketMQ 发布器；payment 到 order、domain event 到 notify 的真实 MQ 消费均已接入 consumer_record，持久化消费模板已支持 PROCESSING 超时抢占重试和基于保存 payload 的本地重放，真实 RocketMQ 消费者已支持配置最大重消费次数并交由 RocketMQ DLQ 兜底。
-- Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua、Pending 重投、数据库幂等结算和单 stock key 安全恢复已在 `meal-promotion` 接入。后续可继续扩展多实例 Pending 原子抢占、应用层 DEAD 策略和更多 Redis/MQ 故障注入断言。
+- Redis waiting ZSet 和产能 inflight 派生计数已在 `meal-queue` 接入并保留 MySQL 事实源重建/补偿能力；券库存 Redis Lua、Pending 重投、有上限的 `DEAD` 补偿治理、数据库幂等结算和单 stock key 安全恢复已在 `meal-promotion` 接入。后续可继续扩展多实例 Pending 原子抢占和更多 Redis/MQ 故障注入断言。
 - Prometheus/Grafana、业务积压指标、告警规则和基础压测/故障脚本已完成；后续可继续扩展队列等待 P90/P99、秒杀失败原因分布、Alertmanager 通知通道和故障注入自动断言。
 - traceId 透传、统一异常契约、内部 HMAC 服务身份、分页与复合索引已完成；Nacos 已真正承担服务发现与负载均衡（含多实例故障转移演示）；签到积分已落库。后续可继续扩展 OpenTelemetry 标准 `traceparent` 导出（Tempo/Jaeger）、跨实例 nonce 去重（Redis）和真实压测报告；秒杀并发回归继续复用现有 Docker MySQL 验收脚本，不额外引入 Testcontainers。
 
