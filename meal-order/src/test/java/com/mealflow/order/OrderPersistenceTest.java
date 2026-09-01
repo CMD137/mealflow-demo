@@ -13,6 +13,7 @@ import static org.mockito.Mockito.doReturn;
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
 import com.mealflow.order.api.AdminOrderQuery;
+import com.mealflow.order.api.SystemOrderQuery;
 import com.mealflow.order.api.OrderStatisticsView;
 import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
@@ -125,6 +126,8 @@ class OrderPersistenceTest {
     assertThat(orderService.get(response.orderId()).status()).isEqualTo("WAIT_MERCHANT_ACCEPT");
     assertThat(orderService.adminOrders(new AdminOrderQuery(10L, 101L, "WAIT_MERCHANT_ACCEPT", null, null, 1, 20))
         .items()).extracting("orderId").contains(response.orderId());
+    assertThat(orderService.systemOrders(new SystemOrderQuery(10L, 101L, "WAIT_MERCHANT_ACCEPT", null, null, 1,
+        20)).items()).extracting("orderId").contains(response.orderId());
     OrderStatisticsView statistics = orderService.adminStatistics(new AdminOrderQuery(10L, null, null, null, null, 1, 1));
     assertThat(statistics.totalCount()).isGreaterThanOrEqualTo(1);
     assertThat(statistics.waitingAcceptCount()).isGreaterThanOrEqualTo(1);

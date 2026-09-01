@@ -9,6 +9,7 @@ import {
   Monitor,
   Operation,
   Shop,
+  UserFilled,
   Tickets,
   User
 } from '@element-plus/icons-vue';
@@ -32,6 +33,17 @@ export const appMenus: AppMenuItem[] = [
     children: [
       { path: '/merchant/profile', title: '商家资料', icon: Shop, permission: 'MERCHANT_MANAGE' },
       { path: '/merchant/capacity', title: '产能配置', icon: Operation, permission: 'MERCHANT_MANAGE' }
+    ]
+  },
+  {
+    path: '/admin/system',
+    title: '系统治理',
+    icon: Management,
+    anyPermissions: ['SYSTEM_MERCHANT_READ', 'SYSTEM_USER_READ', 'SYSTEM_ORDER_READ'],
+    children: [
+      { path: '/system/merchants', title: '商家治理', icon: Shop, permission: 'SYSTEM_MERCHANT_READ' },
+      { path: '/system/users', title: '用户治理', icon: UserFilled, permission: 'SYSTEM_USER_READ' },
+      { path: '/system/orders', title: '全局订单', icon: Tickets, permission: 'SYSTEM_ORDER_READ' }
     ]
   },
   {

@@ -1,9 +1,11 @@
 package com.mealflow.merchant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.mealflow.merchant.api.BusinessStatusRequest;
 import com.mealflow.merchant.api.CapacityConfigRequest;
+import com.mealflow.merchant.api.SystemMerchantStatusRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +36,20 @@ class MerchantPersistenceTest {
 
     merchantService.updateBusinessStatus(10L, new BusinessStatusRequest("OPEN"));
 
+    assertThat(merchantService.get(10L).businessStatus()).isEqualTo("OPEN");
+  }
+
+  @Test
+  void systemGovernanceCanSuspendWhileMerchantSelfServiceCannotRestoreIt() {
+    assertThat(merchantService.systemMerchants(1, 100, null, null).items()).isNotEmpty();
+
+    merchantService.updateSystemBusinessStatus(10L, new SystemMerchantStatusRequest("SUSPENDED"));
+
+    assertThat(merchantService.get(10L).businessStatus()).isEqualTo("SUSPENDED");
+    assertThatThrownBy(() -> merchantService.updateBusinessStatus(10L, new BusinessStatusRequest("OPEN")))
+        .hasMessageContaining("must be restored by system administration");
+
+    merchantService.updateSystemBusinessStatus(10L, new SystemMerchantStatusRequest("OPEN"));
     assertThat(merchantService.get(10L).businessStatus()).isEqualTo("OPEN");
   }
 }

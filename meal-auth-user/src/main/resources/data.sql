@@ -6,7 +6,7 @@ VALUES
   (103, '13800000003', 'Light Food Admin', 'NORMAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   (104, '13800000004', 'Beef Rice Staff', 'NORMAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   (105, '13800000005', 'Light Food Staff', 'NORMAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  (106, '13800000006', 'Platform Admin', 'NORMAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+  (106, '17739819838', 'System Admin', 'NORMAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 INSERT IGNORE INTO platform_admin (user_id, status, create_time, update_time)
 VALUES (106, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
@@ -28,7 +28,7 @@ INSERT IGNORE INTO merchant_role (role_code, role_name, description, builtin, cr
 VALUES
   ('CUSTOMER', 'Customer', 'Customer app user', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('MERCHANT_ADMIN', 'Merchant Admin', 'Merchant owner with full back-office access', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('PLATFORM_ADMIN', 'Platform Admin', 'Platform-wide promotion administrator without merchant ownership', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('SYSTEM_ADMIN', 'System Admin', 'System governance administrator without merchant ownership', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('STORE_STAFF', 'Store Staff', 'Store employee who can operate fulfillment and catalog', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 INSERT IGNORE INTO menu_permission
@@ -38,7 +38,10 @@ VALUES
   (2, NULL, 'merchant', 'Merchant Settings', '/admin/merchant', 'MERCHANT_MANAGE', 20, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   (3, NULL, 'catalog', 'Catalog Management', '/admin/catalog', 'CATALOG_MANAGE', 30, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   (4, NULL, 'fulfillment', 'Fulfillment Workbench', '/admin/fulfillment', 'FULFILLMENT_OPERATE', 40, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  (8, NULL, 'notify', 'Notifications', '/admin/notify', 'NOTIFY_READ', 60, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+  (8, NULL, 'notify', 'Notifications', '/admin/notify', 'NOTIFY_READ', 60, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (9, NULL, 'system-merchants', 'Merchant Governance', '/admin/system/merchants', 'SYSTEM_MERCHANT_READ', 70, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (10, NULL, 'system-users', 'User Governance', '/admin/system/users', 'SYSTEM_USER_READ', 80, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (11, NULL, 'system-orders', 'Global Orders', '/admin/system/orders', 'SYSTEM_ORDER_READ', 90, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 INSERT IGNORE INTO role_permission (role_code, permission_code, create_time)
 VALUES
@@ -57,8 +60,12 @@ VALUES
   ('MERCHANT_ADMIN', 'MERCHANT_MANAGE', CURRENT_TIMESTAMP),
   ('MERCHANT_ADMIN', 'CATALOG_MANAGE', CURRENT_TIMESTAMP),
   ('MERCHANT_ADMIN', 'FULFILLMENT_OPERATE', CURRENT_TIMESTAMP),
-  ('PLATFORM_ADMIN', 'USER_READ', CURRENT_TIMESTAMP),
-  ('PLATFORM_ADMIN', 'PLATFORM_VOUCHER_MANAGE', CURRENT_TIMESTAMP),
+  ('SYSTEM_ADMIN', 'PLATFORM_VOUCHER_MANAGE', CURRENT_TIMESTAMP),
+  ('SYSTEM_ADMIN', 'SYSTEM_MERCHANT_READ', CURRENT_TIMESTAMP),
+  ('SYSTEM_ADMIN', 'SYSTEM_MERCHANT_STATUS_WRITE', CURRENT_TIMESTAMP),
+  ('SYSTEM_ADMIN', 'SYSTEM_USER_READ', CURRENT_TIMESTAMP),
+  ('SYSTEM_ADMIN', 'SYSTEM_USER_STATUS_WRITE', CURRENT_TIMESTAMP),
+  ('SYSTEM_ADMIN', 'SYSTEM_ORDER_READ', CURRENT_TIMESTAMP),
   ('STORE_STAFF', 'USER_READ', CURRENT_TIMESTAMP),
   ('STORE_STAFF', 'ORDER_WRITE', CURRENT_TIMESTAMP),
   ('STORE_STAFF', 'CATALOG_MANAGE', CURRENT_TIMESTAMP),

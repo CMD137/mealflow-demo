@@ -10,6 +10,10 @@ import com.mealflow.authuser.api.EmployeeView;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
 import com.mealflow.authuser.api.SignInView;
+import com.mealflow.authuser.api.SystemUserView;
+import com.mealflow.authuser.mapper.AuthUserMapper;
+import com.mealflow.authuser.security.SessionTokenHasher;
+import java.time.LocalDateTime;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +27,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 class AuthUserPersistenceTest {
   @Autowired
   private AuthUserService authUserService;
+
+  @Autowired
+  private AuthUserMapper authUserMapper;
+
+  @Autowired
+  private SessionTokenHasher sessionTokenHasher;
 
   @Test
   void logsInExistingAndCreatesNewUserInDatabase() {
@@ -128,15 +138,40 @@ class AuthUserPersistenceTest {
   }
 
   @Test
-  void logsInPlatformAdministratorWithoutMerchantOwnership() {
-    authUserService.requestLoginCode("13800000006");
+  void logsInSystemAdministratorWithoutMerchantOwnership() {
+    authUserService.requestLoginCode("17739819838");
 
-    LoginResponse platformAdmin = authUserService.login(new LoginRequest("13800000006", "123456"));
+    LoginResponse systemAdmin = authUserService.login(new LoginRequest("17739819838", "123456"));
 
-    assertThat(platformAdmin.roleCode()).isEqualTo("PLATFORM_ADMIN");
-    assertThat(platformAdmin.merchantId()).isNull();
-    assertThat(platformAdmin.permissions()).contains("PLATFORM_VOUCHER_MANAGE").doesNotContain("MERCHANT_MANAGE");
-    assertThat(authUserService.validateToken(platformAdmin.token()).merchantId()).isNull();
+    assertThat(systemAdmin.roleCode()).isEqualTo("SYSTEM_ADMIN");
+    assertThat(systemAdmin.merchantId()).isNull();
+    assertThat(systemAdmin.permissions()).contains("PLATFORM_VOUCHER_MANAGE", "SYSTEM_MERCHANT_READ",
+        "SYSTEM_USER_READ", "SYSTEM_ORDER_READ").doesNotContain("MERCHANT_MANAGE");
+    assertThat(authUserService.validateToken(systemAdmin.token()).merchantId()).isNull();
+  }
+
+  @Test
+  void rejectsLegacyNullMerchantRoleTokenEvenIfMigrationWasMissed() {
+    String legacyToken = "mf_legacy_platform_admin_token";
+    authUserMapper.insertToken(sessionTokenHasher.hash(legacyToken), 106L, "LEGACY_PLATFORM_ROLE", null,
+        LocalDateTime.now().plusDays(1), LocalDateTime.now());
+
+    assertThat(authUserService.validateToken(legacyToken)).isNull();
+  }
+
+  @Test
+  void systemAdministrationDisablesTokensButCannotDisableItself() {
+    authUserService.requestLoginCode("13900000077");
+    LoginResponse customer = authUserService.login(new LoginRequest("13900000077", "123456"));
+
+    SystemUserView disabled = authUserService.changeSystemUserStatus(106L, customer.userId(), "DISABLED");
+
+    assertThat(disabled.status()).isEqualTo("DISABLED");
+    assertThat(authUserService.validateToken(customer.token())).isNull();
+    assertThatThrownBy(() -> authUserService.changeSystemUserStatus(106L, 106L, "DISABLED"))
+        .hasMessageContaining("cannot disable itself");
+    assertThat(authUserService.systemUsers(1, 100, "13900000077", "DISABLED").items())
+        .extracting(SystemUserView::identitySummary).containsExactly("CUSTOMER");
   }
 
   @Test

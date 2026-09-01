@@ -21,6 +21,13 @@ public final class RequestIdentity {
     }
   }
 
+  /** The role header is injected and HMAC-signed by the gateway; never accept it from an unsigned caller. */
+  public static void requireRole(String expectedRole, String actualRole) {
+    if (!expectedRole.equals(actualRole)) {
+      throw new BizException(ErrorCode.FORBIDDEN, "role is not allowed for this resource");
+    }
+  }
+
   private static long require(Long value, String message) {
     if (value == null || value <= 0) {
       throw new BizException(ErrorCode.UNAUTHORIZED, message);

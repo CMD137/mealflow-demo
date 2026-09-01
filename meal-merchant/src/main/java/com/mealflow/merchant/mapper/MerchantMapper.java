@@ -22,6 +22,38 @@ public interface MerchantMapper {
   })
   List<MerchantRow> findAll();
 
+  @Select("""
+      <script>
+      SELECT id, name, business_status, base_capacity, manual_factor
+      FROM merchant
+      WHERE 1 = 1
+      <if test="name != null and name != ''">
+        AND name LIKE CONCAT('%', #{name}, '%')
+      </if>
+      <if test="businessStatus != null and businessStatus != ''">
+        AND business_status = #{businessStatus}
+      </if>
+      ORDER BY id LIMIT #{limit} OFFSET #{offset}
+      </script>
+      """)
+  @ResultMap("merchantMap")
+  List<MerchantRow> findSystemPage(@Param("name") String name, @Param("businessStatus") String businessStatus,
+      @Param("limit") int limit, @Param("offset") int offset);
+
+  @Select("""
+      <script>
+      SELECT COUNT(*) FROM merchant
+      WHERE 1 = 1
+      <if test="name != null and name != ''">
+        AND name LIKE CONCAT('%', #{name}, '%')
+      </if>
+      <if test="businessStatus != null and businessStatus != ''">
+        AND business_status = #{businessStatus}
+      </if>
+      </script>
+      """)
+  long countSystemPage(@Param("name") String name, @Param("businessStatus") String businessStatus);
+
   @Select("SELECT id, name, business_status, base_capacity, manual_factor FROM merchant WHERE id = #{id}")
   @ResultMap("merchantMap")
   MerchantRow findById(long id);

@@ -16,6 +16,7 @@ import com.mealflow.order.api.LocalEventView;
 import com.mealflow.order.api.OrderItemSnapshot;
 import com.mealflow.order.api.OrderSkuItem;
 import com.mealflow.order.api.OrderStatisticsView;
+import com.mealflow.order.api.SystemOrderQuery;
 import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
@@ -278,6 +279,18 @@ public class OrderService {
         query.endTime());
     List<OrderView> items = orderMapper.findAdminOrders(query.merchantId(), query.userId(), query.status(),
         query.beginTime(), query.endTime(), query.pageSize(), query.offset()).stream()
+        .map(this::mapOrder)
+        .map(this::view)
+        .toList();
+    return PageResult.of(items, total, query.page(), query.pageSize());
+  }
+
+  /** Cross-merchant read model used only by the separately authorized system endpoint. */
+  public PageResult<OrderView> systemOrders(SystemOrderQuery query) {
+    long total = orderMapper.countAdminOrders(query.merchantId(), query.userId(), query.status(), query.from(),
+        query.to());
+    List<OrderView> items = orderMapper.findAdminOrders(query.merchantId(), query.userId(), query.status(),
+        query.from(), query.to(), query.pageSize(), query.offset()).stream()
         .map(this::mapOrder)
         .map(this::view)
         .toList();

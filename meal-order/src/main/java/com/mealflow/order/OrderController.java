@@ -12,6 +12,7 @@ import com.mealflow.order.api.OrderStatisticsView;
 import com.mealflow.order.api.OrderView;
 import com.mealflow.order.api.SubmitOrderRequest;
 import com.mealflow.order.api.SubmitOrderResponse;
+import com.mealflow.order.api.SystemOrderQuery;
 import jakarta.validation.Valid;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -135,6 +136,28 @@ public class OrderController {
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
     return Result.ok(orderService.adminStatistics(new AdminOrderQuery(RequestIdentity.requireMerchant(merchantId), null, null,
         beginTime, endTime, 1, 1)));
+  }
+
+  @GetMapping("/system")
+  public Result<PageResult<OrderView>> systemOrders(
+      @RequestHeader(value = "X-Role", required = false) String roleCode,
+      @RequestParam(required = false) Long merchantId,
+      @RequestParam(required = false) Long userId,
+      @RequestParam(required = false) String status,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize) {
+    RequestIdentity.requireRole("SYSTEM_ADMIN", roleCode);
+    return Result.ok(orderService.systemOrders(new SystemOrderQuery(merchantId, userId, status, from, to, page,
+        pageSize)));
+  }
+
+  @GetMapping("/system/{orderId}")
+  public Result<OrderView> systemOrder(@PathVariable long orderId,
+      @RequestHeader(value = "X-Role", required = false) String roleCode) {
+    RequestIdentity.requireRole("SYSTEM_ADMIN", roleCode);
+    return Result.ok(orderService.get(orderId));
   }
 
   @GetMapping("/internal/events")
