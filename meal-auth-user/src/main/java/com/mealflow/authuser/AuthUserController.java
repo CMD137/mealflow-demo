@@ -13,6 +13,8 @@ import com.mealflow.authuser.api.MenuView;
 import com.mealflow.authuser.api.RoleRequest;
 import com.mealflow.authuser.api.RoleView;
 import com.mealflow.authuser.api.SignInView;
+import com.mealflow.authuser.api.SystemUserStatusRequest;
+import com.mealflow.authuser.api.SystemUserView;
 import com.mealflow.common.api.PageResult;
 import com.mealflow.authuser.api.TokenPrincipalView;
 import com.mealflow.authuser.api.TokenValidationRequest;
@@ -123,6 +125,28 @@ public class AuthUserController {
   @PostMapping("/auth/admin/roles")
   public Result<RoleView> saveRole(@Valid @RequestBody RoleRequest request) {
     return Result.ok(authUserService.saveRole(request));
+  }
+
+  @GetMapping("/auth/system/users")
+  public Result<PageResult<SystemUserView>> systemUsers(
+      @RequestHeader(value = "X-Role", required = false) String roleCode,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int pageSize,
+      @RequestParam(required = false) String phone,
+      @RequestParam(required = false) String status) {
+    RequestIdentity.requireRole("SYSTEM_ADMIN", roleCode);
+    return Result.ok(authUserService.systemUsers(page, pageSize, phone, status));
+  }
+
+  @PutMapping("/auth/system/users/{userId}/status")
+  public Result<SystemUserView> changeSystemUserStatus(
+      @RequestHeader(value = "X-Role", required = false) String roleCode,
+      @RequestHeader(value = "X-User-Id", required = false) Long actingUserId,
+      @PathVariable long userId,
+      @Valid @RequestBody SystemUserStatusRequest request) {
+    RequestIdentity.requireRole("SYSTEM_ADMIN", roleCode);
+    return Result.ok(authUserService.changeSystemUserStatus(RequestIdentity.requireUser(actingUserId), userId,
+        request.status()));
   }
 
   @GetMapping("/auth/admin/employees")

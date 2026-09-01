@@ -187,6 +187,9 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     if (path.matches("^/orders/\\d+/(pay-success|merchant-accept|meal-ready|picked-up|delivered)$")) {
       return "INTERNAL_OPERATE";
     }
+    if (path.startsWith("/auth/system/")) {
+      return path.endsWith("/status") ? "SYSTEM_USER_STATUS_WRITE" : "SYSTEM_USER_READ";
+    }
     if (path.startsWith("/auth/admin/")) {
       return "MERCHANT_MANAGE";
     }
@@ -196,6 +199,9 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     if (path.startsWith("/catalog/admin/")) {
       return "CATALOG_MANAGE";
     }
+    if (path.equals("/merchants/system") || path.startsWith("/merchants/system/")) {
+      return HttpMethod.GET.equals(method) ? "SYSTEM_MERCHANT_READ" : "SYSTEM_MERCHANT_STATUS_WRITE";
+    }
     if (path.startsWith("/merchant/") || path.startsWith("/merchants/")) {
       return "MERCHANT_MANAGE";
     }
@@ -204,6 +210,9 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     }
     if (path.startsWith("/payments/")) {
       return "PAYMENT_WRITE";
+    }
+    if (path.equals("/orders/system") || path.startsWith("/orders/system/")) {
+      return "SYSTEM_ORDER_READ";
     }
     if (path.startsWith("/orders/")) {
       return "ORDER_WRITE";
@@ -216,6 +225,10 @@ public class GatewayAuthenticationFilter implements GlobalFilter, Ordered {
     }
     if (path.startsWith("/notify/")) {
       return "NOTIFY_READ";
+    }
+    if (path.equals("/users/me")) {
+      // A signed token can only read the identity injected for itself; no broad user permission is needed.
+      return null;
     }
     if (path.startsWith("/users/")) {
       return "USER_READ";

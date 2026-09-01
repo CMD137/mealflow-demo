@@ -27,6 +27,70 @@ public interface AuthUserMapper {
   @ResultMap("userMap")
   UserAccountRow findUserByPhone(String phone);
 
+  @Select("""
+      <script>
+      SELECT u.id, u.phone, u.nickname, u.status,
+        CASE WHEN pa.user_id IS NOT NULL THEN 'SYSTEM_ADMIN'
+             WHEN me.role_code IS NOT NULL THEN me.role_code
+             ELSE 'CUSTOMER' END AS identity_summary,
+        u.create_time
+      FROM user_account u
+      LEFT JOIN platform_admin pa ON pa.user_id = u.id AND pa.status = 'ACTIVE'
+      LEFT JOIN merchant_employee me ON me.user_id = u.id AND me.status = 'ACTIVE'
+      WHERE 1 = 1
+      <if test="phone != null and phone != ''">
+        AND u.phone LIKE CONCAT('%', #{phone}, '%')
+      </if>
+      <if test="status != null and status != ''">
+        AND u.status = #{status}
+      </if>
+      ORDER BY u.id DESC LIMIT #{limit} OFFSET #{offset}
+      </script>
+      """)
+  @Results(id = "systemUserMap", value = {
+      @Result(column = "id", property = "id"), @Result(column = "phone", property = "phone"),
+      @Result(column = "nickname", property = "nickname"), @Result(column = "status", property = "status"),
+      @Result(column = "identity_summary", property = "identitySummary"),
+      @Result(column = "create_time", property = "createTime")
+  })
+  List<SystemUserRow> findSystemUsersPage(@Param("phone") String phone, @Param("status") String status,
+      @Param("limit") int limit, @Param("offset") int offset);
+
+  @Select("""
+      SELECT u.id, u.phone, u.nickname, u.status,
+        CASE WHEN pa.user_id IS NOT NULL THEN 'SYSTEM_ADMIN'
+             WHEN me.role_code IS NOT NULL THEN me.role_code
+             ELSE 'CUSTOMER' END AS identity_summary,
+        u.create_time
+      FROM user_account u
+      LEFT JOIN platform_admin pa ON pa.user_id = u.id AND pa.status = 'ACTIVE'
+      LEFT JOIN merchant_employee me ON me.user_id = u.id AND me.status = 'ACTIVE'
+      WHERE u.id = #{userId}
+      """)
+  @ResultMap("systemUserMap")
+  SystemUserRow findSystemUser(long userId);
+
+  @Select("""
+      <script>
+      SELECT COUNT(*) FROM user_account u
+      WHERE 1 = 1
+      <if test="phone != null and phone != ''">
+        AND u.phone LIKE CONCAT('%', #{phone}, '%')
+      </if>
+      <if test="status != null and status != ''">
+        AND u.status = #{status}
+      </if>
+      </script>
+      """)
+  long countSystemUsers(@Param("phone") String phone, @Param("status") String status);
+
+  @Update("UPDATE user_account SET status = #{status}, update_time = #{now} WHERE id = #{userId}")
+  int updateSystemUserStatus(@Param("userId") long userId, @Param("status") String status,
+      @Param("now") LocalDateTime now);
+
+  @Update("UPDATE auth_token SET revoked = TRUE, update_time = #{now} WHERE user_id = #{userId} AND revoked = FALSE")
+  int revokeTokensByUserId(@Param("userId") long userId, @Param("now") LocalDateTime now);
+
   @Select("SELECT COALESCE(points, 0) FROM user_account WHERE id = #{userId}")
   int findUserPoints(long userId);
 
