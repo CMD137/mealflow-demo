@@ -11,6 +11,9 @@ import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
 import com.mealflow.authuser.api.SignInView;
 import com.mealflow.authuser.api.SystemUserView;
+import com.mealflow.authuser.mapper.AuthUserMapper;
+import com.mealflow.authuser.security.SessionTokenHasher;
+import java.time.LocalDateTime;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +27,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 class AuthUserPersistenceTest {
   @Autowired
   private AuthUserService authUserService;
+
+  @Autowired
+  private AuthUserMapper authUserMapper;
+
+  @Autowired
+  private SessionTokenHasher sessionTokenHasher;
 
   @Test
   void logsInExistingAndCreatesNewUserInDatabase() {
@@ -139,6 +148,15 @@ class AuthUserPersistenceTest {
     assertThat(systemAdmin.permissions()).contains("PLATFORM_VOUCHER_MANAGE", "SYSTEM_MERCHANT_READ",
         "SYSTEM_USER_READ", "SYSTEM_ORDER_READ").doesNotContain("MERCHANT_MANAGE");
     assertThat(authUserService.validateToken(systemAdmin.token()).merchantId()).isNull();
+  }
+
+  @Test
+  void rejectsLegacyNullMerchantRoleTokenEvenIfMigrationWasMissed() {
+    String legacyToken = "mf_legacy_platform_admin_token";
+    authUserMapper.insertToken(sessionTokenHasher.hash(legacyToken), 106L, "LEGACY_PLATFORM_ROLE", null,
+        LocalDateTime.now().plusDays(1), LocalDateTime.now());
+
+    assertThat(authUserService.validateToken(legacyToken)).isNull();
   }
 
   @Test

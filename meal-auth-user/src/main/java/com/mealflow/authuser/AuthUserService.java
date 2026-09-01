@@ -117,6 +117,10 @@ public class AuthUserService {
       }
       roleCode = employee.getRoleCode();
       merchantId = employee.getMerchantId();
+    } else if (!CUSTOMER_ROLE.equals(roleCode)) {
+      // Null-merchant sessions are valid only for customers and freshly issued SYSTEM_ADMIN sessions.
+      // This fail-closed guard rejects every obsolete platform role even if a database migration was missed.
+      return null;
     }
     return principalView(row.getUserId(), row.getPhone(), row.getNickname(), roleCode, merchantId);
   }
