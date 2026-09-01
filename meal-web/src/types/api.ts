@@ -82,6 +82,15 @@ export interface MerchantView {
   manualFactor: number;
 }
 
+export interface SystemUserView {
+  userId: number;
+  phone: string;
+  nickname: string;
+  status: 'NORMAL' | 'DISABLED' | string;
+  identitySummary: string;
+  createTime?: string;
+}
+
 export interface OrderView {
   orderId: number;
   merchantId: number;

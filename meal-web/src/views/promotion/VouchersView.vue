@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { saveVoucherApi, vouchersApi } from '@/api/promotion';
+import { useAuthStore } from '@/stores/auth';
 import type { VoucherView } from '@/types/api';
 import { formatMoney, statusType } from '@/utils/format';
 
@@ -11,6 +12,7 @@ const rows = ref<VoucherView[]>([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = ref(20);
+const auth = useAuthStore();
 const form = reactive({ voucherId: 0, name: '', type: 'SECKILL', discountCent: 100, stock: 0, status: 'ACTIVE' });
 
 async function load() {
@@ -62,8 +64,8 @@ onMounted(load);
   <section class="page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">优惠券管理</h2>
-        <p class="page-subtitle">管理券的库存、状态和优惠金额，支撑领券与下单抵扣演示。</p>
+        <h2 class="page-title">{{ auth.roleCode === 'SYSTEM_ADMIN' ? '平台券管理' : '本店优惠券管理' }}</h2>
+        <p class="page-subtitle">{{ auth.roleCode === 'SYSTEM_ADMIN' ? '仅管理 PLATFORM 范围的平台券；商家券保持由所属商家独立经营。' : '仅管理当前商家的 MERCHANT 范围优惠券。' }}</p>
       </div>
       <el-button type="primary" @click="openCreate">新增券</el-button>
     </div>

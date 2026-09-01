@@ -33,8 +33,8 @@ async function submit() {
   try {
     await auth.login(form);
     ElMessage.success('登录成功');
-    router.push((route.query.redirect as string) || (auth.hasPermission('PLATFORM_VOUCHER_MANAGE')
-      ? '/promotion/vouchers' : '/dashboard'));
+    router.push((route.query.redirect as string) || (auth.hasPermission('SYSTEM_MERCHANT_READ')
+      ? '/system/merchants' : auth.hasPermission('PLATFORM_VOUCHER_MANAGE') ? '/promotion/vouchers' : '/dashboard'));
   } catch (error) {
     ElMessage.error(errorMessage(error, '验证码错误、已过期或尚未获取，请先获取验证码'));
   } finally {

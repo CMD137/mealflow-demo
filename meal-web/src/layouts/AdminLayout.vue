@@ -10,6 +10,7 @@ const auth = useAuthStore();
 
 const visibleMenus = computed(() => appMenus.map(filterMenu).filter(Boolean) as AppMenuItem[]);
 const pageTitle = computed(() => (route.meta.title as string) || 'MealFlow');
+const roleLabel = computed(() => auth.roleCode === 'SYSTEM_ADMIN' ? '系统管理员' : auth.roleCode);
 
 function filterMenu(item: AppMenuItem): AppMenuItem | null {
   if (item.permission && !auth.hasPermission(item.permission)) {
@@ -64,10 +65,10 @@ function logout() {
           <p>按真实业务流程操作后端服务</p>
         </div>
         <div class="account">
-          <el-tag type="info">{{ auth.roleCode }}</el-tag>
+          <el-tag type="info">{{ roleLabel }}</el-tag>
           <span>{{ auth.nickname }}</span>
           <span v-if="auth.merchantId" class="merchant">商家 {{ auth.merchantId }}</span>
-          <span v-else class="merchant">平台运营</span>
+          <span v-else class="merchant">{{ auth.roleCode === 'SYSTEM_ADMIN' ? '系统治理' : '平台运营' }}</span>
           <el-button text type="primary" @click="logout">退出</el-button>
         </div>
       </header>
