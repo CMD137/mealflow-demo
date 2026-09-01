@@ -10,6 +10,7 @@ import com.mealflow.authuser.api.MenuView;
 import com.mealflow.authuser.api.RoleRequest;
 import com.mealflow.authuser.api.RoleView;
 import com.mealflow.authuser.api.SignInView;
+import com.mealflow.authuser.api.SystemUserView;
 import com.mealflow.authuser.api.TokenPrincipalView;
 import com.mealflow.authuser.api.UserView;
 import com.mealflow.authuser.mapper.AuthUserMapper;
@@ -20,6 +21,7 @@ import com.mealflow.authuser.mapper.MerchantEmployeeRow;
 import com.mealflow.authuser.mapper.MerchantRoleRow;
 import com.mealflow.authuser.mapper.UserAccountRow;
 import com.mealflow.authuser.mapper.UserAddressRow;
+import com.mealflow.authuser.mapper.SystemUserRow;
 import com.mealflow.authuser.otp.OtpPort;
 import com.mealflow.authuser.security.SessionTokenHasher;
 import com.mealflow.common.api.ErrorCode;
@@ -47,7 +49,7 @@ import org.slf4j.LoggerFactory;
 public class AuthUserService {
   private static final Logger log = LoggerFactory.getLogger(AuthUserService.class);
   private static final String CUSTOMER_ROLE = "CUSTOMER";
-  private static final String PLATFORM_ADMIN_ROLE = "PLATFORM_ADMIN";
+  private static final String SYSTEM_ADMIN_ROLE = "SYSTEM_ADMIN";
   private static final String SIGN_IN_BIZ_TYPE = "SIGN_IN";
   private static final Duration TOKEN_TTL = Duration.ofDays(7);
   private static final String SIGN_KEY_PREFIX = "sign:user:";
@@ -103,7 +105,7 @@ public class AuthUserService {
     }
     String roleCode = row.getRoleCode();
     Long merchantId = row.getMerchantId();
-    if (PLATFORM_ADMIN_ROLE.equals(roleCode)) {
+    if (SYSTEM_ADMIN_ROLE.equals(roleCode)) {
       if (authUserMapper.findActivePlatformAdminId(row.getUserId()) == null) {
         return null;
       }
@@ -221,6 +223,36 @@ public class AuthUserService {
 
   public List<RoleView> roles() {
     return authUserMapper.findRoles().stream().map(this::roleView).toList();
+  }
+
+  public PageResult<SystemUserView> systemUsers(int page, int pageSize, String phone, String status) {
+    int normalizedPageSize = Math.min(Math.max(pageSize, 1), 100);
+    int normalizedPage = Math.max(page, 1);
+    long total = authUserMapper.countSystemUsers(phone, status);
+    List<SystemUserView> items = authUserMapper.findSystemUsersPage(phone, status, normalizedPageSize,
+        (normalizedPage - 1) * normalizedPageSize).stream().map(this::systemUserView).toList();
+    return PageResult.of(items, total, normalizedPage, normalizedPageSize);
+  }
+
+  @Transactional
+  public SystemUserView changeSystemUserStatus(long actingUserId, long userId, String requestedStatus) {
+    if (actingUserId == userId) {
+      throw new BizException(ErrorCode.FORBIDDEN, "system administrator cannot disable itself");
+    }
+    String status = requestedStatus == null ? "" : requestedStatus.trim().toUpperCase();
+    if (!List.of("NORMAL", "DISABLED").contains(status)) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "user status must be NORMAL or DISABLED");
+    }
+    UserAccountRow user = authUserMapper.findUser(userId);
+    if (user == null) {
+      throw new BizException(ErrorCode.NOT_FOUND, "user not found");
+    }
+    LocalDateTime now = LocalDateTime.now();
+    authUserMapper.updateSystemUserStatus(userId, status, now);
+    if ("DISABLED".equals(status)) {
+      authUserMapper.revokeTokensByUserId(userId, now);
+    }
+    return systemUserView(authUserMapper.findSystemUser(userId));
   }
 
   @Transactional
@@ -361,7 +393,7 @@ public class AuthUserService {
 
   private TokenPrincipalView principalFor(UserAccountRow user) {
     if (authUserMapper.findActivePlatformAdminId(user.getId()) != null) {
-      return principalView(user.getId(), user.getPhone(), user.getNickname(), PLATFORM_ADMIN_ROLE, null);
+      return principalView(user.getId(), user.getPhone(), user.getNickname(), SYSTEM_ADMIN_ROLE, null);
     }
     MerchantEmployeeRow employee = authUserMapper.findActiveEmployeeByUserId(user.getId());
     String roleCode = employee == null ? CUSTOMER_ROLE : employee.getRoleCode();
@@ -390,6 +422,11 @@ public class AuthUserService {
   private EmployeeView employeeView(EmployeeDetailRow row) {
     return new EmployeeView(row.getEmployeeId(), row.getMerchantId(), row.getUserId(), row.getPhone(),
         row.getNickname(), row.getRoleCode(), row.getRoleName(), row.getStatus());
+  }
+
+  private SystemUserView systemUserView(SystemUserRow row) {
+    return new SystemUserView(row.getId(), row.getPhone(), row.getNickname(), row.getStatus(),
+        row.getIdentitySummary(), row.getCreateTime());
   }
 
   private MerchantRoleRow requireRole(String roleCode) {

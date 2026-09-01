@@ -406,7 +406,7 @@ class PromotionPersistenceTest {
         .extracting(VoucherView::voucherId).contains(merchantVoucher.voucherId());
     assertThat(promotionService.vouchers(1, 100, "MERCHANT_ADMIN", 10L).items())
         .extracting(VoucherView::voucherId).doesNotContain(merchantVoucher.voucherId());
-    assertThat(promotionService.vouchers(1, 100, "PLATFORM_ADMIN", null).items())
+    assertThat(promotionService.vouchers(1, 100, "SYSTEM_ADMIN", null).items())
         .extracting(VoucherView::voucherId).doesNotContain(merchantVoucher.voucherId());
     assertThat(promotionService.activeVouchers(10L)).extracting(VoucherView::voucherId)
         .doesNotContain(merchantVoucher.voucherId());

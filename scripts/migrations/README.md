@@ -23,6 +23,7 @@
 | `20260830-promotion-claim-backfill.sql` | 已有秒杀钱包券但缺少 claim 的旧库 | 幂等回填 `CLAIMED` 领取事实，补齐用户/券事件键与钱包券关联 |
 | `20260903-queue-history-timeout-notification.sql` | 尚未支持用户排队历史与超时通知的旧库 | 新增用户历史查询索引和可重试的排队超时通知记录表 |
 | `20260904-platform-voucher-scope.sql` | 缺少平台管理员与商家券归属的旧库 | 新增独立平台管理员、`PLATFORM_ADMIN` 权限与优惠券平台/商家范围字段；历史券保守保留为平台券 |
+| `20260905-system-admin-governance.sql` | 已执行 20260904 的旧库 | 将平台治理角色升级为 `SYSTEM_ADMIN`，授予最小化治理权限，撤销旧 `PLATFORM_ADMIN` token，并保留独立 `platform_admin` 成员资格 |
 
 ## 已知仍需按实际库结构人工补的差异
 

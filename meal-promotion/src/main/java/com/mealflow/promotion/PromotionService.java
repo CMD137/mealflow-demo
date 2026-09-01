@@ -37,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PromotionService {
   private static final String PLATFORM_SCOPE = "PLATFORM";
   private static final String MERCHANT_SCOPE = "MERCHANT";
-  private static final String PLATFORM_ADMIN_ROLE = "PLATFORM_ADMIN";
+  private static final String SYSTEM_ADMIN_ROLE = "SYSTEM_ADMIN";
   private final PromotionMapper promotionMapper;
   private final VoucherSeckillGuard seckillGuard;
   private final SeckillClaimPublisher claimPublisher;
@@ -259,7 +259,7 @@ public class PromotionService {
   }
 
   public PageResult<VoucherView> vouchers(int page, int pageSize, String roleCode, Long merchantId) {
-    if (PLATFORM_ADMIN_ROLE.equals(roleCode)) {
+    if (SYSTEM_ADMIN_ROLE.equals(roleCode)) {
       return vouchersPage(page, pageSize, PLATFORM_SCOPE, null);
     }
     if (merchantId == null) {
@@ -293,7 +293,7 @@ public class PromotionService {
 
   @Transactional
   public VoucherView createVoucher(VoucherAdminRequest request) {
-    return createVoucher(request, PLATFORM_ADMIN_ROLE, null);
+    return createVoucher(request, SYSTEM_ADMIN_ROLE, null);
   }
 
   @Transactional
@@ -307,7 +307,7 @@ public class PromotionService {
 
   @Transactional
   public VoucherView updateVoucher(long voucherId, VoucherAdminRequest request) {
-    return updateVoucher(voucherId, request, PLATFORM_ADMIN_ROLE, null);
+    return updateVoucher(voucherId, request, SYSTEM_ADMIN_ROLE, null);
   }
 
   @Transactional
@@ -422,11 +422,11 @@ public class PromotionService {
   }
 
   private String scopeFor(String roleCode, Long merchantId) {
-    return PLATFORM_ADMIN_ROLE.equals(roleCode) ? PLATFORM_SCOPE : requireMerchantScope(merchantId);
+    return SYSTEM_ADMIN_ROLE.equals(roleCode) ? PLATFORM_SCOPE : requireMerchantScope(merchantId);
   }
 
   private Long merchantFor(String roleCode, Long merchantId) {
-    return PLATFORM_ADMIN_ROLE.equals(roleCode) ? null : merchantId;
+    return SYSTEM_ADMIN_ROLE.equals(roleCode) ? null : merchantId;
   }
 
   private String requireMerchantScope(Long merchantId) {
@@ -437,7 +437,7 @@ public class PromotionService {
   }
 
   private void requireVoucherManagement(VoucherRow voucher, String roleCode, Long merchantId) {
-    if (PLATFORM_ADMIN_ROLE.equals(roleCode) && PLATFORM_SCOPE.equals(voucher.getScope())) {
+    if (SYSTEM_ADMIN_ROLE.equals(roleCode) && PLATFORM_SCOPE.equals(voucher.getScope())) {
       return;
     }
     if (merchantId != null && MERCHANT_SCOPE.equals(voucher.getScope())

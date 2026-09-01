@@ -10,6 +10,7 @@ import com.mealflow.authuser.api.EmployeeView;
 import com.mealflow.authuser.api.LoginRequest;
 import com.mealflow.authuser.api.LoginResponse;
 import com.mealflow.authuser.api.SignInView;
+import com.mealflow.authuser.api.SystemUserView;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -128,15 +129,31 @@ class AuthUserPersistenceTest {
   }
 
   @Test
-  void logsInPlatformAdministratorWithoutMerchantOwnership() {
+  void logsInSystemAdministratorWithoutMerchantOwnership() {
     authUserService.requestLoginCode("13800000006");
 
-    LoginResponse platformAdmin = authUserService.login(new LoginRequest("13800000006", "123456"));
+    LoginResponse systemAdmin = authUserService.login(new LoginRequest("13800000006", "123456"));
 
-    assertThat(platformAdmin.roleCode()).isEqualTo("PLATFORM_ADMIN");
-    assertThat(platformAdmin.merchantId()).isNull();
-    assertThat(platformAdmin.permissions()).contains("PLATFORM_VOUCHER_MANAGE").doesNotContain("MERCHANT_MANAGE");
-    assertThat(authUserService.validateToken(platformAdmin.token()).merchantId()).isNull();
+    assertThat(systemAdmin.roleCode()).isEqualTo("SYSTEM_ADMIN");
+    assertThat(systemAdmin.merchantId()).isNull();
+    assertThat(systemAdmin.permissions()).contains("PLATFORM_VOUCHER_MANAGE", "SYSTEM_MERCHANT_READ",
+        "SYSTEM_USER_READ", "SYSTEM_ORDER_READ").doesNotContain("MERCHANT_MANAGE");
+    assertThat(authUserService.validateToken(systemAdmin.token()).merchantId()).isNull();
+  }
+
+  @Test
+  void systemAdministrationDisablesTokensButCannotDisableItself() {
+    authUserService.requestLoginCode("13900000077");
+    LoginResponse customer = authUserService.login(new LoginRequest("13900000077", "123456"));
+
+    SystemUserView disabled = authUserService.changeSystemUserStatus(106L, customer.userId(), "DISABLED");
+
+    assertThat(disabled.status()).isEqualTo("DISABLED");
+    assertThat(authUserService.validateToken(customer.token())).isNull();
+    assertThatThrownBy(() -> authUserService.changeSystemUserStatus(106L, 106L, "DISABLED"))
+        .hasMessageContaining("cannot disable itself");
+    assertThat(authUserService.systemUsers(1, 100, "13900000077", "DISABLED").items())
+        .extracting(SystemUserView::identitySummary).containsExactly("CUSTOMER");
   }
 
   @Test
