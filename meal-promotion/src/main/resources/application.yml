@@ -47,6 +47,9 @@ mealflow:
       initial-timeout-ms: ${PROMOTION_PENDING_RECOVERY_INITIAL_TIMEOUT_MS:10000}
       batch-size: ${PROMOTION_PENDING_RECOVERY_BATCH_SIZE:100}
       max-backoff-ms: ${PROMOTION_PENDING_RECOVERY_MAX_BACKOFF_MS:300000}
+      # Terminal handling remains safe: a retry becomes DEAD only after its
+      # Redis reservation has been compensated successfully.
+      max-retry-attempts: ${PROMOTION_PENDING_RECOVERY_MAX_RETRY_ATTEMPTS:8}
   mq:
     seckill-consumer:
       enabled: ${SECKILL_EVENT_CONSUMER_ENABLED:true}

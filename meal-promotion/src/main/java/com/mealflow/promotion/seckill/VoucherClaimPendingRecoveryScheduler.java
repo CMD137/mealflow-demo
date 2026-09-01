@@ -17,18 +17,21 @@ public class VoucherClaimPendingRecoveryScheduler {
   private final int batchSize;
   private final long maxBackoffMs;
   private final boolean enabled;
+  private final int maxRetryAttempts;
 
   public VoucherClaimPendingRecoveryScheduler(PromotionMapper promotionMapper, VoucherSeckillGuard seckillGuard,
       SeckillClaimPublisher publisher,
       @Value("${mealflow.promotion.pending-recovery.enabled:true}") boolean enabled,
       @Value("${mealflow.promotion.pending-recovery.batch-size:100}") int batchSize,
-      @Value("${mealflow.promotion.pending-recovery.max-backoff-ms:300000}") long maxBackoffMs) {
+      @Value("${mealflow.promotion.pending-recovery.max-backoff-ms:300000}") long maxBackoffMs,
+      @Value("${mealflow.promotion.pending-recovery.max-retry-attempts:8}") int maxRetryAttempts) {
     this.promotionMapper = promotionMapper;
     this.seckillGuard = seckillGuard;
     this.publisher = publisher;
     this.enabled = enabled;
     this.batchSize = Math.max(1, batchSize);
     this.maxBackoffMs = Math.max(60_000, maxBackoffMs);
+    this.maxRetryAttempts = Math.max(1, maxRetryAttempts);
   }
 
   @Scheduled(
@@ -79,8 +82,22 @@ public class VoucherClaimPendingRecoveryScheduler {
     try {
       publisher.publish(command);
     } catch (RuntimeException ex) {
-      status = "RETRY";
       error = trimError(ex);
+      if (retryCount >= maxRetryAttempts) {
+        try {
+          // Do not declare a terminal failure until the original Redis
+          // reservation has been released successfully. This keeps stock and
+          // the per-user claim guard consistent when cleanup is unavailable.
+          seckillGuard.compensate(command.userId(), command.voucherId());
+          status = "DEAD";
+          nextRetryTime = now;
+        } catch (RuntimeException compensationFailure) {
+          status = "RETRY";
+          error = trimError(error + "; compensation failed: " + trimError(compensationFailure));
+        }
+      } else {
+        status = "RETRY";
+      }
     }
     saveRetry(retry, command, status, retryCount, error, nextRetryTime);
   }
@@ -119,6 +136,10 @@ public class VoucherClaimPendingRecoveryScheduler {
 
   private String trimError(RuntimeException ex) {
     String message = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+    return trimError(message);
+  }
+
+  private String trimError(String message) {
     return message.length() <= 512 ? message : message.substring(0, 512);
   }
 }

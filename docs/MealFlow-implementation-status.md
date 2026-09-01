@@ -26,13 +26,13 @@
 - `meal-notify` 已支持通知模板和多渠道投递事实表，模板消息可同时生成站内信与 `SMS_MOCK` 投递记录，便于演示短信模拟和后续真实渠道扩展。
 - `meal-promotion` 秒杀领券使用 Redis Lua 原子操作 `seckill:{voucherId}:stock`、`users` Set 和 Pending ZSet；入口先用 `voucher_claim`/`user_voucher` 兜底识别历史领取，预约后发布 RocketMQ 命令，由 MySQL 事务条件扣减最终库存并写领取事实。首次发送或 Redis 收尾失败由 Pending 重投；只有 claim 插入冲突按重复消息处理，其他唯一键异常原样回滚暴露。
 - `meal-promotion` 已补齐营销券后台管理能力，支持券列表、新建券、修改券名称/类型/折扣/库存/状态；禁用券会阻止用户继续领取。
-- `meal-promotion` 的 `voucher_claim_retry` 记录 Pending 调度器的发布尝试，状态为 `RETRY` 或 `RECOVERED`；当前没有 Redis/MyBatis 全量对账任务，也没有应用层自动转 `DEAD` 的次数上限。最终领取事实仍以 `voucher_claim` 和 `user_voucher` 为准。
+- `meal-promotion` 的 `voucher_claim_retry` 记录 Pending 调度器的发布尝试，状态为 `RETRY`、`RECOVERED` 或 `DEAD`。发布按有上限的指数退避重试；达到上限时，只有 Redis 预约库存及用户领取占用补偿成功才会转 `DEAD`，补偿失败会保持 `RETRY`，避免出现部分释放。最终领取事实仍以 `voucher_claim` 和 `user_voucher` 为准；当前没有 Redis/MyBatis 全量对账任务。
 - `meal-queue` 的票据、产能 token、商户产能配置已持久化；启动时可以从 MySQL 重建 WAITING 队列运行时索引和商户产能 inflight 派生计数，Docker 环境可使用 Redis ZSet 作为等待队列热索引、使用 `capacity:merchant:{merchantId}:inflight` 作为产能热计数，本地测试默认使用内存实现。
 - `meal-catalog` 已支持用户端商家类目和上架 SKU 浏览；商家后台类目和 SKU 商品维护包含类目新增/修改、SKU 新增/修改、上下架、库存设置；下单快照会拒绝已下架 SKU。
 - `meal-merchant` 已支持商户容量配置和营业状态更新；`meal-cart` 已支持购物车增删改查、选中状态切换和整车清空。
 - `docker-compose.yml` 已包含 Nacos、MySQL、Redis、RocketMQ、gateway、所有业务服务、Prometheus 和 Grafana；MySQL 使用 healthcheck，业务服务等待 MySQL healthy 后启动。
 - 所有业务服务和网关已暴露 `/actuator/prometheus`，Prometheus 默认抓取各服务指标，Grafana 自动 provision Prometheus 数据源和 `MealFlow Overview` 基础面板。
-- `meal-order`、`meal-payment`、`meal-fulfillment` 已暴露 Outbox 状态指标 `mealflow_outbox_events`，`meal-order`、`meal-notify` 已暴露 consumer_record 状态指标 `mealflow_consumer_records`，`meal-promotion` 已暴露 Pending 重投记录指标 `mealflow_voucher_claim_retries`；该指标包含 `RETRY`、`RECOVERED`、`DEAD` 标签，但当前调度实现不会主动产生新的 `DEAD` 记录。
+- `meal-order`、`meal-payment`、`meal-fulfillment` 已暴露 Outbox 状态指标 `mealflow_outbox_events`，`meal-order`、`meal-notify` 已暴露 consumer_record 状态指标 `mealflow_consumer_records`，`meal-promotion` 已暴露 Pending 重投记录指标 `mealflow_voucher_claim_retries`；该指标包含 `RETRY`、`RECOVERED`、`DEAD` 标签，达到重试上限且 Redis 补偿成功的记录会进入 `DEAD`，可由现有告警规则通知人工介入。
 - `scripts/e2e-smoke.ps1` 覆盖 gateway ping、登录取 token、种子商品检查、秒杀券领取、产能限流、第一单成单、第二单排队、支付成功事件异步消费、履约出餐、产能释放后排队 ticket 自动转单。
 - `scripts/load-seckill.ps1`、`scripts/test-seckill-mysql-concurrency.ps1`、`scripts/load-peak-orders.ps1` 和 `scripts/fault-demo.ps1` 已覆盖真实 MySQL/Redis/RocketMQ 秒杀并发与账目收敛、高峰下单、鉴权拒绝、Redis 热索引重建和 capacity token 重复释放幂等演示。
 - `meal-app` 已从默认 Maven reactor 移出，仅保留在 `legacy-demo` profile 下作为本地内存版演示模块，避免与当前微服务主线混淆。

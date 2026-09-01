@@ -18,6 +18,7 @@ import com.mealflow.promotion.api.VoucherAdminRequest;
 import com.mealflow.promotion.api.VoucherView;
 import com.mealflow.promotion.mapper.PromotionMapper;
 import com.mealflow.promotion.mapper.UserVoucherRow;
+import com.mealflow.promotion.mapper.VoucherClaimRetryRow;
 import com.mealflow.promotion.mq.SeckillClaimPublisher;
 import com.mealflow.promotion.mq.SeckillClaimRocketMqConsumer;
 import com.mealflow.promotion.seckill.ClaimSettlementResult;
@@ -321,6 +322,59 @@ class PromotionPersistenceTest {
     assertThat(promotionMapper.findClaimRetry("seckill:" + voucher.voucherId() + ":211").getStatus())
         .isEqualTo("RECOVERED");
     assertThat(promotionMapper.countUserVoucher(211L, voucher.voucherId())).isZero();
+  }
+
+  @Test
+  void terminalPublishFailureCompensatesReservationBeforeRecordingDead() {
+    VoucherView voucher = newVoucher(1);
+    long userId = 31_001L;
+    VoucherClaimRetryRow retry = retryFor(voucher.voucherId(), userId, 7);
+    promotionMapper.insertClaimRetry(retry);
+    when(seckillGuard.findDuePending(org.mockito.ArgumentMatchers.eq(voucher.voucherId()), anyLong(),
+        any(Integer.class))).thenReturn(Set.of(userId));
+    doThrow(new IllegalStateException("broker unavailable"))
+        .when(claimPublisher).publish(SeckillClaimCommand.of(voucher.voucherId(), userId));
+
+    assertThat(recoveryScheduler.recoverPending()).isEqualTo(1);
+
+    VoucherClaimRetryRow result = promotionMapper.findClaimRetry(retry.getEventKey());
+    assertThat(result.getRetryCount()).isEqualTo(8);
+    assertThat(result.getStatus()).isEqualTo("DEAD");
+    assertThat(result.getLastError()).contains("broker unavailable");
+    verify(seckillGuard).compensate(userId, voucher.voucherId());
+  }
+
+  @Test
+  void compensationFailureKeepsTerminalPublishFailureRetryable() {
+    VoucherView voucher = newVoucher(1);
+    long userId = 31_002L;
+    VoucherClaimRetryRow retry = retryFor(voucher.voucherId(), userId, 7);
+    promotionMapper.insertClaimRetry(retry);
+    when(seckillGuard.findDuePending(org.mockito.ArgumentMatchers.eq(voucher.voucherId()), anyLong(),
+        any(Integer.class))).thenReturn(Set.of(userId));
+    doThrow(new IllegalStateException("broker unavailable"))
+        .when(claimPublisher).publish(SeckillClaimCommand.of(voucher.voucherId(), userId));
+    doThrow(new IllegalStateException("redis unavailable"))
+        .when(seckillGuard).compensate(userId, voucher.voucherId());
+
+    assertThat(recoveryScheduler.recoverPending()).isEqualTo(1);
+
+    VoucherClaimRetryRow result = promotionMapper.findClaimRetry(retry.getEventKey());
+    assertThat(result.getRetryCount()).isEqualTo(8);
+    assertThat(result.getStatus()).isEqualTo("RETRY");
+    assertThat(result.getLastError()).contains("broker unavailable", "compensation failed", "redis unavailable");
+  }
+
+  private VoucherClaimRetryRow retryFor(long voucherId, long userId, int retryCount) {
+    VoucherClaimRetryRow retry = new VoucherClaimRetryRow();
+    retry.setEventKey("seckill:" + voucherId + ":" + userId);
+    retry.setVoucherId(voucherId);
+    retry.setUserId(userId);
+    retry.setStatus("RETRY");
+    retry.setRetryCount(retryCount);
+    retry.setLastError("previous broker failure");
+    retry.setNextRetryTime(LocalDateTime.now().minusSeconds(1));
+    return retry;
   }
 
   private SeckillClaimRocketMqConsumer consumer() {

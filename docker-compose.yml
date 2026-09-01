@@ -40,19 +40,41 @@ services:
   rocketmq-namesrv:
     image: apache/rocketmq:5.2.0
     container_name: mealflow-rocketmq-namesrv
-    environment: *service-timezone
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      <<: *service-timezone
+      JAVA_OPT_EXT: -Xms128m -Xmx256m -Xmn128m
     command: sh mqnamesrv
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9876 && exec 3>&-' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     networks: [private]
 
   rocketmq-broker:
     image: apache/rocketmq:5.2.0
     container_name: mealflow-rocketmq-broker
+    restart: unless-stopped
+    mem_limit: 1g
     depends_on:
-      - rocketmq-namesrv
+      rocketmq-namesrv:
+        condition: service_healthy
     environment:
       <<: *service-timezone
       NAMESRV_ADDR: rocketmq-namesrv:9876
+      # Keep the broker within the local Docker Desktop memory budget. The
+      # direct-memory cap leaves headroom for metaspace, threads and the OS.
+      JAVA_OPT_EXT: -Xms256m -Xmx512m -Xmn128m -XX:MaxDirectMemorySize=128m
     command: sh mqbroker -n rocketmq-namesrv:9876
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/10911 && exec 3>&-' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
     networks: [private]
 
   meal-auth-user:
@@ -201,7 +223,7 @@ services:
       meal-payment:
         condition: service_started
       rocketmq-broker:
-        condition: service_started
+        condition: service_healthy
     environment:
       <<: *service-timezone
       NACOS_ADDR: nacos:8848
@@ -279,7 +301,7 @@ services:
       redis:
         condition: service_started
       rocketmq-broker:
-        condition: service_started
+        condition: service_healthy
     environment:
       <<: *service-timezone
       NACOS_ADDR: nacos:8848
@@ -297,6 +319,7 @@ services:
       SECKILL_EVENT_TOPICS: mealflow-seckill-commands
       SECKILL_EVENT_MAX_RECONSUME_TIMES: 5
       PROMOTION_PENDING_RECOVERY_ENABLED: "true"
+      PROMOTION_PENDING_RECOVERY_MAX_RETRY_ATTEMPTS: ${PROMOTION_PENDING_RECOVERY_MAX_RETRY_ATTEMPTS:-8}
       SECKILL_BOOTSTRAP_ENABLED: "true"
     volumes:
       - ./meal-promotion/target/meal-promotion-0.1.0-SNAPSHOT.jar:/app/app.jar:ro
@@ -318,7 +341,7 @@ services:
       mysql:
         condition: service_healthy
       rocketmq-broker:
-        condition: service_started
+        condition: service_healthy
     environment:
       <<: *service-timezone
       NACOS_ADDR: nacos:8848
@@ -363,7 +386,7 @@ services:
       meal-queue:
         condition: service_started
       rocketmq-broker:
-        condition: service_started
+        condition: service_healthy
     environment:
       <<: *service-timezone
       NACOS_ADDR: nacos:8848
@@ -398,7 +421,7 @@ services:
       mysql:
         condition: service_healthy
       rocketmq-broker:
-        condition: service_started
+        condition: service_healthy
     environment:
       <<: *service-timezone
       NACOS_ADDR: nacos:8848
